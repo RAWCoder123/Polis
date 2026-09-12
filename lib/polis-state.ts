@@ -7,6 +7,8 @@ const initial:DemoState={rankings:[],saved:[],plans:[],following:["maya","oliver
 const KEY="polis-demo-v1";
 function validIds(value:unknown){return Array.isArray(value)?value.filter((id):id is string=>typeof id==="string"&&!!itemById[id]):[];}
 export function useDemoState(){
+  // The preserved demo synchronizes browser storage after hydration and reports storage failures.
+  /* eslint-disable react-hooks/set-state-in-effect */
   const [state,setState]=useState<DemoState>(initial);
   const [ready,setReady]=useState(false);
   const [storageError,setStorageError]=useState(false);

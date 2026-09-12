@@ -1,3 +1,3 @@
-import PolisApp from "@/components/polis/polis-app";
+import SocialApp from "@/components/polis/social-app";
 
-export default function Home() { return <PolisApp />; }
+export default function Home() { return <SocialApp />; }
