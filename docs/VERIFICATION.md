@@ -2,6 +2,12 @@
 
 Updated 2026-09-12. This record separates tested local behavior from the hosted identity acceptance gate.
 
+## Delivery status
+
+The implementation and verified local preview are complete. Hosted publication is blocked before source upload: this network resolves `git.chatgpt-team.site` to Cornell's security warning service (`Phish Attempt Warning`), and HTTPS connections time out. No security settings, DNS overrides, site audience, or network protections were changed. No new hosted version or deployment was created. The existing live site therefore still runs the earlier MVP.
+
+The owner bootstrap runtime setting was saved in Sites as a secret, revision 1; it applies when the new version is deployed. The local database and test activity are excluded from the prepared deployment output. Resume publishing once approved access to the Sites source server is restored, using fresh short-lived source credentials, the current validated source, and the existing owner-private Sites project. Do not bypass the network filter or publish an older source revision with the new artifact.
+
 ## Automated service verification
 
 `npm test`: 14 passing tests using the actual service and both migration files. A D1 transport adapter executes transactional SQL in Node SQLite; identities are isolated fixtures, not real ChatGPT accounts.
