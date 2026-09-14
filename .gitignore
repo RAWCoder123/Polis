@@ -49,3 +49,22 @@ next-env.d.ts
 
 .dev.vars*
 !.env.example
+
+# Local verification artifacts, caches, data exports, and credentials
+*.log
+/cache/
+/.cache/
+/playwright-report/
+/test-results/
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+/exports/
+/backups/
+/credentials*.json
+*.key
+*.p12
+*.pfx
+Thumbs.db
