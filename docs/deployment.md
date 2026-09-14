@@ -25,7 +25,7 @@ The import includes source, assets, lockfile, schema/migrations, and synthetic t
 
 ## Publication is separate from GitHub
 
-There is **no automatic GitHub-to-Sites deployment**. GitHub Actions only validates source and has no production credentials or deployment steps. Public source does not make the deployed site public.
+There is **no automatic GitHub-to-Sites deployment**. The prepared GitHub Actions definition only validates source and contains no production credentials or deployment steps; activation currently awaits workflow-write permission. Public source does not make the deployed site public.
 
 When a later task explicitly authorizes publication:
 

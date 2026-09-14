@@ -54,7 +54,9 @@ With the development server running in another terminal:
 npm run test:http
 ```
 
-Tests run the real service and migrations against isolated SQLite fixtures, including three-user access checks. The HTTP smoke test creates no user data and checks the local Worker's authentication boundary and rejected writes. Lint currently has seven warnings in preserved MVP components and no errors. GitHub Actions runs installation, lint, types, tests, production build, and a local Worker smoke check for pull requests and pushes to `main`, without production credentials or deployment steps.
+Tests run the real service and migrations against isolated SQLite fixtures, including three-user access checks. The HTTP smoke test creates no user data and checks the local Worker's authentication boundary and rejected writes. Lint currently has seven warnings in preserved MVP components and no errors.
+
+The [CI definition](docs/ci.yml) is prepared for pull requests and pushes to `main`: installation, lint, types, tests, build, and a local Worker smoke check, with read-only permissions and no production credentials or deployment steps. **Remote CI is not active yet:** both available GitHub integrations rejected writing `.github/workflows/ci.yml`. After the owner grants the CLI `workflow` scope or the GitHub app Workflows write permission, move `docs/ci.yml` to `.github/workflows/ci.yml`, push the setup branch, and verify its Actions result. See [setup verification](docs/VERIFICATION.md).
 
 `npm start` runs the built Worker locally on port 8787. It is an artifact smoke command, not a replacement for the trusted Sites dispatcher or development sign-in. Use `npm run dev` for normal interactive development.
 

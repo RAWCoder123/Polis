@@ -10,7 +10,9 @@ The clean-checkout preview at `http://localhost:5173/` rendered signed-out/onboa
 
 Tracked files and reachable source history were reviewed for credential patterns and private files; no API keys, access tokens, private environment files, or local data were found in the intended setup changes. Synthetic reserved-domain test identities remain test fixtures. Existing public history contains machine-generated author email metadata; it was not rewritten. New setup commits use GitHub no-reply metadata. See [deployment provenance](deployment.md).
 
-GitHub `main` begins at the already-published import commit. Remaining workflow/configuration changes are submitted through a setup PR, without merging it or changing production. Remote CI must be checked on that PR; local passes do not establish remote success. The validation workflow contains no deployment step or production credentials.
+GitHub `main` begins at the already-published import commit. Remaining configuration changes are submitted through a draft setup PR, without merging it or changing production. The CLI push containing `.github/workflows/ci.yml` was rejected for missing OAuth `workflow` scope; the connected GitHub app also returned 403 for workflow creation. The exact reviewed definition is included as `docs/ci.yml` so it can be inspected without claiming it is active. No remote Actions run has succeeded or been started for this setup. Local passes do not establish remote success.
+
+To unblock CI, the owner can run `gh auth refresh -h github.com -s workflow` and complete GitHub authorization, or grant the connected GitHub app Workflows write permission. Then move `docs/ci.yml` to `.github/workflows/ci.yml`, commit/push on the setup branch, and inspect the PR's Actions run. The original prepared local commit retains the validated workflow for recovery. The definition follows [GitHub's Node.js CI guidance](https://docs.github.com/en/actions/tutorials/build-and-test-code/nodejs), uses pinned official actions, and contains no deployment step or production credentials.
 
 ## Delivery status
 
