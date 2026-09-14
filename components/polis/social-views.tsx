@@ -20,19 +20,14 @@ import { items, itemById, kinds, type CivicItem } from "@/lib/polis-data";
 import { issues, issueFor, subjectTitle } from "@/lib/social/catalog";
 import {
   audiences,
-  type Audience,
   type Snapshot,
   type Person,
   type Post,
 } from "@/lib/social/types";
 import { Avatar, ItemIcon, Score } from "./common";
-import CommunityMap from "./community-map";
-import {
-  AudienceField,
-  ReplyComposer,
-  type ComposeOptions,
-  Modal,
-} from "./social-forms";
+import EventExplorer from "./event-explorer";
+import { EventPlanEditor } from "./event-plan";
+import { ReplyComposer, type ComposeOptions, Modal } from "./social-forms";
 import { PostCard, type Run, type Navigate } from "./social-post";
 export function Quiet({
   title,
@@ -52,72 +47,69 @@ export function Quiet({
 export function Explore({
   query,
   navigate,
+  explore,
   data,
+  run,
+  category,
+  selectedId,
+  params,
 }: {
   query: string;
   navigate: Navigate;
+  explore: (route: string) => void;
   data: Snapshot;
+  run: Run;
+  category?: string;
+  selectedId?: string;
+  params: URLSearchParams;
 }) {
-  const [tab, setTab] = useState("Issues"),
-    [eventFilter, setEventFilter] = useState("All events");
-  const found = items
-    .filter(
-      (i) =>
-        (tab === "Events" ? i.kind === "Events" : i.kind === tab) &&
-        (!query ||
-          (i.title + " " + i.topic + " " + i.summary)
-            .toLowerCase()
-            .includes(query.toLowerCase())) &&
-        (tab !== "Events" ||
-          eventFilter === "All events" ||
-          i.event?.type === eventFilter),
-    )
-    .sort((a, b) =>
-      a.event && b.event ? Number(a.event.day) - Number(b.event.day) : 0,
-    );
-  const friends = data.people.filter(
-    (p) => p.relationship === "friends" && !p.blocked,
+  const tab =
+    ["Issues", ...kinds].find((k) => k.toLowerCase() === category) ?? "Issues";
+  const found = items.filter(
+    (i) =>
+      i.kind === tab &&
+      (!query ||
+        (i.title + " " + i.topic + " " + i.summary)
+          .toLowerCase()
+          .includes(query.toLowerCase())),
   );
-  const participants = Object.fromEntries(
-    items
-      .filter((i) => i.event)
-      .map((i) => [
-        i.id,
-        data.plans
-          .filter(
-            (p) => p.eventId === i.id && friends.some((f) => f.id === p.userId),
-          )
-          .map((p) => ({
-            name: p.name,
-            initials: p.name
-              .split(" ")
-              .map((s) => s[0])
-              .slice(0, 2)
-              .join(""),
-          })),
-      ]),
+  const foundIssues = issues.filter((i) =>
+    (i.name + " " + i.description).toLowerCase().includes(query.toLowerCase()),
   );
+  function changeTab(k: string) {
+    const p = new URLSearchParams();
+    if (query) p.set("q", query);
+    explore("explore/" + k.toLowerCase() + (p.size ? "?" + p : ""));
+  }
   return (
     <>
-      <div className="social-tabs">
+      <nav className="social-tabs" aria-label="Explore categories">
         {["Issues", ...kinds].map((k) => (
           <button
             key={k}
+            aria-current={k === tab ? "page" : undefined}
             className={k === tab ? "active" : ""}
-            onClick={() => setTab(k)}
+            onClick={() => changeTab(k)}
           >
             {k}
           </button>
         ))}
-      </div>
+      </nav>
       <p className="catalog-notice">
-        The civic catalog is illustrative. No proposal, candidate, story, or
-        event below is presented as a verified current local record.
+        {tab === "Events" ? "Sample events · Fictional gatherings and illustrative locations." : "Sample civic catalog · The proposals, people, stories, and events here are illustrative, not verified current local records."}
       </p>
-      {tab === "Issues" ? (
-        issues
-          .filter((i) => i.name.toLowerCase().includes(query.toLowerCase()))
-          .map((issue, i) => (
+      {tab === "Events" ? (
+        <EventExplorer
+          data={data}
+          run={run}
+          selectedId={selectedId}
+          params={params}
+          navigate={navigate}
+          explore={explore}
+        />
+      ) : tab === "Issues" ? (
+        <>
+          {foundIssues.map((issue, i) => (
             <button
               className="issue-explore-row"
               key={issue.id}
@@ -130,36 +122,21 @@ export function Explore({
               </span>
               <ArrowUpRight size={21} />
             </button>
-          ))
+          ))}
+          {!foundIssues.length && (
+            <Quiet title="No issues match that search.">
+              Try housing, transit, public spaces, or libraries.{" "}
+              <button
+                className="text-button"
+                onClick={() => explore("explore/issues")}
+              >
+                Clear search
+              </button>
+            </Quiet>
+          )}
+        </>
       ) : (
         <>
-          {tab === "Events" && (
-            <>
-              <label className="social-field">
-                Event type
-                <select
-                  value={eventFilter}
-                  onChange={(e) => setEventFilter(e.target.value)}
-                >
-                  {["All events", "Town halls", "Volunteering", "Meetups"].map(
-                    (v) => (
-                      <option key={v}>{v}</option>
-                    ),
-                  )}
-                </select>
-              </label>
-              <CommunityMap
-                visibleItems={found}
-                showFriends
-                participants={participants}
-                onSelect={(i) => navigate("item/" + i.id)}
-              />
-              <p className="metadata">
-                Markers use illustrative event locations. Friend markers appear
-                only for explicitly shared plans.
-              </p>
-            </>
-          )}
           {found.map((item) => (
             <button
               className="catalog-row"
@@ -173,18 +150,19 @@ export function Explore({
                 </small>
                 <h2>{item.title}</h2>
                 <p>{item.subtitle}</p>
-                {item.event && (
-                  <small>
-                    September {item.event.day}, 2026 · {item.event.time}
-                  </small>
-                )}
               </span>
               <ArrowUpRight size={18} />
             </button>
           ))}
           {!found.length && (
-            <Quiet title="Nothing here yet.">
-              Try another category or search term.
+            <Quiet title="Nothing matches just yet.">
+              Try another category or search term.{" "}
+              <button
+                className="text-button"
+                onClick={() => explore("explore/" + tab.toLowerCase())}
+              >
+                Clear search
+              </button>
             </Quiet>
           )}
         </>
@@ -208,13 +186,6 @@ export function ItemDetail({
   run: Run;
 }) {
   const issue = issueFor(item.id)!;
-  const mine = data.plans.find(
-    (p) => p.userId === data.me?.id && p.eventId === item.id,
-  );
-  const [status, setStatus] = useState(mine?.status ?? "interested"),
-    [aud, setAud] = useState<Audience>(mine?.audience ?? "only_me"),
-    [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
   const attendees = data.plans.filter(
     (p) => p.eventId === item.id && p.userId !== data.me?.id,
   );
@@ -233,6 +204,15 @@ export function ItemDetail({
           : "Illustrative " + item.kind.toLowerCase()}{" "}
         · Not a verified local record
       </p>
+      {item.event && (
+        <button
+          className="text-button event-back-map"
+          onClick={() => navigate("explore/events/" + item.id)}
+        >
+          <MapPin size={15} />
+          Show on the event map
+        </button>
+      )}
       <h1>{item.title}</h1>
       <p className="civic-subtitle">{item.subtitle}</p>
       {item.kind === "News" && (
@@ -307,75 +287,12 @@ export function ItemDetail({
       {item.event && (
         <section className="event-plan-panel">
           <h2>Your plan</h2>
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              setBusy(true);
-              try {
-                await run({
-                  action: "plan",
-                  eventId: item.id,
-                  status,
-                  audience: aud,
-                });
-                setError("");
-              } catch (e) {
-                setError(e instanceof Error ? e.message : "Please retry.");
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <label className="social-field">
-              Interest
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as typeof status)}
-              >
-                <option value="interested">Interested</option>
-                <option value="attending">Planning to attend</option>
-              </select>
-            </label>
-            <AudienceField value={aud} onChange={setAud} />
-            <p className="metadata">
-              A saved plan is not registration or proof of attendance. Sharing
-              publishes this plan to the selected audience.
-            </p>
-            <button className="btn primary" disabled={busy}>
-              {aud === "only_me" ? "Save private plan" : "Save and share plan"}
-            </button>
-            {mine && (
-              <button
-                type="button"
-                className="text-button"
-                disabled={busy}
-                onClick={() => {
-                  void run({
-                    action: "plan",
-                    eventId: item.id,
-                    status: null,
-                    audience: "only_me",
-                  }).catch(() => {});
-                }}
-              >
-                Remove plan
-              </button>
-            )}
-            {error && (
-              <p className="form-error" role="alert">
-                {error}
-              </p>
-            )}
-          </form>
-          {mine && (
-            <p className="answer-saved">
-              <Check size={14} />
-              {mine.status === "attending"
-                ? "Planning to attend"
-                : "Interested"}{" "}
-              · {audiences[mine.audience]}
-            </p>
-          )}
+          <EventPlanEditor
+            key={item.id}
+            eventId={item.id}
+            data={data}
+            run={run}
+          />
           <h3>Shared plans</h3>
           {attendees.length ? (
             attendees.map((p) => (

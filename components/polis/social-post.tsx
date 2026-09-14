@@ -24,6 +24,7 @@ import {
   positions,
   type Post,
   type Person,
+  type CommandResult,
 } from "@/lib/social/types";
 import { itemById } from "@/lib/polis-data";
 import { subjectTitle } from "@/lib/social/catalog";
@@ -31,12 +32,7 @@ import type { CommandData } from "@/lib/social/service";
 export type Run = (
   data: CommandData,
   requestId?: string,
-) => Promise<{
-  ok: boolean;
-  postId?: string;
-  commentId?: string;
-  invite?: string;
-}>;
+) => Promise<CommandResult>;
 export type Navigate = (route: string) => void;
 export function PostCard({
   post,

@@ -549,6 +549,47 @@ test("daily answers are private by default, result counts enforce audience, skip
   assert.equal((await f.snap("c")).question!.counts!.length, 0);
 });
 
+test("unchanged event plans retain their conversation; changed audiences start a new one", async () => {
+  const f = fixture();
+  await f.setup();
+  await f.friends();
+  const plan = {
+    action: "plan",
+    eventId: "transit-walk",
+    status: "attending",
+    audience: "friends",
+  } as const;
+  const first = await f.act("a", plan);
+  assert.deepEqual(first.plan, {
+    userId: "a", eventId: plan.eventId, status: plan.status, audience: plan.audience,
+  });
+  const postId = first.postId!;
+  await f.act("b", {
+    action: "comment",
+    postId,
+    text: "Meet at the entrance?",
+    parentId: null,
+  });
+  await f.act("b", { action: "reaction", postId, kind: "thoughtful" });
+  await f.act("a", plan);
+  const preserved = (await f.snap("b", { post: postId })).posts[0];
+  assert.equal(preserved.id, postId);
+  assert.equal(preserved.replyCount, 1);
+  assert.equal(preserved.reactions[0].count, 1);
+  assert.equal(f.count("posts"), 1);
+  const wider = await f.act("a", { ...plan, audience: "community" });
+  assert.notEqual(wider.postId, postId);
+  assert.equal(
+    (await f.snap("c", { post: wider.postId! })).posts[0].replyCount,
+    0,
+  );
+  await denied(f.snap("b", { post: postId }), 404);
+  const removed = await f.act("a", { ...plan, status: null });
+  assert.deepEqual(removed.plan, {
+    userId: "a", eventId: plan.eventId, status: null, audience: "only_me",
+  });
+});
+
 test("post/reply cursor pages and exact deep links include replies beyond the first page", async () => {
   const f = fixture();
   await f.setup();

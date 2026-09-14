@@ -73,9 +73,14 @@ export default function SocialApp() {
     encodeURIComponent(
       currentLocation.pathname + currentLocation.search + currentLocation.hash,
     );
-  const route = currentLocation.hash.slice(1) || "home";
+  const hashLocation = new URL(
+    currentLocation.hash.slice(1) || "home",
+    "https://polis.invalid/",
+  );
+  const route = hashLocation.pathname.slice(1);
+  const exploreParams = hashLocation.searchParams;
   const [filter, setFilter] = useState("friends"),
-    [query, setQuery] = useState(""),
+    [searchQuery, setQuery] = useState(""),
     [composer, setComposer] = useState<ComposeOptions | null>(null),
     [rankItem, setRankItem] = useState<CivicItem | undefined>(),
     [rankOpen, setRankOpen] = useState(false),
@@ -83,10 +88,12 @@ export default function SocialApp() {
     [actionTarget, setActionTarget] = useState(""),
     [editing, setEditing] = useState(false);
   const [view, id, commentId] = route.split("/");
+  const query =
+    view === "explore" ? (exploreParams.get("q") ?? "") : searchQuery;
   const params = new URLSearchParams();
   params.set("filter", view === "home" ? filter : "all");
   if (view === "post" || view === "list") params.set("post", id ?? "");
-  if (commentId) params.set("comment", commentId);
+  if (view === "post" && commentId) params.set("comment", commentId);
   if (view === "issue") params.set("issue", id ?? "");
   if (view === "profile") params.set("author", id ?? "me");
   if (view === "saved") params.set("filter", "saved");
@@ -95,11 +102,11 @@ export default function SocialApp() {
     useSocial(params.toString());
   const me = data.me;
   useEffect(() => {
-    if (!commentId || loading) return;
+    if (view !== "post" || !commentId || loading) return;
     document
       .getElementById("comment-" + commentId)
       ?.scrollIntoView({ block: "center", behavior: "instant" });
-  }, [commentId, loading]);
+  }, [view, commentId, loading]);
   const visitorId = me?.id;
   const visited = useRef("");
   const visitPending = useRef(false);
@@ -144,13 +151,25 @@ export default function SocialApp() {
       document.removeEventListener("keydown", visit);
     };
   }, [data.status, visitorId]);
-  function navigate(next: string) {
+  function navigate(next: string, options: { preserveScroll?: boolean } = {}) {
     if (location.hash === "#" + next) {
       return;
     }
     location.hash = next;
     setQuery("");
-    window.scrollTo({ top: 0, behavior: "instant" });
+    if (!options.preserveScroll)
+      window.scrollTo({ top: 0, behavior: "instant" });
+  }
+  function search(value: string) {
+    if (view !== "explore") {
+      setQuery(value);
+      return;
+    }
+    const p = new URLSearchParams(exploreParams);
+    if (value) p.set("q", value);
+    else p.delete("q");
+    history.replaceState(null, "", "#" + route + (p.size ? "?" + p : ""));
+    window.dispatchEvent(new PopStateEvent("popstate"));
   }
   function compose(o: ComposeOptions = {}) {
     if (data.status !== "ready") {
@@ -181,7 +200,9 @@ export default function SocialApp() {
     view === "home"
       ? "A little more connected."
       : view === "explore"
-        ? "Your community, a little closer."
+        ? id === "events"
+          ? "Find a reason to show up."
+          : "Your community, a little closer."
         : view === "rankings"
           ? "Your perspective, in order."
           : view === "friends"
@@ -348,29 +369,49 @@ export default function SocialApp() {
             <Asterisk size={28} />
             <span>polis</span>
           </button>
-          <div className="social-search">
+          <form
+            className="social-search"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!["home", "friends", "explore"].includes(view))
+                navigate("explore/issues?q=" + encodeURIComponent(query));
+            }}
+          >
             <Search size={18} />
             <input
               type="search"
               placeholder={
                 view === "friends"
                   ? "Search names or usernames"
-                  : "Search your community"
+                  : view === "home"
+                    ? "Search conversations"
+                    : view === "explore"
+                      ? "Search the civic catalog"
+                      : "Search local issues · Enter"
               }
-              aria-label="Search your community"
+              aria-label={
+                view === "home"
+                  ? "Search conversations"
+                  : view === "friends"
+                    ? "Search people"
+                    : view === "explore"
+                      ? "Search the civic catalog"
+                      : "Search local issues; press Enter"
+              }
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => search(e.target.value)}
             />
             {query && (
               <button
                 className="icon-btn"
-                onClick={() => setQuery("")}
+                onClick={() => search("")}
+                type="button"
                 aria-label="Clear search"
               >
                 <X size={15} />
               </button>
             )}
-          </div>
+          </form>
           {data.status === "ready" ? (
             <>
               <span className="top-community">
@@ -412,7 +453,8 @@ export default function SocialApp() {
           tabIndex={-1}
           className={
             "social-layout " +
-            (["explore", "admin"].includes(view) ? "social-wide" : "")
+            (["explore", "admin"].includes(view) ? "social-wide" : "") +
+            (view === "explore" && id === "events" ? " events-wide" : "")
           }
         >
           <section className="social-content">
@@ -519,7 +561,16 @@ export default function SocialApp() {
                   </>
                 )}
                 {view === "explore" && (
-                  <Explore query={query} navigate={navigate} data={data} />
+                  <Explore
+                    query={query}
+                    navigate={navigate}
+                    explore={(next) => navigate(next, { preserveScroll: true })}
+                    data={data}
+                    run={run}
+                    category={id}
+                    selectedId={commentId}
+                    params={exploreParams}
+                  />
                 )}
                 {view === "rankings" && (
                   <RankingList
@@ -766,7 +817,7 @@ export default function SocialApp() {
                 <h2>Around the corner</h2>
                 <button
                   aria-label="Explore events"
-                  onClick={() => navigate("explore")}
+                  onClick={() => navigate("explore/events")}
                 >
                   <ArrowUpRight size={18} />
                 </button>
@@ -774,7 +825,7 @@ export default function SocialApp() {
               <CommunityMap
                 compact
                 showFriends={false}
-                onSelect={(i) => navigate("item/" + i.id)}
+                onSelect={(i) => navigate("explore/events/" + i.id)}
               />
               {items
                 .filter((i) => i.event)

@@ -1167,6 +1167,32 @@ export function socialService(
           break;
         case "plan": {
           if (!itemById[data.eventId]?.event) fail(400, "Choose an event.");
+          const prior = await one<{ status: string; audience: string }>(
+            "SELECT status,audience FROM plans WHERE userId=? AND eventId=?",
+            uid,
+            data.eventId,
+          );
+          if (prior)
+            guard(
+              "EXISTS(SELECT 1 FROM plans WHERE userId=? AND eventId=? AND status=? AND audience=?)",
+              uid,
+              data.eventId,
+              prior.status,
+              prior.audience,
+            );
+          else
+            guard(
+              "NOT EXISTS(SELECT 1 FROM plans WHERE userId=? AND eventId=?)",
+              uid,
+              data.eventId,
+            );
+          // A second unchanged save must retain its conversation, replies, and reactions.
+          if (
+            (prior?.status === data.status &&
+              prior.audience === data.audience) ||
+            (!prior && !data.status)
+          )
+            break;
           if (data.status)
             add(
               "INSERT INTO plans(userId,eventId,status,audience) VALUES(?,?,?,?) ON CONFLICT(userId,eventId) DO UPDATE SET status=excluded.status,audience=excluded.audience",
@@ -1471,6 +1497,13 @@ export function socialService(
         }
       }
     }
+    if (data.action === "plan")
+      result.plan = {
+        userId: uid,
+        eventId: data.eventId,
+        status: data.status,
+        audience: data.status ? data.audience : "only_me",
+      };
     const checks = guards.map((g, i) =>
       prep(
         "INSERT INTO write_guards(id,allowed) VALUES(?,CASE WHEN " +

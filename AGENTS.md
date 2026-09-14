@@ -1,0 +1,13 @@
+# Working on Polis
+
+- Preserve the existing product design, routes, assets, cobalt controls, navy typography, sidebar, mobile navigation, and map/list parity. Read `DESIGN.md` before visual changes. Do not replace the stack or redesign the product during maintenance.
+- Use Node 24.14.0 and npm 11.9.0. Install with `npm ci`; retain `package-lock.json`. Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`. With the dev server running, `npm run test:http` checks the HTTP boundary.
+- The real app is `components/polis/social-app.tsx` and `social-*.tsx`; event discovery has dedicated map/explorer/plan components. `/demo` uses separate fictional localStorage state. Do not mix demo people or activity into the social database.
+- All social reads and writes pass through `app/api/polis/route.ts` and `lib/social/service.ts`. Derive identity from trusted hosting authentication; enforce membership, audience, ownership, blocking, and muting on the server. Keep defaults private and fixed conversation audiences intact.
+- `db/schema.ts` describes D1 tables; `drizzle/` contains applied migration history. Add migrations with `npm run db:generate`, inspect SQL, and test upgrades. Do not edit previously applied migrations or reset user databases.
+- Keep types in `lib/social/types.ts` and sample catalog links in `lib/social/catalog.ts`. Policy support, priority, and reactions are separate concepts. Preserve idempotency and transactional guards for related writes.
+- Inspect Git status and remotes first. Preserve unrelated dirty work; use an isolated worktree when needed. Use `codex/` branches and pull requests against GitHub `main`; never force-push. Do not push local archive branches containing private commit metadata.
+- Use existing UI components and conventions. Add meaningful regression tests for behavioral changes, not implementation-mirroring assertions. Verify changed flows in a real browser at desktop and mobile widths; inspect focus, labels, empty/error states, and overflow.
+- Keep `.env*` (except `.env.example`), `.dev.vars*`, local D1 data, logs, tokens, invite links, and user exports out of Git. Do not add real people, private text, or owner runtime values to examples or screenshots.
+- GitHub validation does not deploy. Preserve `.openai/hosting.json`, the existing Sites source remote, and the site's audience. Deploy only when the user authorizes deployment work, using the Sites workflow and exact verified source; never substitute an untrusted Worker origin for Sites authentication.
+- Report local fixture results separately from hosted multi-user verification. Keep limitations and future features in `docs/roadmap.md`; do not claim proposed or unexercised behavior is verified.

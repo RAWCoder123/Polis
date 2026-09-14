@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { emptySnapshot, type Snapshot } from "./types";
+import { emptySnapshot, type Snapshot, type PlanConfirmation, type CommandResult } from "./types";
+import { applyConfirmedPlans } from "./confirmed-plans";
 import type { CommandData } from "./service";
 export function useSocial(params: string) {
   const [data, setData] = useState<Snapshot>(emptySnapshot),
@@ -9,6 +10,7 @@ export function useSocial(params: string) {
     [busy, setBusy] = useState(false);
   const [snapshotParams, setSnapshotParams] = useState(params);
   const retry = useRef<{ signature: string; id: string } | null>(null);
+  const confirmedPlans = useRef(new Map<string, PlanConfirmation>());
   const loadedPages = useRef({ posts: 1, comments: 1 });
   const submittedComment = useRef<string | null>(null);
   const seq = useRef(0),
@@ -35,15 +37,20 @@ export function useSocial(params: string) {
             const session = await fetch("/api/polis", { cache: "no-store" });
             if (session.ok) shell = (await session.json()) as Snapshot;
           }
-          if (n === seq.current)
-            setData((s) => ({
+          if (n === seq.current) {
+            if (response.status === 401 || response.status === 403 ||
+              (response.status === 404 && shell?.status !== "ready"))
+              confirmedPlans.current.clear();
+            const confirmations = [...confirmedPlans.current.values()];
+            setData((s) => applyConfirmedPlans({
               ...emptySnapshot,
               me: response.status === 401 ? null : (shell?.me ?? s.me),
               status:
                 response.status === 401
                   ? "signed_out"
                   : (shell?.status ?? s.status),
-            }));
+            }, confirmations));
+          }
           throw new Error(value.error ?? "Unable to load Polis.");
         }
         return value;
@@ -83,13 +90,16 @@ export function useSocial(params: string) {
         (a, b) =>
           a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
       );
+      confirmedPlans.current.clear();
       setData(next);
       setSnapshotParams(queryParams);
       setError("");
     } catch (e) {
       if (n === seq.current)
         setError(
-          e instanceof Error
+          confirmedPlans.current.size
+            ? "Your plan change was saved. We couldn’t refresh the rest of the page. Try again to reload."
+            : e instanceof Error
             ? e.message
             : "Connection interrupted. Please retry.",
         );
@@ -137,27 +147,23 @@ export function useSocial(params: string) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ requestId: submissionId, data: values }),
         });
-        const value = (await r.json()) as {
-          ok: boolean;
-          error?: string;
-          postId?: string;
-          commentId?: string;
-          invite?: string;
-        };
+        const value = (await r.json()) as CommandResult & { error?: string };
         if (!r.ok) throw new Error(value.error ?? "Unable to save.");
         retry.current = null;
+        if (value.plan) {
+          // Invalidate GETs started before this committed write. Confirmations
+          // survive a failed refresh and are shared by every event view.
+          seq.current++;
+          confirmedPlans.current.set(value.plan.eventId, value.plan);
+          setData((s) => applyConfirmedPlans(s, [value.plan!]));
+        }
         if (
           value.commentId &&
           value.postId === new URLSearchParams(paramsRef.current).get("post")
         )
           submittedComment.current = value.commentId;
         await refresh();
-        return value as {
-          ok: boolean;
-          postId?: string;
-          commentId?: string;
-          invite?: string;
-        };
+        return value;
       } catch (e) {
         setError(
           e instanceof Error
@@ -183,6 +189,7 @@ export function useSocial(params: string) {
       const value = (await r.json()) as Snapshot & { error?: string };
       if (n !== seq.current || pageParams !== paramsRef.current) return;
       if (!r.ok) throw new Error(value.error);
+      confirmedPlans.current.clear();
       loadedPages.current[comments ? "comments" : "posts"]++;
       setData((s) =>
         comments

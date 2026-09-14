@@ -9,6 +9,19 @@ export type PostType =
 export type Position =
   "support" | "reservations" | "mixed" | "oppose" | "learning";
 export type EventPlanStatus = "interested" | "attending";
+export type PlanConfirmation = {
+  userId: string;
+  eventId: string;
+  status: EventPlanStatus | null;
+  audience: Audience;
+};
+export type CommandResult = {
+  ok: boolean;
+  postId?: string;
+  commentId?: string;
+  invite?: string;
+  plan?: PlanConfirmation;
+};
 export const audiences: Record<Audience, string> = {
   only_me: "Only me",
   friends: "Friends",
