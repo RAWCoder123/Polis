@@ -1,6 +1,18 @@
 # Verification record
 
-Updated 2026-09-12. This record separates tested local behavior from the hosted identity acceptance gate.
+Updated 2026-09-14. This record separates tested local behavior from the hosted identity acceptance gate.
+
+## GitHub setup verification — 2026-09-14
+
+The setup was validated in an isolated worktree with no copied dependencies or user database: Node 24.14.0, npm 11.9.0, `npm ci` (677 installed packages), both local migrations, type checking, 19 tests, lint (zero errors and seven inherited warnings), production build, and `npm run test:http` all passed. The lockfile's dependency graph and resolved versions are unchanged; only root runtime metadata changed. The test suite now also covers map camera bounds/anchored zoom/fit, preservation of an unchanged event-plan conversation, and acknowledged plan audiences when refreshed content is unavailable. Those last client-state tests are regression coverage, not full browser network-fault injection.
+
+The clean-checkout preview at `http://localhost:5173/` rendered signed-out/onboarding and the Home, event discovery, Rankings, Friends, and Profile screens with a synthetic local profile. Event type filtering and list mode returned the matching sample; map zoom, keyboard pan, and event selection exposed its preview. Browser inspection at 1280px and 390px found no horizontal overflow, blank screen, framework overlay, or captured console warnings/errors. Desktop/mobile screenshots were inspected. Real-device pinch and full assistive-technology verification remain pending. Product source, assets, schema/migrations, and existing licenses are identical to imported commit `19fdb676080ab149793a6abe4c82a7a7fe7d8f98`; this setup adds no product redesign.
+
+Tracked files and reachable source history were reviewed for credential patterns and private files; no API keys, access tokens, private environment files, or local data were found in the intended setup changes. Synthetic reserved-domain test identities remain test fixtures. Existing public history contains machine-generated author email metadata; it was not rewritten. New setup commits use GitHub no-reply metadata. See [deployment provenance](deployment.md).
+
+GitHub `main` begins at the already-published import commit. Remaining configuration changes are submitted through a draft setup PR, without merging it or changing production. The CLI push containing `.github/workflows/ci.yml` was rejected for missing OAuth `workflow` scope; the connected GitHub app also returned 403 for workflow creation. The exact reviewed definition is included as `docs/ci.yml` so it can be inspected without claiming it is active. No remote Actions run has succeeded or been started for this setup. Local passes do not establish remote success.
+
+To unblock CI, the owner can run `gh auth refresh -h github.com -s workflow` and complete GitHub authorization, or grant the connected GitHub app Workflows write permission. Then move `docs/ci.yml` to `.github/workflows/ci.yml`, commit/push on the setup branch, and inspect the PR's Actions run. The original prepared local commit retains the validated workflow for recovery. The definition follows [GitHub's Node.js CI guidance](https://docs.github.com/en/actions/tutorials/build-and-test-code/nodejs), uses pinned official actions, and contains no deployment step or production credentials.
 
 ## Delivery status
 
@@ -10,7 +22,7 @@ The owner bootstrap runtime setting was saved in Sites as a secret, revision 1; 
 
 ## Automated service verification
 
-`npm test`: 14 passing tests using the actual service and both migration files. A D1 transport adapter executes transactional SQL in Node SQLite; identities are isolated fixtures, not real ChatGPT accounts.
+The original 2026-09-12 run had 14 passing tests; the current setup run has 19. A D1 transport adapter executes transactional SQL in Node SQLite using the actual service and both migration files; identities are isolated fixtures, not real ChatGPT accounts.
 
 Covered: owner bootstrap and email-bound one-use invitations; A/B friendship and conversation; C denied Friends posts through direct IDs, feed, search, profiles, lists, saves, comments and writes; fixed audiences and ownership; one active reaction; grouped notification reads; duplicate retries and mismatched request fingerprints; saved/edit/deleted persistence; unfriend/block/mute behavior; owner-only report evidence and removal; private rankings/notes and immutable selected snapshots; follows and optional update notifications; private/shared/withdrawn event plans; daily answers, private counts and skipping; feed/reply pagination beyond 200 replies and exact deep links; rollback when a block or question withdrawal races a submission; concurrent invitation consumption; minimal metrics for both friends and shared contributions only.
 

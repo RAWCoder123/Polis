@@ -1,0 +1,65 @@
+name: Validate Polis
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CI: "true"
+      WRANGLER_SEND_METRICS: "false"
+      CLOUDFLARE_CF_FETCH_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Select npm
+        run: npm install --global npm@11.9.0
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Type check
+        run: npm run typecheck
+      - name: Test service, access rules, and map behavior
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: Verify local Worker boundary
+        shell: bash
+        run: |
+          cp .env.example .dev.vars
+          npm run db:migrate:local
+          npm run dev > "$RUNNER_TEMP/polis-dev.log" 2>&1 &
+          polis_pid=$!
+          trap 'kill "$polis_pid" 2>/dev/null || true' EXIT
+          ready=false
+          for attempt in {1..60}; do
+            if curl --fail --silent http://localhost:5173/ > /dev/null; then
+              ready=true
+              break
+            fi
+            if ! kill -0 "$polis_pid" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then
+            cat "$RUNNER_TEMP/polis-dev.log"
+            exit 1
+          fi
+          npm run test:http
