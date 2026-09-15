@@ -1,4 +1,5 @@
 "use client";
+import { WelcomeSteps } from "./issue-priorities";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Asterisk,
@@ -479,7 +480,11 @@ export default function SocialApp() {
                 </button>
               </div>
             )}
-            {data.status === "signed_out" ? (
+            {loading && !data.me ? (
+              <p className="notice" role="status">
+                Loading your community…
+              </p>
+            ) : data.status === "signed_out" ? (
               <>
                 <section className="daily-card">
                   <div className="social-section-label">
@@ -513,6 +518,7 @@ export default function SocialApp() {
               <>
                 {view === "home" && (
                   <>
+                    <WelcomeSteps data={data} run={run} navigate={navigate} />
                     <DailyQuestion
                       key={
                         (data.question?.id ?? "") + JSON.stringify(data.answer)
@@ -535,14 +541,21 @@ export default function SocialApp() {
                       aria-label="Feed audience"
                     >
                       {[
-                        { id: "friends", label: "Friends" },
-                        { id: "following", label: "Followed issues" },
+                        { id: "friends", label: "Following" },
                         { id: "community", label: "Community" },
                       ].map((f) => (
                         <button
                           role="tab"
-                          aria-selected={filter === f.id}
-                          className={filter === f.id ? "active" : ""}
+                          aria-selected={
+                            filter === f.id ||
+                            (filter === "following" && f.id === "friends")
+                          }
+                          className={
+                            filter === f.id ||
+                            (filter === "following" && f.id === "friends")
+                              ? "active"
+                              : ""
+                          }
                           key={f.id}
                           onClick={() => setFilter(f.id)}
                         >
@@ -550,6 +563,21 @@ export default function SocialApp() {
                         </button>
                       ))}
                     </div>
+                    {filter !== "community" && (
+                      <button
+                        className="text-button feed-issue-filter"
+                        aria-pressed={filter === "following"}
+                        onClick={() =>
+                          setFilter(
+                            filter === "following" ? "friends" : "following",
+                          )
+                        }
+                      >
+                        {filter === "following"
+                          ? "Showing followed issues · Show people"
+                          : "Show followed issues"}
+                      </button>
+                    )}
                     <p className="feed-context">
                       {filter === "friends"
                         ? "Your contributions and accepted friends, newest first."
@@ -661,11 +689,12 @@ export default function SocialApp() {
                         setComposer({
                           ...o,
                           kind:
-                            i?.kind === "News"
+                            o.kind ??
+                            (i?.kind === "News"
                               ? "article"
                               : i?.event
                                 ? "event_reflection"
-                                : "opinion",
+                                : "opinion"),
                         } as ComposeOptions);
                       }}
                       rank={rank}

@@ -38,58 +38,73 @@ export function Notifications({
       {[...groups.values()].map((group) => {
         const n = group[0];
         return (
-          <button
-            key={n.id}
-            className={
-              "notification-row " +
-              (group.some((v) => !v.readAt) ? "unread" : "")
-            }
-            onClick={() => {
-              void run({
-                action: "notifications.read",
-                notificationId: n.kind === "reaction" ? undefined : n.id,
-                postId: n.kind === "reaction" ? n.targetId : undefined,
-              }).catch(() => {});
-              navigate(
-                n.kind === "friend"
-                  ? "friends"
-                  : n.kind === "issue"
-                    ? "issue/" + n.targetId
-                    : n.kind === "event"
-                      ? "item/" + n.targetId
-                      : "post/" +
-                        n.targetId +
-                        (n.commentId ? "/" + n.commentId : ""),
-              );
-            }}
-          >
-            <span className="notification-dot" />
-            <span>
-              <strong>
-                {n.kind === "reply"
-                  ? n.name + " replied to your conversation"
-                  : n.kind === "reaction"
-                    ? n.name +
-                      (group.length > 1
-                        ? " and " + (group.length - 1) + " others"
-                        : "") +
-                      " reacted to your post"
-                    : n.kind === "friend"
-                      ? n.name + " accepted your friend request"
+          <div key={n.id} className="notification-item">
+            <button
+              className={
+                "notification-row " +
+                (group.some((v) => !v.readAt) ? "unread" : "")
+              }
+              onClick={() => {
+                void run({
+                  action: "notifications.read",
+                  notificationId: n.kind === "reaction" ? undefined : n.id,
+                  postId: n.kind === "reaction" ? n.targetId : undefined,
+                }).catch(() => {});
+                navigate(
+                  n.kind === "friend" || n.kind === "friend_request"
+                    ? "friends"
+                    : n.kind === "issue"
+                      ? "issue/" + n.targetId
                       : n.kind === "event"
-                        ? "An event in your plans is coming up"
-                        : "An issue you follow has an update"}
-              </strong>
-              <small>{new Date(n.createdAt).toLocaleString()}</small>
-            </span>
-            <ArrowUpRight size={17} />
-          </button>
+                        ? "item/" + n.targetId
+                        : "post/" +
+                          n.targetId +
+                          (n.commentId ? "/" + n.commentId : ""),
+                );
+              }}
+            >
+              <span className="notification-dot" />
+              <span>
+                <strong>
+                  {n.kind === "reply"
+                    ? n.name + " replied to your conversation"
+                    : n.kind === "reaction"
+                      ? n.name +
+                        (group.length > 1
+                          ? " and " + (group.length - 1) + " others"
+                          : "") +
+                        " reacted to your post"
+                      : n.kind === "friend_request"
+                        ? n.name + " sent you a friend request"
+                        : n.kind === "friend"
+                          ? n.name + " accepted your friend request"
+                          : n.kind === "event"
+                            ? "An event in your plans is coming up"
+                            : "An issue you follow has an update"}
+                </strong>
+                <small>{new Date(n.createdAt).toLocaleString()}</small>
+              </span>
+              <ArrowUpRight size={17} />
+            </button>
+            <button
+              className="text-button notification-read"
+              onClick={() => {
+                void run({
+                  action: "notifications.read",
+                  notificationId: n.kind === "reaction" ? undefined : n.id,
+                  postId: n.kind === "reaction" ? n.targetId : undefined,
+                  read: !group.every((v) => v.readAt),
+                }).catch(() => {});
+              }}
+            >
+              {group.every((v) => v.readAt) ? "Mark unread" : "Mark read"}
+            </button>
+          </div>
         );
       })}
       {!data.notifications.length && (
         <Quiet title="You’re all caught up.">
-          Replies, accepted requests, and followed-issue updates will appear
-          here.
+          Replies, friend requests, and followed-issue updates will appear here.
         </Quiet>
       )}
       <details className="notification-preferences">
@@ -112,7 +127,7 @@ export function Notifications({
             />
             {
               {
-                replies: "Replies and accepted friendships",
+                replies: "Replies and friendship requests",
                 reactions: "Reactions to your posts",
                 issues: "Important followed-issue updates",
                 events: "In-app event reminders (within 24 hours)",

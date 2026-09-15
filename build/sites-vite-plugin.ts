@@ -42,6 +42,29 @@ export function sites({ mockAuth = true } = {}): Plugin {
     configureServer(server) {
       if (!mockAuth) return;
       const secure = Boolean(server.config.server.https);
+      // Explicit loopback-only synthetic identities for integration tests. This
+      // middleware is never installed in a production build or Worker.
+      const testAccounts = process.env.POLIS_TEST_ACCOUNTS === "1";
+      const identities: Record<
+        string,
+        { id: string; email: string; name: string }
+      > = {
+        "1": { id: localUserId, email: localEmail, name: localFullName },
+        ...(testAccounts
+          ? {
+              beta_b: {
+                id: "local_beta_b",
+                email: "beta_b@sites.test",
+                name: "Beta Blair",
+              },
+              beta_c: {
+                id: "local_beta_c",
+                email: "beta_c@sites.test",
+                name: "Beta Casey",
+              },
+            }
+          : {}),
+      };
 
       server.config.logger.info(`Sites local sign-in: ${localEmail}`);
       server.middlewares.use((request, response, next) => {
@@ -105,13 +128,18 @@ export function sites({ mockAuth = true } = {}): Plugin {
         const signIn = url.pathname === "/signin-with-chatgpt";
         const signOut = url.pathname === "/signout-with-chatgpt";
         if (!signIn && !signOut) {
-          if (signInCookies.length === 1 && signInCookies[0] === "1") {
-            setHeader(request, "oai-authenticated-user-id", localUserId);
-            setHeader(request, "oai-authenticated-user-email", localEmail);
+          const identity =
+            signInCookies.length === 1 &&
+            Object.hasOwn(identities, signInCookies[0])
+              ? identities[signInCookies[0]]
+              : undefined;
+          if (identity) {
+            setHeader(request, "oai-authenticated-user-id", identity.id);
+            setHeader(request, "oai-authenticated-user-email", identity.email);
             setHeader(
               request,
               "oai-authenticated-user-full-name",
-              localFullName,
+              identity.name,
             );
             setHeader(
               request,
@@ -155,6 +183,13 @@ export function sites({ mockAuth = true } = {}): Plugin {
           return;
         }
 
+        const requestedAccount = url.searchParams.get("test_account");
+        const account =
+          testAccounts &&
+          requestedAccount &&
+          Object.hasOwn(identities, requestedAccount)
+            ? requestedAccount
+            : "1";
         response.statusCode = request.method === "POST" ? 303 : 302;
         response.setHeader("Cache-Control", "private, no-store");
         response.setHeader(
@@ -163,7 +198,7 @@ export function sites({ mockAuth = true } = {}): Plugin {
         );
         response.setHeader(
           "Set-Cookie",
-          `${localCookieName}=${signIn ? "1" : ""}; Path=/; ${
+          `${localCookieName}=${signIn ? account : ""}; Path=/; ${
             signOut ? "Max-Age=0; " : ""
           }HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`,
         );

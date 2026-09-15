@@ -16,6 +16,7 @@ export const profiles = sqliteTable("profiles", {
   bio: text().notNull().default(""),
   communityLabel: text().notNull().default("Ithaca, NY"),
   createdAt: text().notNull(),
+  onboardingComplete: integer().notNull().default(0),
 });
 export const memberships = sqliteTable("memberships", {
   userId: text()
@@ -120,6 +121,16 @@ export const rankings = sqliteTable(
     position: text(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.itemId] })],
+);
+export const issuePriorities = sqliteTable(
+  "issue_priorities",
+  {
+    userId: text().notNull().references(() => profiles.id),
+    issueId: text().notNull(),
+    priority: integer().notNull(),
+    note: text().notNull().default(""),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.issueId] })],
 );
 export const lists = sqliteTable("lists", {
   id: text().primaryKey(),

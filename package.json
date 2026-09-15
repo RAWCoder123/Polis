@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=24.14.0 <25",
+    "npm": ">=11.9.0 <12"
   },
   "scripts": {
     "install:ci": "node scripts/install-ci.mjs",
@@ -14,7 +15,9 @@
     "db:generate": "drizzle-kit generate",
     "test": "node --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "db:migrate:local": "wrangler d1 migrations apply DB --local --config wrangler.local.jsonc --persist-to .wrangler/state"
+    "db:migrate:local": "wrangler d1 migrations apply DB --local --config wrangler.local.jsonc --persist-to .wrangler/state",
+    "test:http": "node scripts/verify-local-http.mjs",
+    "test:social-http": "node scripts/verify-social-http.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -62,5 +65,6 @@
     "vite": "8.0.13",
     "wrangler": "4.92.0"
   },
-  "type": "module"
+  "type": "module",
+  "packageManager": "npm@11.9.0"
 }

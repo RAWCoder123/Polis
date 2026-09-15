@@ -16,6 +16,7 @@ Checked-in migrations run in order:
 
 1. `0000_robust_captain_britain.sql` creates the domain tables and indexes.
 2. `0001_lowly_ted_forrester.sql` adds the transactional write-guard table.
+3. `0002_majestic_trish_tilby.sql` adds private `issue_priorities` and the persisted `onboardingComplete` flag without replacing existing activity.
 
 For local development, `npm run db:migrate:local` applies pending migrations to `.wrangler/state` using `wrangler.local.jsonc`. It is safe to rerun and does not seed fictional people. Production migrations are included under `dist/.openai/drizzle` by the Sites package workflow and applied during hosting. Confirm deployment success before testing authenticated reads. There is no request-time schema creation or destructive reset endpoint.
 

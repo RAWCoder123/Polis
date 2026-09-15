@@ -1,7 +1,13 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { emptySnapshot, type Snapshot, type PlanConfirmation, type CommandResult } from "./types";
+import {
+  emptySnapshot,
+  type Snapshot,
+  type PlanConfirmation,
+  type CommandResult,
+} from "./types";
 import { applyConfirmedPlans } from "./confirmed-plans";
+import { readResponse } from "./read-response";
 import type { CommandData } from "./service";
 export function useSocial(params: string) {
   const [data, setData] = useState<Snapshot>(emptySnapshot),
@@ -28,7 +34,9 @@ export function useSocial(params: string) {
         const response = await fetch("/api/polis?" + pageQuery, {
           cache: "no-store",
         });
-        const value = (await response.json()) as Snapshot & { error?: string };
+        const value = await readResponse<Snapshot & { error?: string }>(
+          response,
+        );
         if (!response.ok) {
           // A direct link can be unavailable before any session snapshot loads.
           // Recover the permitted shell without treating a 404 as a sign-out.
@@ -38,18 +46,26 @@ export function useSocial(params: string) {
             if (session.ok) shell = (await session.json()) as Snapshot;
           }
           if (n === seq.current) {
-            if (response.status === 401 || response.status === 403 ||
-              (response.status === 404 && shell?.status !== "ready"))
+            if (
+              response.status === 401 ||
+              response.status === 403 ||
+              (response.status === 404 && shell?.status !== "ready")
+            )
               confirmedPlans.current.clear();
             const confirmations = [...confirmedPlans.current.values()];
-            setData((s) => applyConfirmedPlans({
-              ...emptySnapshot,
-              me: response.status === 401 ? null : (shell?.me ?? s.me),
-              status:
-                response.status === 401
-                  ? "signed_out"
-                  : (shell?.status ?? s.status),
-            }, confirmations));
+            setData((s) =>
+              applyConfirmedPlans(
+                {
+                  ...emptySnapshot,
+                  me: response.status === 401 ? null : (shell?.me ?? s.me),
+                  status:
+                    response.status === 401
+                      ? "signed_out"
+                      : (shell?.status ?? s.status),
+                },
+                confirmations,
+              ),
+            );
           }
           throw new Error(value.error ?? "Unable to load Polis.");
         }
@@ -100,8 +116,8 @@ export function useSocial(params: string) {
           confirmedPlans.current.size
             ? "Your plan change was saved. We couldn’t refresh the rest of the page. Try again to reload."
             : e instanceof Error
-            ? e.message
-            : "Connection interrupted. Please retry.",
+              ? e.message
+              : "Connection interrupted. Please retry.",
         );
     } finally {
       if (n === seq.current) setLoading(false);
@@ -147,7 +163,7 @@ export function useSocial(params: string) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ requestId: submissionId, data: values }),
         });
-        const value = (await r.json()) as CommandResult & { error?: string };
+        const value = await readResponse<CommandResult & { error?: string }>(r);
         if (!r.ok) throw new Error(value.error ?? "Unable to save.");
         retry.current = null;
         if (value.plan) {
@@ -186,7 +202,7 @@ export function useSocial(params: string) {
       const p = new URLSearchParams(pageParams);
       p.set(comments ? "commentsAfter" : "cursor", cursor);
       const r = await fetch("/api/polis?" + p, { cache: "no-store" });
-      const value = (await r.json()) as Snapshot & { error?: string };
+      const value = await readResponse<Snapshot & { error?: string }>(r);
       if (n !== seq.current || pageParams !== paramsRef.current) return;
       if (!r.ok) throw new Error(value.error);
       confirmedPlans.current.clear();

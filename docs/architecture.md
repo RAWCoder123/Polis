@@ -26,7 +26,7 @@ The main shell uses hash routes such as `#home`, `#explore/events`, `#rankings`,
 4. Validated commands use a per-user receipt for idempotency and D1 transactional batches. Guard rows abort the whole batch if access or a question changes during an operation.
 5. The client refreshes after writes, on focus, and while visible. It retains drafts after failed writes. Acknowledged own-plan changes survive transient refresh failures; successful reads replace that confirmation. No private activity goes to external notification services.
 
-Tables separate profiles/memberships/invitations, friendships/blocks/mutes, private rankings, published lists, posts/comments/reactions, follows/saves, plans, daily questions/responses, notifications, reports, preferences, receipts, and minimal metrics. Sample civic content is code-defined, not a live ingestion pipeline.
+Tables separate profiles/memberships/invitations, friendships/blocks/mutes, private scored rankings and issue priorities, published lists, posts/comments/reactions, follows/saves, plans, daily questions/responses, notifications, reports, preferences, receipts, and minimal metrics. Sample civic content is code-defined, not a live ingestion pipeline.
 
 Posts default to Friends. Private rankings and notes stay private; publishing creates a selected snapshot. Support, priority, and reactions are independent. Conversation audience is fixed; wider publication creates a new conversation. Plans start private; unchanged saves retain shared conversation history.
 

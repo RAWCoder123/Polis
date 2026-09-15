@@ -4,6 +4,7 @@ export type PostType =
   | "question"
   | "article"
   | "ranking"
+  | "event_share"
   | "event_reflection"
   | "event_plan";
 export type Position =
@@ -41,6 +42,7 @@ export type Person = {
   bio: string;
   communityLabel: string;
   role?: string;
+  onboardingComplete?: number;
   relationship?: string;
   muted?: boolean;
   blocked?: boolean;
@@ -111,6 +113,7 @@ export type Snapshot = {
   nextCursor: string | null;
   people: Person[];
   rankings: Rank[];
+  priorities: { issueId: string; priority: number; note: string }[];
   follows: { issueId: string; notify: number }[];
   plans: {
     userId: string;
@@ -138,6 +141,7 @@ export type Snapshot = {
     createdAt: string;
   }[];
   comments?: Comment[];
+  commentUnavailable?: boolean;
   nextCommentCursor?: string | null;
   lists?: {
     id: string;
@@ -165,6 +169,7 @@ export const emptySnapshot: Snapshot = {
   nextCursor: null,
   people: [],
   rankings: [],
+  priorities: [],
   follows: [],
   plans: [],
   saved: [],
