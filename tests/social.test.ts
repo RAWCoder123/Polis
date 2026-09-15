@@ -561,7 +561,10 @@ test("unchanged event plans retain their conversation; changed audiences start a
   } as const;
   const first = await f.act("a", plan);
   assert.deepEqual(first.plan, {
-    userId: "a", eventId: plan.eventId, status: plan.status, audience: plan.audience,
+    userId: "a",
+    eventId: plan.eventId,
+    status: plan.status,
+    audience: plan.audience,
   });
   const postId = first.postId!;
   await f.act("b", {
@@ -586,7 +589,10 @@ test("unchanged event plans retain their conversation; changed audiences start a
   await denied(f.snap("b", { post: postId }), 404);
   const removed = await f.act("a", { ...plan, status: null });
   assert.deepEqual(removed.plan, {
-    userId: "a", eventId: plan.eventId, status: null, audience: "only_me",
+    userId: "a",
+    eventId: plan.eventId,
+    status: null,
+    audience: "only_me",
   });
 });
 
@@ -724,4 +730,298 @@ test("an invitation can be consumed only once, even across simultaneous identiti
       .get()!.n,
     1,
   );
+});
+
+test("issue opinions accept safe sources, preserve them on text edits, and reject unsafe links", async () => {
+  const f = fixture();
+  await f.setup();
+  await f.friends();
+  const result = await f.act("a", {
+    action: "post",
+    kind: "opinion",
+    subjectId: "transit",
+    position: "learning",
+    text: "Learning about buses",
+    sourceUrl: "https://tcatbus.com/",
+  });
+  await f.act("a", {
+    action: "post.edit",
+    postId: result.postId!,
+    text: "Updated view",
+    position: "mixed",
+  });
+  const p = (await f.snap("b", { post: result.postId! })).posts[0];
+  assert.equal(p.position, "mixed");
+  assert.equal(JSON.parse(p.attachmentJson).sourceUrl, "https://tcatbus.com/");
+  for (const sourceUrl of [
+    "javascript:alert(1)",
+    "https://user:password@example.test/",
+    "not a URL",
+  ])
+    await denied(
+      f.act("a", {
+        action: "post",
+        kind: "opinion",
+        subjectId: "transit",
+        text: "link",
+        sourceUrl,
+      }),
+      400,
+    );
+  const article = await f.act("a", {
+    action: "post",
+    kind: "article",
+    subjectId: "transit",
+    text: "An article with context",
+    sourceUrl: "https://example.test/article",
+  });
+  assert.ok(article.postId);
+  await denied(
+    f.act("a", {
+      action: "post.edit",
+      postId: article.postId!,
+      text: "Article context",
+      sourceUrl: "",
+    }),
+    400,
+  );
+  await denied(
+    f.act("a", {
+      action: "post",
+      kind: "article",
+      subjectId: "transit",
+      text: "No article link",
+    }),
+    400,
+  );
+});
+
+test("unknown and prototype-named civic items cannot become saved items or rankings", async () => {
+  const f = fixture();
+  await f.setup();
+  for (const itemId of ["constructor", "__proto__", "toString", "unknown-item"]) {
+    await denied(
+      f.act("a", { action: "save", targetId: itemId, enabled: true }),
+      404,
+    );
+    await denied(
+      f.act("a", { action: "ranking", itemId, score: 5, note: "" }),
+      400,
+    );
+    await denied(
+      f.act("a", { action: "plan", eventId: itemId, status: "interested" }),
+      400,
+    );
+  }
+  assert.equal(f.count("saves"), 0);
+  assert.equal(f.count("rankings"), 0);
+
+  // Older unsupported records must not poison the profile or saved-items response.
+  f.raw.exec("INSERT INTO saves(userId,targetId) VALUES('a','constructor')");
+  f.raw.exec(
+    "INSERT INTO rankings(userId,itemId,score,note,priority) VALUES('a','constructor',5,'',0)",
+  );
+  await f.act("a", { action: "save", targetId: "housing-meeting", enabled: true });
+  await f.act("a", { action: "ranking", itemId: "homes", score: 7, note: "" });
+  const snapshot = await f.snap("a");
+  assert.deepEqual(snapshot.saved, ["housing-meeting"]);
+  assert.deepEqual(snapshot.rankings.map((r) => r.itemId), ["homes"]);
+  await denied(
+    f.act("a", {
+      action: "ranking.share",
+      itemIds: ["constructor"],
+      title: "Invalid item",
+      text: "",
+    }),
+    400,
+  );
+});
+
+test("friend request and reply inboxes deduplicate, honor access, and support unread state", async () => {
+  const f = fixture();
+  await f.setup();
+  const request = crypto.randomUUID();
+  for (let i = 0; i < 2; i++)
+    await f.act(
+      "a",
+      { action: "friend", targetId: "b", operation: "request" },
+      request,
+    );
+  assert.equal(
+    (await f.snap("b")).notifications.filter((n) => n.kind === "friend_request")
+      .length,
+    1,
+  );
+  await f.act("b", { action: "friend", targetId: "a", operation: "accept" });
+  assert.equal(
+    (await f.snap("b")).notifications.filter((n) => n.kind === "friend_request")
+      .length,
+    0,
+  );
+  const p = await f.post("community");
+  const top = await f.act("b", {
+    action: "comment",
+    postId: p,
+    text: "Question",
+  });
+  const rid = crypto.randomUUID();
+  const reply = await f.act(
+    "c",
+    {
+      action: "comment",
+      postId: p,
+      parentId: top.commentId!,
+      text: "Response",
+    },
+    rid,
+  );
+  const repeatedReply = await f.act(
+    "c",
+    {
+      action: "comment",
+      postId: p,
+      parentId: top.commentId!,
+      text: "Response",
+    },
+    rid,
+  );
+  assert.equal(repeatedReply.commentId, reply.commentId);
+  for (const user of ["a", "b"]) {
+    const notices = (await f.snap(user)).notifications.filter(
+      (n) => n.commentId === reply!.commentId,
+    );
+    assert.equal(notices.length, 1);
+    await f.act(user, {
+      action: "notifications.read",
+      notificationId: notices[0].id,
+    });
+    assert.ok(
+      (await f.snap(user)).notifications.find((n) => n.id === notices[0].id)!
+        .readAt,
+    );
+    await f.act(user, {
+      action: "notifications.read",
+      notificationId: notices[0].id,
+      read: false,
+    });
+    assert.equal(
+      (await f.snap(user)).notifications.find((n) => n.id === notices[0].id)!
+        .readAt,
+      null,
+    );
+  }
+  assert.equal((await f.snap("c")).notifications.length, 0);
+  await f.act("c", { action: "comment.delete", commentId: reply!.commentId! });
+  assert.equal(
+    (await f.snap("a", { post: p, comment: reply!.commentId! }))
+      .commentUnavailable,
+    true,
+  );
+  assert.equal(
+    (await f.snap("a")).notifications.some(
+      (n) => n.commentId === reply!.commentId,
+    ),
+    false,
+  );
+});
+
+test("issue priorities stay private, reorder independently from support, and share selected immutable snapshots", async () => {
+  const f = fixture();
+  await f.setup();
+  await f.friends();
+  await f.act("a", {
+    action: "ranking",
+    itemId: "homes",
+    score: 8,
+    note: "Private policy note",
+  });
+  await f.act("a", {
+    action: "priority.save",
+    issueId: "housing",
+    note: "Private housing reason",
+  });
+  await f.act("a", {
+    action: "priority.save",
+    issueId: "transit",
+    note: "Private transit reason",
+  });
+  await f.act("a", { action: "priority.save", issueId: "housing" });
+  assert.equal(
+    (await f.snap("a")).priorities[0].note,
+    "Private housing reason",
+  );
+  await f.act("a", {
+    action: "priority.order",
+    issueIds: ["transit", "housing"],
+  });
+  assert.deepEqual(
+    (await f.snap("a")).priorities.map((p) => p.issueId),
+    ["transit", "housing"],
+  );
+  assert.equal((await f.snap("a")).rankings[0].score, 8);
+  assert.deepEqual((await f.snap("b", { author: "a" })).priorities, []);
+  const shared = await f.act("a", {
+    action: "priority.share",
+    issueIds: ["housing", "transit"],
+    title: "Priorities",
+    text: "",
+    audience: "friends",
+  });
+  const before = (await f.snap("b", { post: shared.postId! })).posts[0]
+    .attachmentJson;
+  assert.equal(before.includes("Private"), false);
+  assert.deepEqual(
+    JSON.parse(before).items.map((r: { itemId: string }) => r.itemId),
+    ["transit", "housing"],
+  );
+  await f.act("a", { action: "priority.remove", issueId: "transit" });
+  assert.equal(
+    (await f.snap("b", { post: shared.postId! })).posts[0].attachmentJson,
+    before,
+  );
+  await denied(f.snap("c", { post: shared.postId! }), 404);
+  await denied(
+    f.act("b", {
+      action: "priority.share",
+      issueIds: ["housing"],
+      title: "No access",
+      text: "",
+    }),
+    400,
+  );
+  await denied(
+    f.act("a", { action: "priority.order", issueIds: ["housing", "housing"] }),
+    400,
+  );
+  await denied(
+    f.act("a", { action: "priority.order", issueIds: ["transit", "housing"] }),
+    409,
+  );
+  await f.act("a", { action: "onboarding.complete" });
+  assert.equal((await f.snap("a")).me!.onboardingComplete, 1);
+  assert.equal((await f.snap("b")).me!.onboardingComplete, 0);
+});
+
+test("beta migration upgrades existing profiles without losing activity", () => {
+  const raw = new DatabaseSync(":memory:");
+  const files = readdirSync("drizzle")
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  for (const file of files.slice(0, 2))
+    raw.exec(readFileSync("drizzle/" + file, "utf8"));
+  raw.exec(
+    "INSERT INTO profiles(id,name,username,createdAt) VALUES('old','Existing','existing','2026-09-01'); INSERT INTO saves(userId,targetId) VALUES('old','library-forum');",
+  );
+  for (const file of files.slice(2))
+    raw.exec(readFileSync("drizzle/" + file, "utf8"));
+  assert.equal(
+    raw.prepare("SELECT onboardingComplete FROM profiles WHERE id='old'").get()!
+      .onboardingComplete,
+    0,
+  );
+  assert.equal(
+    raw.prepare("SELECT COUNT(*) n FROM saves WHERE userId='old'").get()!.n,
+    1,
+  );
+  raw.close();
 });

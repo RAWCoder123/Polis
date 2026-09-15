@@ -9,7 +9,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { items, itemById } from "@/lib/polis-data";
-import { subjectTitle } from "@/lib/social/catalog";
+import { issues, subjectTitle } from "@/lib/social/catalog";
 import {
   audiences,
   positions,
@@ -169,7 +169,8 @@ export type ComposeOptions = {
   post?: Post;
   prior?: Post;
   copy?: Post;
-  kind?: "opinion" | "question" | "article" | "event_reflection";
+  kind?:
+    "opinion" | "question" | "article" | "event_reflection" | "event_share";
 };
 export function Composer({
   options,
@@ -191,9 +192,11 @@ export function Composer({
     copy = options.copy;
   const key = "polis-draft:" + userId + ":" + (post?.id ?? "new");
   const [draft] = useState<{
-    kind?: "opinion" | "question" | "article" | "event_reflection";
+    kind?:
+      "opinion" | "question" | "article" | "event_reflection" | "event_share";
     subject?: string;
     body?: string;
+    sourceUrl?: string;
     pos?: Position | "";
     aud?: Audience;
   }>(() => {
@@ -205,7 +208,7 @@ export function Composer({
     }
   });
   const [kind, setKind] = useState<
-      "opinion" | "question" | "article" | "event_reflection"
+      "opinion" | "question" | "article" | "event_reflection" | "event_share"
     >(
       ((post?.kind ?? copy?.kind) as "opinion") ??
         options.kind ??
@@ -221,6 +224,12 @@ export function Composer({
         "homes",
     ),
     [body, setBody] = useState(post?.text ?? copy?.text ?? draft.body ?? ""),
+    [sourceUrl, setSourceUrl] = useState<string>(
+      JSON.parse(post?.attachmentJson ?? copy?.attachmentJson ?? "{}")
+        .sourceUrl ??
+        draft.sourceUrl ??
+        "",
+    ),
     [pos, setPos] = useState<Position | "">(
       post?.position ?? copy?.position ?? draft.pos ?? "",
     ),
@@ -233,24 +242,27 @@ export function Composer({
     try {
       sessionStorage.setItem(
         key,
-        JSON.stringify({ body, subject, kind, aud, pos }),
+        JSON.stringify({ body, subject, kind, aud, pos, sourceUrl }),
       );
     } catch {}
-  }, [key, body, subject, kind, aud, pos, post]);
+  }, [key, body, subject, kind, aud, pos, sourceUrl, post]);
   const canPosition =
-    kind === "opinion" && itemById[subject]?.kind === "Policies";
+    kind === "opinion" &&
+    (itemById[subject]?.kind === "Policies" ||
+      issues.some((i) => i.id === subject));
   const choices = items.filter((i) =>
     kind === "article"
       ? i.kind === "News"
-      : kind === "event_reflection"
+      : kind === "event_reflection" || kind === "event_share"
         ? i.kind === "Events"
         : true,
   );
   function changeKind(value: typeof kind) {
     setKind(value);
     setPos("");
-    if (value === "article") setSubject("housing-news");
-    if (value === "event_reflection") setSubject("housing-meeting");
+    if (value === "article") setSubject("housing");
+    if (value === "event_reflection" || value === "event_share")
+      setSubject("housing-meeting");
   }
   return (
     <Modal
@@ -279,6 +291,7 @@ export function Composer({
                   action: "post.edit",
                   postId: post.id,
                   text: body,
+                  sourceUrl,
                   position: canPosition && pos ? pos : null,
                 }
               : {
@@ -286,6 +299,7 @@ export function Composer({
                   kind,
                   subjectId: subject,
                   text: body,
+                  sourceUrl,
                   position: canPosition && pos ? pos : null,
                   audience: aud,
                   priorPostId: prior?.id ?? null,
@@ -315,6 +329,7 @@ export function Composer({
               <option value="opinion">An opinion</option>
               <option value="question">A question</option>
               <option value="article">An article with commentary</option>
+              <option value="event_share">An event with commentary</option>
               <option value="event_reflection">An event reflection</option>
               <option value="ranking">A selected ranking update</option>
             </select>
@@ -330,7 +345,14 @@ export function Composer({
               setPos("");
             }}
           >
-            {!itemById[subject] && (
+            {kind !== "event_reflection" &&
+              kind !== "event_share" &&
+              issues.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name} · Sample issue
+                </option>
+              ))}
+            {!itemById[subject] && !issues.some((i) => i.id === subject) && (
               <option value={subject}>{subjectTitle(subject)}</option>
             )}
             {choices.map((i) => (
@@ -365,6 +387,17 @@ export function Composer({
             value={body}
             onChange={(e) => setBody(e.target.value)}
             placeholder="What matters to you about this?"
+          />
+        </label>
+        <label className="social-field">
+          {kind === "article" ? "Article link" : "Source link · optional"}
+          <input
+            type="url"
+            placeholder="https://…"
+            maxLength={2000}
+            value={sourceUrl}
+            onChange={(e) => setSourceUrl(e.target.value)}
+            required={kind === "article" && itemById[subject]?.kind !== "News"}
           />
         </label>
         <AudienceField
@@ -678,7 +711,7 @@ export function ShareRanking({
   const [selected, setSelected] = useState(
       data.rankings.slice(0, 5).map((r) => r.itemId),
     ),
-    [title, setTitle] = useState("My priorities for Ithaca"),
+    [title, setTitle] = useState("My civic ratings"),
     [body, setBody] = useState(""),
     [aud, setAud] = useState<Audience>("friends");
   const { submit, error, busy } = useSubmit(run);

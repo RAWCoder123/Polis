@@ -1,6 +1,26 @@
 # Verification record
 
-Updated 2026-09-14. This record separates tested local behavior from the hosted identity acceptance gate.
+Updated 2026-09-15. This record separates tested local behavior from the hosted identity acceptance gate.
+
+## Functional social beta — 2026-09-15
+
+Implemented in the isolated `codex/functional-social-beta` worktree based on the GitHub setup branch. The original checkout and its unrelated workflow files were preserved. The application framework, visual system, demo assets, ranking behavior and map camera were reused. See [setup and migration instructions](BETA_SETUP.md).
+
+The final local checks passed: `npm run typecheck`, 26 tests, `npm run lint` (zero errors; the same seven inherited MVP warnings), production build, HTTP boundary tests, and the complete three-session synthetic HTTP scenario. Actual D1 migrations 0000–0002 were applied locally. The upgrade regression verifies preservation of an existing profile/save. A search of the built Worker/client found no synthetic test-account identifiers or `POLIS_TEST_ACCOUNTS` switch.
+
+New regressions cover safe opinion source URLs and source-preserving text edits; request/reply notification deduplication and read/unread state; notification delivery to both appropriate authors; unavailable deleted-comment links; private issue priorities, stale-reorder rejection and immutable selected snapshots; onboarding completion isolation; calendar time/escaping/line folding; and useful errors when a server returns HTML or malformed JSON. Catalog validation rejects prototype-property identifiers and safely handles previously invalid private records. The local HTTP boundary also rejects unknown, prototype-property and duplicate authentication cookies. These shim checks do not verify hosted ChatGPT authentication.
+
+At `http://localhost:5175/`, the browser verified A's Friends opinion with an issue, position and source; B's comment; A's inbox link opening that exact comment; and A's shallow response. The conversation survived a preview-server restart and reload. At 390px, issue addition, private explanation, reordering, reload persistence, selected publication and the expanded shared list worked; private explanations were absent from the default published selection. The event marker activated by keyboard, its private plan appeared in both map and list, its saved state stayed separate, and event commentary opened the correct composer. A rejected HTTP source link retained the written draft and published after correction. The calendar link exposes the correctly named sample `.ics` file and matching catalog start/end times; importing it into a native calendar was not exercised.
+
+Desktop (1440px) and mobile (390px) checks found no horizontal document overflow. The original white/cobalt/navy styling, sidebar, supporting rail and mobile navigation remain. Tab showed a visible 3px cobalt outline. Text/reaction metadata used the existing darker gray, and reduced-motion styles remain present. Screenshots of the conversation and mobile priorities were inspected. These are focused browser checks, not a full accessibility certification.
+
+The final mobile pass measured 44px reaction targets and no overflow. Switching to unrelated synthetic C showed an unavailable Friends conversation and a useful empty Following feed. Returning as A restored the private thread and event plans. Map zoom and arrow-key movement responded on desktop. Browser screenshots are local synthetic review evidence, not captures of real participants.
+
+The final engineering/design/product review fixed malformed civic IDs, reset privacy choices for each new ranking share, and clarified subject/reaction labels. At 390px, selecting Community and including explanations, then closing and reopening the share dialog, restored Friends with explanations excluded. All priority controls measured 44×44px; comment actions and reaction-count disclosure measured 44px high. An event share displayed “RELATED EVENT,” and expanded counts used the same reaction names as their controls. The final production build, all 26 tests, typecheck, lint and both HTTP suites passed again after these changes. Fresh desktop/mobile screenshots were saved locally under `outputs/beta-review/`, outside Git.
+
+Observed failures: an initial local D1 emulator request returned an internal error; subsequent complete HTTP runs passed. Hot reload after building/formatting temporarily produced Vite connection errors and an HTML response; a clean reload restored the app. A regression now gives an understandable retry message for unexpected response bodies. The final fresh-page check had no captured application warnings/errors. A new test's inferred type initially failed type checking and was corrected before the final pass.
+
+All test people and contributions are synthetic and local. No test database or private activity is included in Git or deployment artifacts. Hosted ChatGPT authentication, production D1 behavior and three-real-identity acceptance remain unverified; no hosting audience change or deployment is included in this beta work.
 
 ## GitHub setup verification — 2026-09-14
 
@@ -16,13 +36,13 @@ To unblock CI, the owner can run `gh auth refresh -h github.com -s workflow` and
 
 ## Delivery status
 
-The implementation and verified local preview are complete. Hosted publication is blocked before source upload: this network resolves `git.chatgpt-team.site` to Cornell's security warning service (`Phish Attempt Warning`), and HTTPS connections time out. No security settings, DNS overrides, site audience, or network protections were changed. No new hosted version or deployment was created. The existing live site therefore still runs the earlier MVP.
+The local social-beta candidate is implemented and its focused verification passes. Hosted acceptance remains open. The last publication attempt stopped before source upload: this network resolved `git.chatgpt-team.site` to Cornell's security warning service (`Phish Attempt Warning`), and HTTPS connections timed out. No security settings, DNS overrides, site audience, or network protections were changed. No new hosted version or deployment was created. The existing live site therefore still runs the earlier MVP.
 
 The owner bootstrap runtime setting was saved in Sites as a secret, revision 1; it applies when the new version is deployed. The local database and test activity are excluded from the prepared deployment output. Resume publishing once approved access to the Sites source server is restored, using fresh short-lived source credentials, the current validated source, and the existing owner-private Sites project. Do not bypass the network filter or publish an older source revision with the new artifact.
 
 ## Automated service verification
 
-The original 2026-09-12 run had 14 passing tests; the current setup run has 19. A D1 transport adapter executes transactional SQL in Node SQLite using the actual service and both migration files; identities are isolated fixtures, not real ChatGPT accounts.
+The original 2026-09-12 run had 14 passing tests; the GitHub setup run had 19. The current beta total is recorded above. A D1 transport adapter executes transactional SQL in Node SQLite using the actual service and applied migration history; identities are isolated fixtures, not real ChatGPT accounts.
 
 Covered: owner bootstrap and email-bound one-use invitations; A/B friendship and conversation; C denied Friends posts through direct IDs, feed, search, profiles, lists, saves, comments and writes; fixed audiences and ownership; one active reaction; grouped notification reads; duplicate retries and mismatched request fingerprints; saved/edit/deleted persistence; unfriend/block/mute behavior; owner-only report evidence and removal; private rankings/notes and immutable selected snapshots; follows and optional update notifications; private/shared/withdrawn event plans; daily answers, private counts and skipping; feed/reply pagination beyond 200 replies and exact deep links; rollback when a block or question withdrawal races a submission; concurrent invitation consumption; minimal metrics for both friends and shared contributions only.
 

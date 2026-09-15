@@ -34,6 +34,12 @@ export type Run = (
   requestId?: string,
 ) => Promise<CommandResult>;
 export type Navigate = (route: string) => void;
+const reactionChoices = [
+  { kind: "agree", label: "Agree", Icon: ThumbsUp },
+  { kind: "thoughtful", label: "Thought-provoking", Icon: Lightbulb },
+  { kind: "curious", label: "Want to understand more", Icon: HelpCircle },
+] as const;
+
 export function PostCard({
   post,
   me,
@@ -55,6 +61,19 @@ export function PostCard({
 }) {
   const [showCounts, setShowCounts] = useState(false);
   const attachment = JSON.parse(post.attachmentJson || "{}");
+  const subjectKind = itemById[post.subjectId]?.kind;
+  const subjectLabel =
+    post.kind === "event_plan"
+      ? "SHARED PLAN"
+      : subjectKind === "Events"
+        ? "RELATED EVENT"
+        : subjectKind === "News"
+          ? "RELATED ARTICLE"
+          : subjectKind === "Policies"
+            ? "RELATED PROPOSAL"
+            : subjectKind === "Politicians"
+              ? "RELATED PERSON"
+              : "RELATED ISSUE";
   const react = async (kind: "agree" | "thoughtful" | "curious") => {
     try {
       await run({
@@ -116,6 +135,7 @@ export function PostCard({
                   "question",
                   "article",
                   "event_reflection",
+                  "event_share",
                 ].includes(post.kind) && (
                   <DropdownMenuItem
                     onClick={() =>
@@ -173,7 +193,14 @@ export function PostCard({
         <span className="post-position">{positions[post.position]}</span>
       )}
       {post.kind === "ranking" && (
-        <span className="post-position">Shared a ranking</span>
+        <span className="post-position">
+          {attachment.rankingKind === "issue_priorities"
+            ? "Shared issue priorities"
+            : "Shared a ranking"}
+        </span>
+      )}
+      {post.kind === "event_share" && (
+        <span className="post-position">Shared an event</span>
       )}
       {post.kind === "event_reflection" && (
         <span className="post-position">An event reflection</span>
@@ -187,6 +214,17 @@ export function PostCard({
         </button>
       )}
       <p className="post-text">{post.text}</p>
+      {attachment.sourceUrl && (
+        <a
+          className="post-source"
+          href={attachment.sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Source · {new URL(attachment.sourceUrl).hostname}{" "}
+          <ArrowUpRight size={14} />
+        </a>
+      )}
       {attachment.items && (
         <button
           className="shared-list-preview"
@@ -198,7 +236,8 @@ export function PostCard({
               r: {
                 itemId: string;
                 title: string;
-                score: number;
+                score?: number;
+                note?: string;
                 position?: keyof typeof positions;
               },
               i: number,
@@ -207,7 +246,7 @@ export function PostCard({
                 <b>{i + 1}</b>
                 <span>
                   {r.title}
-                  {expanded && (
+                  {expanded && typeof r.score === "number" && (
                     <small>
                       {itemById[r.itemId]?.kind === "News"
                         ? "Usefulness"
@@ -218,6 +257,7 @@ export function PostCard({
                       {r.position ? " · " + positions[r.position] : ""}
                     </small>
                   )}
+                  {expanded && r.note && <small>{r.note}</small>}
                 </span>
               </span>
             ),
@@ -232,23 +272,20 @@ export function PostCard({
       )}
       <button
         className="post-subject"
-        onClick={() => navigate("item/" + post.subjectId)}
+        onClick={() =>
+          navigate(
+            (itemById[post.subjectId] ? "item/" : "issue/") + post.subjectId,
+          )
+        }
       >
         <span>
-          {post.kind === "event_plan" ? "SHARED PLAN" : "RELATED ISSUE"} ·{" "}
-          {post.issueId.toUpperCase()}
+          {subjectLabel} · {post.issueId.toUpperCase()}
           <strong>{subjectTitle(post.subjectId)}</strong>
         </span>
         <ArrowUpRight size={19} />
       </button>
       <footer>
-        {(
-          [
-            { kind: "agree", label: "Agree", Icon: ThumbsUp },
-            { kind: "thoughtful", label: "Thoughtful", Icon: Lightbulb },
-            { kind: "curious", label: "Curious", Icon: HelpCircle },
-          ] as const
-        ).map(({ kind, label, Icon }) => (
+        {reactionChoices.map(({ kind, label, Icon }) => (
           <button
             key={kind}
             className={"reaction " + (post.myReaction === kind ? "chosen" : "")}
@@ -296,12 +333,12 @@ export function PostCard({
       </button>
       {showCounts && (
         <p className="metadata">
-          {["agree", "thoughtful", "curious"]
+          {reactionChoices
             .map(
-              (k) =>
-                k +
+              ({ kind, label }) =>
+                label +
                 ": " +
-                (post.reactions.find((r) => r.kind === k)?.count ?? 0),
+                (post.reactions.find((r) => r.kind === kind)?.count ?? 0),
             )
             .join(" · ")}{" "}
           · Responses from people who can see this post.

@@ -4,6 +4,8 @@ Polis is an invite-only social app for politics and local civic life: discover a
 
 The actual Sites application source is preserved, including the white/cobalt/navy design, sidebar, mobile navigation, assets, pairwise and manual rankings, and illustrative event map. The imported local social pilot goes beyond the currently deployed prototype. `/demo` retains the original fictional browser-only experience, separate from the persisted social app at `/`.
 
+The functional social beta is a locally verified release candidate, with persistent conversations, notifications and private issue priorities. It has not yet passed hosted acceptance with real ChatGPT identities. See [beta setup and migration instructions](docs/BETA_SETUP.md) and the [verification record](docs/VERIFICATION.md) for implemented behavior, synthetic test evidence and remaining release gates.
+
 ## Prerequisites
 
 - Node **24.14.0** (`.nvmrc`) and npm **11.9.0** (`packageManager`). Tests use Node's built-in SQLite and TypeScript support.
@@ -12,9 +14,12 @@ The actual Sites application source is preserved, including the white/cobalt/nav
 
 ## Run locally
 
+While the beta pull request awaits merge, check out `codex/functional-social-beta` after cloning to review these changes. GitHub `main` and the hosted prototype do not yet contain the beta.
+
 ```sh
 git clone https://github.com/RAWCoder123/Polis.git
 cd Polis
+git switch --track origin/codex/functional-social-beta
 nvm install
 nvm use
 npm ci
