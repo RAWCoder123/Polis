@@ -1,4 +1,5 @@
 import type { CivicItem } from "../polis-data.ts";
+import type { CommunityEvent } from "./types.ts";
 import { eventStart, eventEnd } from "./catalog.ts";
 
 // RFC 5545 sections 3.1 and 3.3.11: fold by UTF-8 octets and escape TEXT.
@@ -23,6 +24,56 @@ function fold(line: string) {
     width += bytes;
   }
   return result;
+}
+export function communityEventCalendar(
+  event: CommunityEvent,
+  generatedAt = new Date(),
+) {
+  const stamp = (s: string) =>
+    new Date(s)
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .replace(/\.\d{3}Z$/, "Z");
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Polis//Community Events//EN",
+    "BEGIN:VEVENT",
+    "UID:" + event.id + "@polis.community",
+    "DTSTAMP:" + stamp(generatedAt.toISOString()),
+    "DTSTART:" + stamp(event.startsAt),
+    ...(event.endsAt ? ["DTEND:" + stamp(event.endsAt)] : []),
+    "SUMMARY:" + escapeText((event.sample ? "SAMPLE — " : "") + event.title),
+    "LOCATION:" +
+      escapeText([event.venue, event.address].filter(Boolean).join(", ")),
+    "DESCRIPTION:" +
+      escapeText(
+        event.description +
+          "\nOriginal timezone: " +
+          event.timezone +
+          "\n" +
+          (event.registration ||
+            "Check the organizer for registration requirements.") +
+          "\nSaving this calendar entry does not register you.",
+      ),
+    // URI properties are not TEXT: percent-encode controls defensively, even
+    // for older stored records that predate input validation.
+    "URL:" +
+      [...event.sourceUrl]
+        .map((c) =>
+          c.charCodeAt(0) <= 32 || c.charCodeAt(0) === 127
+            ? encodeURIComponent(c)
+            : c,
+        )
+        .join(""),
+    "STATUS:" + (event.status === "canceled" ? "CANCELLED" : "CONFIRMED"),
+    "TRANSP:TRANSPARENT",
+    "END:VEVENT",
+    "END:VCALENDAR",
+    "",
+  ]
+    .map(fold)
+    .join("\r\n");
 }
 export function sampleEventCalendar(item: CivicItem, generatedAt = new Date()) {
   const start = eventStart(item.id);

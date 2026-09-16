@@ -240,9 +240,7 @@ export function ItemDetail({
             {item.event.place} · illustrative location
           </span>
           <span>Organizer: Polis demo community · fictional event</span>
-          <span>
-            Time zone: America/New_York · Cost not provided.
-          </span>
+          <span>Time zone: America/New_York · Cost not provided.</span>
           <span>
             No registration or organizer source is available for this sample
             event.
@@ -1001,13 +999,21 @@ export function Profile({
           <button
             key={p.eventId}
             className="post-subject"
-            onClick={() => navigate("item/" + p.eventId)}
+            onClick={() =>
+              navigate(
+                (data.events.some((e) => e.id === p.eventId)
+                  ? "event/"
+                  : "item/") + p.eventId,
+              )
+            }
           >
             <span>
-              <strong>{subjectTitle(p.eventId)}</strong>
-              {p.status === "attending"
-                ? "Planning to attend"
-                : "Interested"} · {audiences[p.audience]}
+              <strong>
+                {data.events.find((e) => e.id === p.eventId)?.title ||
+                  subjectTitle(p.eventId)}
+              </strong>
+              {p.status === "attending" ? "Planning to attend" : "Interested"} ·{" "}
+              {audiences[p.audience]}
             </span>
             <ArrowUpRight size={17} />
           </button>

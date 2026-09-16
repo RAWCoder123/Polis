@@ -65,7 +65,7 @@ export function PostCard({
   const subjectLabel =
     post.kind === "event_plan"
       ? "SHARED PLAN"
-      : subjectKind === "Events"
+      : subjectKind === "Events" || attachment.eventId
         ? "RELATED EVENT"
         : subjectKind === "News"
           ? "RELATED ARTICLE"
@@ -274,13 +274,20 @@ export function PostCard({
         className="post-subject"
         onClick={() =>
           navigate(
-            (itemById[post.subjectId] ? "item/" : "issue/") + post.subjectId,
+            (attachment.eventId
+              ? "event/"
+              : itemById[post.subjectId]
+                ? "item/"
+                : "issue/") + post.subjectId,
           )
         }
       >
         <span>
-          {subjectLabel} · {post.issueId.toUpperCase()}
-          <strong>{subjectTitle(post.subjectId)}</strong>
+          {subjectLabel}
+          {post.issueId ? " · " + post.issueId.toUpperCase() : ""}
+          <strong>
+            {attachment.eventTitle || subjectTitle(post.subjectId)}
+          </strong>
         </span>
         <ArrowUpRight size={19} />
       </button>

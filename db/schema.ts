@@ -125,7 +125,9 @@ export const rankings = sqliteTable(
 export const issuePriorities = sqliteTable(
   "issue_priorities",
   {
-    userId: text().notNull().references(() => profiles.id),
+    userId: text()
+      .notNull()
+      .references(() => profiles.id),
     issueId: text().notNull(),
     priority: integer().notNull(),
     note: text().notNull().default(""),
@@ -161,6 +163,51 @@ export const plans = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.eventId] })],
 );
+export const eventSeries = sqliteTable("event_series", {
+  id: text().primaryKey(),
+  title: text().notNull(),
+});
+export const communityEvents = sqliteTable(
+  "community_events",
+  {
+    id: text().primaryKey(),
+    seriesId: text()
+      .notNull()
+      .references(() => eventSeries.id),
+    communityId: text().notNull(),
+    recordJson: text().notNull(),
+    startsAt: text().notNull(),
+    endsAt: text(),
+    status: text().notNull(),
+    createdBy: text()
+      .notNull()
+      .references(() => profiles.id),
+    updatedAt: text().notNull(),
+  },
+  (t) => [
+    index("events_upcoming").on(t.communityId, t.status, t.startsAt),
+    uniqueIndex("event_series_occurrence").on(t.seriesId, t.startsAt),
+  ],
+);
+export const eventPreferences = sqliteTable("event_preferences", {
+  userId: text()
+    .primaryKey()
+    .references(() => profiles.id),
+  city: text().notNull().default("Ithaca"),
+  interestsJson: text().notNull().default("[]"),
+  complete: integer().notNull().default(0),
+});
+export const eventSuggestions = sqliteTable("event_suggestions", {
+  id: text().primaryKey(),
+  userId: text()
+    .notNull()
+    .references(() => profiles.id),
+  title: text().notNull(),
+  sourceUrl: text().notNull(),
+  note: text().notNull(),
+  status: text().notNull().default("pending"),
+  createdAt: text().notNull(),
+});
 export const questions = sqliteTable("questions", {
   id: text().primaryKey(),
   issueId: text().notNull(),

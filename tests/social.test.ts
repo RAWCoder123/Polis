@@ -799,7 +799,12 @@ test("issue opinions accept safe sources, preserve them on text edits, and rejec
 test("unknown and prototype-named civic items cannot become saved items or rankings", async () => {
   const f = fixture();
   await f.setup();
-  for (const itemId of ["constructor", "__proto__", "toString", "unknown-item"]) {
+  for (const itemId of [
+    "constructor",
+    "__proto__",
+    "toString",
+    "unknown-item",
+  ]) {
     await denied(
       f.act("a", { action: "save", targetId: itemId, enabled: true }),
       404,
@@ -810,7 +815,7 @@ test("unknown and prototype-named civic items cannot become saved items or ranki
     );
     await denied(
       f.act("a", { action: "plan", eventId: itemId, status: "interested" }),
-      400,
+      404,
     );
   }
   assert.equal(f.count("saves"), 0);
@@ -821,11 +826,18 @@ test("unknown and prototype-named civic items cannot become saved items or ranki
   f.raw.exec(
     "INSERT INTO rankings(userId,itemId,score,note,priority) VALUES('a','constructor',5,'',0)",
   );
-  await f.act("a", { action: "save", targetId: "housing-meeting", enabled: true });
+  await f.act("a", {
+    action: "save",
+    targetId: "housing-meeting",
+    enabled: true,
+  });
   await f.act("a", { action: "ranking", itemId: "homes", score: 7, note: "" });
   const snapshot = await f.snap("a");
   assert.deepEqual(snapshot.saved, ["housing-meeting"]);
-  assert.deepEqual(snapshot.rankings.map((r) => r.itemId), ["homes"]);
+  assert.deepEqual(
+    snapshot.rankings.map((r) => r.itemId),
+    ["homes"],
+  );
   await denied(
     f.act("a", {
       action: "ranking.share",
@@ -1024,4 +1036,289 @@ test("beta migration upgrades existing profiles without losing activity", () => 
     1,
   );
   raw.close();
+});
+
+// Dated event coverage uses synthetic records only; the migration and service are real.
+import type { CommunityEvent } from "../lib/social/types.ts";
+const futureEvent = (id = "fixture-garden-date"): CommunityEvent => ({
+  id,
+  seriesId: "fixture-garden",
+  title: "SYNTHETIC garden tour",
+  description: "A synthetic event used only to verify privacy.",
+  organizer: "Test organizer",
+  sourceUrl: "https://example.test/event",
+  checkedAt: "2026-01-01T00:00:00.000Z",
+  venue: "Test venue",
+  address: "Test address",
+  city: "Ithaca",
+  latitude: 42.4,
+  longitude: -76.5,
+  imageUrl: "",
+  startsAt: "2099-09-20T14:00:00.000Z",
+  endsAt: "2099-09-20T15:00:00.000Z",
+  timezone: "America/New_York",
+  category: "outdoors",
+  cost: "unknown",
+  costDetails: "",
+  accessibility: "",
+  registration: "Organizer signup required",
+  registrationUrl: "https://example.test/register",
+  issueId: "",
+  status: "published",
+  sample: true,
+});
+
+test("dated event saves and private attendance persist, deduplicate, and never expose names or counts to other members", async () => {
+  const f = fixture();
+  await f.setup();
+  await f.friends();
+  const event = futureEvent();
+  await f.act("owner", { action: "event.save", event });
+  const request = crypto.randomUUID();
+  const plan = {
+    action: "plan",
+    eventId: event.id,
+    status: "attending",
+    audience: "only_me",
+  } as const;
+  await f.act("a", plan, request);
+  await f.act("a", plan, request);
+  await f.act("a", plan);
+  assert.equal(f.count("plans"), 1);
+  assert.equal(f.count("posts"), 0);
+  assert.equal((await f.snap("a")).plans[0].status, "attending");
+  for (const id of ["b", "c"]) assert.equal((await f.snap(id)).plans.length, 0);
+  const save = { action: "save", targetId: event.id, enabled: true } as const;
+  await f.act("a", save);
+  await f.act("a", save);
+  assert.equal(f.count("saves"), 1);
+  assert.deepEqual((await f.snap("a")).saved, [event.id]);
+  assert.equal((await f.snap("b")).saved.length, 0);
+  await denied(
+    f.service("b").execute({
+      requestId: crypto.randomUUID(),
+      data: { ...plan, userId: "a" },
+    }),
+    400,
+  );
+  assert.equal((await f.snap(null)).events.length, 0);
+  const metrics = f.raw
+    .prepare("SELECT userId,objectId FROM metrics WHERE event LIKE 'event_%'")
+    .all();
+  assert.ok(
+    metrics.every((x) => x.userId === "aggregate" && x.objectId === null),
+  );
+});
+
+test("event privacy changes revoke prior discussions, honor friends, mutes and blocks, and preserve explicit sharing", async () => {
+  const f = fixture();
+  await f.setup();
+  await f.friends();
+  const e = futureEvent();
+  await f.act("owner", { action: "event.save", event: e });
+  await f.act("a", {
+    action: "plan",
+    eventId: e.id,
+    status: "interested",
+    audience: "friends",
+  });
+  const p = (await f.snap("b", { event: e.id })).posts[0];
+  assert.equal(p.subjectId, e.id);
+  assert.equal((await f.snap("b")).plans.length, 1);
+  assert.equal((await f.snap("c")).plans.length, 0);
+  const reply = await f.act("b", {
+    action: "comment",
+    postId: p.id,
+    text: "SYNTHETIC question",
+  });
+  assert.ok(
+    (await f.snap("a")).notifications.some(
+      (n) => n.commentId === reply.commentId,
+    ),
+  );
+  await f.act("a", {
+    action: "plan",
+    eventId: e.id,
+    status: "interested",
+    audience: "only_me",
+  });
+  await denied(f.snap("b", { post: p.id }), 404);
+  assert.equal((await f.snap("b")).plans.length, 0);
+  await f.act("a", {
+    action: "plan",
+    eventId: e.id,
+    status: "interested",
+    audience: "community",
+  });
+  assert.equal((await f.snap("c")).plans.length, 1);
+  await f.act("b", { action: "mute", targetId: "a", enabled: true });
+  assert.equal((await f.snap("b")).plans.length, 0);
+  await f.act("c", { action: "block", targetId: "a", enabled: true });
+  assert.equal((await f.snap("c")).plans.length, 0);
+  await f.act("a", { action: "plan", eventId: e.id, status: null });
+  assert.equal(f.count("plans"), 0);
+});
+
+test("curation permissions, seed retries, private preferences and suggestion review are enforced", async () => {
+  const f = fixture();
+  await f.setup();
+  const event = futureEvent();
+  await denied(f.act("a", { action: "event.save", event }), 403);
+  await f.act("owner", { action: "event.save", event, createOnly: true });
+  await f.act("owner", {
+    action: "event.save",
+    event: { ...event, title: "Curator corrected title" },
+  });
+  await f.act("owner", { action: "event.save", event, createOnly: true });
+  assert.equal(f.count("community_events"), 1);
+  assert.equal((await f.snap("a")).events[0].title, "Curator corrected title");
+  await f.act("a", {
+    action: "event.preferences",
+    city: "Ithaca",
+    interests: ["outdoors"],
+  });
+  assert.deepEqual((await f.snap("a")).eventPreferences.interests, [
+    "outdoors",
+  ]);
+  assert.deepEqual((await f.snap("b")).eventPreferences.interests, []);
+  const request = crypto.randomUUID(),
+    suggest = {
+      action: "event.suggest",
+      title: "Test suggestion",
+      sourceUrl: "https://example.test/event",
+      note: "SYNTHETIC review note",
+    } as const;
+  await f.act("a", suggest, request);
+  await f.act("a", suggest, request);
+  assert.equal(f.count("event_suggestions"), 1);
+  assert.equal((await f.snap("b")).eventSuggestions?.length, 0);
+  const suggestionId = (await f.snap("owner")).eventSuggestions![0].id;
+  await denied(
+    f.act("a", { action: "event.review", suggestionId, status: "reviewed" }),
+    403,
+  );
+  await f.act("owner", {
+    action: "event.review",
+    suggestionId,
+    status: "reviewed",
+  });
+  assert.equal((await f.snap("a")).eventSuggestions![0].status, "reviewed");
+});
+
+test("withdrawal hides event discussions and notifications; cancel keeps informative links but rejects new intent", async () => {
+  const f = fixture();
+  await f.setup();
+  const event = futureEvent();
+  await f.act("owner", { action: "event.save", event });
+  const p = await f.act("a", {
+    action: "post",
+    kind: "question",
+    subjectId: event.id,
+    text: "SYNTHETIC event discussion",
+    audience: "community",
+  });
+  await f.act("b", {
+    action: "comment",
+    postId: p.postId as string,
+    text: "SYNTHETIC reply",
+  });
+  await f.act("owner", {
+    action: "event.status",
+    eventId: event.id,
+    status: "draft",
+  });
+  assert.equal((await f.snap("a")).events.length, 0);
+  assert.equal((await f.snap("a")).notifications.length, 0);
+  await denied(f.snap("a", { post: p.postId as string }), 404);
+  await denied(
+    f.act("a", { action: "save", targetId: event.id, enabled: true }),
+    404,
+  );
+  await f.act("owner", {
+    action: "event.status",
+    eventId: event.id,
+    status: "published",
+  });
+  await f.act("a", { action: "plan", eventId: event.id, status: "attending" });
+  await f.act("owner", {
+    action: "event.status",
+    eventId: event.id,
+    status: "canceled",
+  });
+  assert.equal((await f.snap("a")).events[0].status, "canceled");
+  await denied(
+    f.act("b", { action: "plan", eventId: event.id, status: "interested" }),
+    409,
+  );
+  await f.act("a", {
+    action: "plan",
+    eventId: event.id,
+    status: "attending",
+    audience: "community",
+  });
+  assert.equal((await f.snap("b")).plans.length, 1);
+  await f.act("a", {
+    action: "plan",
+    eventId: event.id,
+    status: "attending",
+    audience: "only_me",
+  });
+  assert.equal((await f.snap("b")).plans.length, 0);
+  await f.act("a", { action: "plan", eventId: event.id, status: null });
+  assert.equal(f.count("plans"), 0);
+});
+
+test("in-flight event RSVP rolls back when a curator cancels the occurrence", async () => {
+  const f = fixture();
+  await f.setup();
+  const event = futureEvent();
+  await f.act("owner", { action: "event.save", event });
+  f.hooks.batch = async () => {
+    f.hooks.batch = null;
+    await f.act("owner", {
+      action: "event.status",
+      eventId: event.id,
+      status: "canceled",
+    });
+  };
+  await denied(
+    f.act("a", {
+      action: "plan",
+      eventId: event.id,
+      status: "attending",
+      audience: "community",
+    }),
+    409,
+  );
+  assert.equal(f.count("plans"), 0);
+  assert.equal(f.count("posts"), 0);
+});
+
+test("one series occurrence cannot be duplicated under another ID and curator authority is checked at commit", async () => {
+  const f = fixture();
+  await f.setup();
+  const event = futureEvent();
+  await f.act("owner", { action: "event.save", event });
+  await denied(
+    f.act("owner", {
+      action: "event.save",
+      event: { ...event, id: "duplicate-other-id" },
+    }),
+    409,
+  );
+  assert.equal(f.count("community_events"), 1);
+  f.raw.exec("UPDATE memberships SET role='curator' WHERE userId='a'");
+  f.hooks.batch = async () => {
+    f.hooks.batch = null;
+    f.raw.exec("UPDATE memberships SET role='member' WHERE userId='a'");
+  };
+  await denied(
+    f.act("a", {
+      action: "event.status",
+      eventId: event.id,
+      status: "canceled",
+    }),
+    409,
+  );
+  assert.equal((await f.snap("b")).events[0].status, "published");
 });

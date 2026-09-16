@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { itemById } from "../polis-data.ts";
+import { eventActions, eventExpired } from "./events.ts";
 import { communityId, issues, issueFor, eventStart } from "./catalog.ts";
 import {
   emptySnapshot,
@@ -7,6 +8,7 @@ import {
   type Person,
   type Post,
   type Question,
+  type CommunityEvent,
 } from "./types.ts";
 export type Identity = { userId: string; email: string; displayName: string };
 export class ApiError extends Error {
@@ -44,6 +46,7 @@ const source = z
     }
   }, "Use an HTTPS link without embedded credentials.");
 const action = z.discriminatedUnion("action", [
+  ...eventActions,
   z.object({
     action: z.literal("join"),
     name: z.string().trim().min(1).max(50),
@@ -237,6 +240,17 @@ export function socialService(
     sql: string,
     ...args: unknown[]
   ) => prep(sql, ...args).first<T>();
+  const eventFor = async (id: string): Promise<CommunityEvent | null> => {
+    const row = await one<{
+      recordJson: string;
+      status: CommunityEvent["status"];
+    }>(
+      "SELECT recordJson,status FROM community_events WHERE id=? AND communityId=?",
+      id,
+      communityId,
+    );
+    return row ? { ...JSON.parse(row.recordJson), status: row.status } : null;
+  };
   const member = async () => {
     if (!identity) fail(401, "Sign in to continue.");
     const m = await one<{ communityId: string; role: string }>(
@@ -255,7 +269,7 @@ export function socialService(
       uid,
     ));
   const visibility = (alias = "p") => ({
-    sql: `${alias}.deletedAt IS NULL AND ${alias}.communityId=? AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=${alias}.authorId) OR (b.ownerId=${alias}.authorId AND b.targetId=?)) AND (${alias}.authorId=? OR ${alias}.audience='community' OR (${alias}.audience='friends' AND EXISTS(SELECT 1 FROM friendships f WHERE f.status='accepted' AND ((f.a=? AND f.b=${alias}.authorId) OR (f.b=? AND f.a=${alias}.authorId)))))`,
+    sql: `NOT EXISTS(SELECT 1 FROM community_events ce WHERE ce.id=${alias}.subjectId AND ce.status='draft') AND ${alias}.deletedAt IS NULL AND ${alias}.communityId=? AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=${alias}.authorId) OR (b.ownerId=${alias}.authorId AND b.targetId=?)) AND (${alias}.authorId=? OR ${alias}.audience='community' OR (${alias}.audience='friends' AND EXISTS(SELECT 1 FROM friendships f WHERE f.status='accepted' AND ((f.a=? AND f.b=${alias}.authorId) OR (f.b=? AND f.a=${alias}.authorId)))))`,
     args: [communityId, uid, uid, uid, uid, uid],
   });
   const post = async (postId: string) => {
@@ -370,6 +384,10 @@ export function socialService(
         sql += " AND p.issueId=?";
         args.push(params.get("issue"));
       }
+      if (params.get("event")) {
+        sql += " AND p.subjectId=?";
+        args.push(params.get("event"));
+      }
       if (params.get("author")) {
         sql += " AND p.authorId=?";
         args.push(params.get("author") === "me" ? uid : params.get("author"));
@@ -411,7 +429,26 @@ export function socialService(
       communityId,
       uid,
     );
-    const visibleUsers = people.filter((p) => !p.blocked).map((p) => p.id);
+    const visibleUsers = people
+      .filter((p) => !p.blocked && !p.muted)
+      .map((p) => p.id);
+    const eventRows = await all<{
+      recordJson: string;
+      status: CommunityEvent["status"];
+    }>(
+      "SELECT recordJson,status FROM community_events WHERE communityId=? AND (status<>'draft' OR ? IN ('owner','curator')) ORDER BY startsAt,id LIMIT 1000",
+      communityId,
+      me.role ?? "member",
+    );
+    const events: CommunityEvent[] = eventRows.map((r) => ({
+      ...JSON.parse(r.recordJson),
+      status: r.status,
+    }));
+    const eventPrefs = await one<{
+      city: string;
+      interestsJson: string;
+      complete: number;
+    }>("SELECT * FROM event_preferences WHERE userId=?", uid);
     const [ranks, follows, saves, prefs, question, updates, plans] =
       await Promise.all([
         all<Snapshot["rankings"][number]>(
@@ -447,7 +484,8 @@ export function socialService(
       ]);
     const visibleSaves: string[] = [];
     for (const s of saves) {
-      if (catalogItem(s.targetId)) visibleSaves.push(s.targetId);
+      if (catalogItem(s.targetId) || events.some((e) => e.id === s.targetId))
+        visibleSaves.push(s.targetId);
       else {
         try {
           await post(s.targetId);
@@ -591,6 +629,21 @@ export function socialService(
           }
         : undefined;
     return {
+      events,
+      eventPreferences: eventPrefs
+        ? {
+            city: eventPrefs.city,
+            interests: JSON.parse(eventPrefs.interestsJson),
+            complete: !!eventPrefs.complete,
+          }
+        : emptySnapshot.eventPreferences,
+      eventSuggestions: await all<
+        NonNullable<Snapshot["eventSuggestions"]>[number]
+      >(
+        "SELECT * FROM event_suggestions WHERE userId=? OR ? IN ('owner','curator') ORDER BY createdAt DESC LIMIT 100",
+        uid,
+        me.role ?? "member",
+      ),
       me,
       status: "ready",
       posts: await decorate(rows.slice(0, 20)),
@@ -603,7 +656,9 @@ export function socialService(
       ),
       follows,
       plans: plans.filter(
-        (p) => p.userId === uid || visibleUsers.includes(p.userId),
+        (p) =>
+          (p.userId === uid || visibleUsers.includes(p.userId)) &&
+          (!!catalogItem(p.eventId) || events.some((e) => e.id === p.eventId)),
       ),
       saved: visibleSaves,
       preferences: prefs ?? emptySnapshot.preferences,
@@ -653,9 +708,34 @@ export function socialService(
       sql.push(prep(query, ...values));
     let result: Record<string, unknown> = { ok: true };
     const objectId = "p_" + key.slice(0, 28);
+    const eventSubjects = new Map<string, CommunityEvent>();
     const guards: { query: string; values: unknown[] }[] = [];
     const guard = (query: string, ...values: unknown[]) =>
       guards.push({ query, values });
+    const guardedEvent = async (id: string, upcoming = false) => {
+      const e = await eventFor(id);
+      if (!e || e.status === "draft") fail(404, "This event is unavailable.");
+      if (upcoming && (e!.status !== "published" || eventExpired(e!)))
+        fail(409, "This event is no longer accepting plans.");
+      guard(
+        "EXISTS(SELECT 1 FROM community_events WHERE id=? AND communityId=? AND status=? AND startsAt=? AND endsAt IS ?)",
+        id,
+        communityId,
+        e!.status,
+        e!.startsAt,
+        e!.endsAt,
+      );
+      eventSubjects.set(id, e!);
+      return e!;
+    };
+    const eventMetric = (kind: string) =>
+      add(
+        "INSERT INTO metrics(id,userId,event,objectId,createdAt) VALUES(?,?,?,NULL,?)",
+        key + "_event",
+        "aggregate",
+        kind,
+        now.slice(0, 10) + "T00:00:00.000Z",
+      );
     const guardedPost = async (id: string) => {
       const p = await post(id);
       const v = visibility();
@@ -720,7 +800,8 @@ export function socialService(
       attachment: unknown = {},
       prior: string | null = null,
     ) => {
-      const issue = validSubject(subjectId);
+      const event = eventSubjects.get(subjectId);
+      const issue = event ? { id: event.issueId } : validSubject(subjectId);
       add(
         "INSERT INTO posts(id,authorId,communityId,kind,subjectId,issueId,position,text,audience,attachmentJson,priorPostId,createdAt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         objectId,
@@ -732,7 +813,10 @@ export function socialService(
         pos,
         body,
         aud,
-        JSON.stringify(attachment),
+        JSON.stringify({
+          ...(attachment as object),
+          ...(event ? { eventTitle: event.title, eventId: event.id } : {}),
+        }),
         prior,
         now,
       );
@@ -829,6 +913,112 @@ export function socialService(
         );
       };
       switch (data.action) {
+        case "event.preferences":
+          add(
+            "INSERT INTO event_preferences(userId,city,interestsJson,complete) VALUES(?,?,?,?) ON CONFLICT(userId) DO UPDATE SET city=excluded.city,interestsJson=excluded.interestsJson,complete=excluded.complete",
+            uid,
+            data.city,
+            JSON.stringify([...new Set(data.interests)]),
+            +data.complete,
+          );
+          eventMetric("event_interests_saved");
+          break;
+        case "event.save": {
+          if (!["owner", "curator"].includes(m.role))
+            fail(403, "Curator access is required.");
+          guard(
+            "EXISTS(SELECT 1 FROM memberships WHERE userId=? AND role IN ('owner','curator'))",
+            uid,
+          );
+          const e = data.event;
+          if (e.endsAt && e.endsAt <= e.startsAt)
+            fail(400, "End time must follow the start.");
+          if ((e.latitude === null) !== (e.longitude === null))
+            fail(400, "Supply both venue coordinates or neither.");
+          if (e.issueId && !issues.some((i) => i.id === e.issueId))
+            fail(400, "Choose a related issue or leave it blank.");
+          if (Date.parse(e.checkedAt) > Date.now() + 60000)
+            fail(400, "Source check time cannot be in the future.");
+          if (catalogItem(e.id) || issues.some((i) => i.id === e.id))
+            fail(400, "This event ID is reserved.");
+          const existing = await eventFor(e.id);
+          if (data.createOnly && existing) break;
+          if (data.createOnly)
+            guard(
+              "NOT EXISTS(SELECT 1 FROM community_events WHERE id=?)",
+              e.id,
+            );
+          add(
+            "INSERT OR IGNORE INTO event_series(id,title) VALUES(?,?)",
+            e.seriesId,
+            e.title,
+          );
+          add(
+            "INSERT INTO community_events(id,seriesId,communityId,recordJson,startsAt,endsAt,status,createdBy,updatedAt) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET seriesId=excluded.seriesId,recordJson=excluded.recordJson,startsAt=excluded.startsAt,endsAt=excluded.endsAt,status=excluded.status,updatedAt=excluded.updatedAt",
+            e.id,
+            e.seriesId,
+            communityId,
+            JSON.stringify(e),
+            e.startsAt,
+            e.endsAt,
+            e.status,
+            uid,
+            now,
+          );
+          break;
+        }
+        case "event.status": {
+          if (!["owner", "curator"].includes(m.role))
+            fail(403, "Curator access is required.");
+          guard(
+            "EXISTS(SELECT 1 FROM memberships WHERE userId=? AND role IN ('owner','curator'))",
+            uid,
+          );
+          if (!(await eventFor(data.eventId))) fail(404, "Event unavailable.");
+          add(
+            "UPDATE community_events SET status=?,updatedAt=? WHERE id=? AND communityId=?",
+            data.status,
+            now,
+            data.eventId,
+            communityId,
+          );
+          break;
+        }
+        case "event.suggest":
+          add(
+            "INSERT INTO event_suggestions(id,userId,title,sourceUrl,note,createdAt) VALUES(?,?,?,?,?,?)",
+            objectId,
+            uid,
+            data.title,
+            data.sourceUrl,
+            data.note,
+            now,
+          );
+          break;
+        case "event.review":
+          if (
+            !(await one(
+              "SELECT 1 FROM event_suggestions WHERE id=?",
+              data.suggestionId,
+            ))
+          )
+            fail(404, "Suggestion unavailable.");
+          if (!["owner", "curator"].includes(m.role))
+            fail(403, "Curator access is required.");
+          guard(
+            "EXISTS(SELECT 1 FROM memberships WHERE userId=? AND role IN ('owner','curator'))",
+            uid,
+          );
+          add(
+            "UPDATE event_suggestions SET status=? WHERE id=?",
+            data.status,
+            data.suggestionId,
+          );
+          break;
+        case "event.metric":
+          await guardedEvent(data.eventId);
+          eventMetric(data.kind);
+          break;
         case "profile":
           add(
             "UPDATE profiles SET name=?,bio=?,communityLabel=? WHERE id=?",
@@ -928,7 +1118,10 @@ export function socialService(
           break;
         case "post": {
           const item = catalogItem(data.subjectId);
-          validSubject(data.subjectId);
+          const event = !issueFor(data.subjectId)
+            ? await guardedEvent(data.subjectId)
+            : null;
+          if (!event) validSubject(data.subjectId);
           if (
             data.kind === "article" &&
             !data.sourceUrl &&
@@ -937,7 +1130,8 @@ export function socialService(
             fail(400, "Add the article’s HTTPS link.");
           if (
             (data.kind === "event_reflection" || data.kind === "event_share") &&
-            item?.kind !== "Events"
+            item?.kind !== "Events" &&
+            !event
           )
             fail(400, "Choose an event.");
           if (data.position && data.kind !== "opinion")
@@ -1136,7 +1330,11 @@ export function socialService(
           break;
         }
         case "save":
-          if (!catalogItem(data.targetId)) await guardedPost(data.targetId);
+          if (!catalogItem(data.targetId)) {
+            if (await eventFor(data.targetId))
+              await guardedEvent(data.targetId);
+            else await guardedPost(data.targetId);
+          }
           add(
             data.enabled
               ? "INSERT OR IGNORE INTO saves(userId,targetId) VALUES(?,?)"
@@ -1144,9 +1342,12 @@ export function socialService(
             uid,
             data.targetId,
           );
+          if (eventSubjects.has(data.targetId))
+            eventMetric(data.enabled ? "event_saved" : "event_unsaved");
           break;
         case "onboarding.complete":
           add("UPDATE profiles SET onboardingComplete=1 WHERE id=?", uid);
+          eventMetric("onboarding_completed");
           break;
         case "priority.save": {
           if (!issues.some((i) => i.id === data.issueId))
@@ -1326,12 +1527,18 @@ export function socialService(
             );
           break;
         case "plan": {
-          if (!catalogItem(data.eventId)?.event) fail(400, "Choose an event.");
           const prior = await one<{ status: string; audience: string }>(
             "SELECT status,audience FROM plans WHERE userId=? AND eventId=?",
             uid,
             data.eventId,
           );
+          // Existing intent can become private after cancellation or the event ends.
+          // Inactive occurrences reject new intent or a different attendance status.
+          if (!catalogItem(data.eventId)?.event)
+            await guardedEvent(
+              data.eventId,
+              !!data.status && data.status !== prior?.status,
+            );
           if (prior)
             guard(
               "EXISTS(SELECT 1 FROM plans WHERE userId=? AND eventId=? AND status=? AND audience=?)",
@@ -1384,6 +1591,8 @@ export function socialService(
               null,
               { status: data.status },
             );
+          if (eventSubjects.has(data.eventId))
+            eventMetric("event_rsvp_changed");
           break;
         }
         case "answer": {
@@ -1460,7 +1669,9 @@ export function socialService(
         case "report": {
           let evidence: unknown;
           try {
-            evidence = await guardedPost(data.targetId);
+            evidence = (await eventFor(data.targetId))
+              ? await guardedEvent(data.targetId)
+              : await guardedPost(data.targetId);
           } catch {
             const c = await one<{ postId: string; authorId: string }>(
               "SELECT * FROM comments WHERE id=? AND deletedAt IS NULL",
@@ -1595,6 +1806,12 @@ export function socialService(
               data.reportId,
             );
             if (data.removeContent) {
+              add(
+                "UPDATE community_events SET status='archived',updatedAt=? WHERE id=? AND communityId=?",
+                now,
+                r!.targetId,
+                communityId,
+              );
               add(
                 "UPDATE posts SET text=?,attachmentJson=?,deletedAt=? WHERE id=?",
                 "",

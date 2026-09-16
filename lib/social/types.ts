@@ -10,6 +10,54 @@ export type PostType =
 export type Position =
   "support" | "reservations" | "mixed" | "oppose" | "learning";
 export type EventPlanStatus = "interested" | "attending";
+export type EventCategory =
+  | "food_markets"
+  | "arts_culture"
+  | "festivals_parades"
+  | "outdoors"
+  | "volunteering"
+  | "civic_meetings";
+export type CommunityEvent = {
+  id: string;
+  seriesId: string;
+  title: string;
+  description: string;
+  organizer: string;
+  sourceUrl: string;
+  checkedAt: string;
+  venue: string;
+  address: string;
+  city: string;
+  latitude: number | null;
+  longitude: number | null;
+  imageUrl: string;
+  startsAt: string;
+  endsAt: string | null;
+  timezone: string;
+  category: EventCategory;
+  cost: "free" | "paid" | "unknown";
+  costDetails: string;
+  accessibility: string;
+  registration: string;
+  registrationUrl: string;
+  issueId: string;
+  status: "draft" | "published" | "canceled" | "archived";
+  sample: boolean;
+};
+export type EventPreferences = {
+  city: string;
+  interests: EventCategory[];
+  complete: boolean;
+};
+export type EventSuggestion = {
+  id: string;
+  userId: string;
+  title: string;
+  sourceUrl: string;
+  note: string;
+  status: string;
+  createdAt: string;
+};
 export type PlanConfirmation = {
   userId: string;
   eventId: string;
@@ -107,6 +155,9 @@ export type Question = {
   counts?: { choice: string; count: number }[];
 };
 export type Snapshot = {
+  events: CommunityEvent[];
+  eventPreferences: EventPreferences;
+  eventSuggestions?: EventSuggestion[];
   me: Person | null;
   status: "signed_out" | "onboarding" | "ready";
   posts: Post[];
@@ -163,6 +214,8 @@ export type Snapshot = {
   };
 };
 export const emptySnapshot: Snapshot = {
+  events: [],
+  eventPreferences: { city: "Ithaca", interests: [], complete: false },
   me: null,
   status: "signed_out",
   posts: [],

@@ -165,6 +165,7 @@ export function Onboarding({ name, run }: { name: string; run: Run }) {
   );
 }
 export type ComposeOptions = {
+  subjectLabel?: string;
   subjectId?: string;
   post?: Post;
   prior?: Post;
@@ -353,7 +354,9 @@ export function Composer({
                 </option>
               ))}
             {!itemById[subject] && !issues.some((i) => i.id === subject) && (
-              <option value={subject}>{subjectTitle(subject)}</option>
+              <option value={subject}>
+                {options.subjectLabel || subjectTitle(subject)}
+              </option>
             )}
             {choices.map((i) => (
               <option key={i.id} value={i.id}>
