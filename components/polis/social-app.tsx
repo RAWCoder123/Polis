@@ -506,7 +506,7 @@ export default function SocialApp() {
               <div role="alert" className="social-error">
                 <p>{error}</p>
                 <button onClick={() => void refresh()} className="text-button">
-                  Try again
+                  Reload page data
                 </button>
               </div>
             )}
@@ -695,6 +695,8 @@ export default function SocialApp() {
                     run={run}
                     navigate={navigate}
                     query={query}
+                    section={id}
+                    busy={busy}
                   />
                 )}
                 {view === "profile" && (!id || id === me!.id) && (

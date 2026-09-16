@@ -4,7 +4,7 @@ Polis is an invite-only social app for politics and local civic life: discover a
 
 The actual Sites application source is preserved, including the white/cobalt/navy design, sidebar, mobile navigation, assets, pairwise and manual rankings, and illustrative event map. The imported local social pilot goes beyond the currently deployed prototype. `/demo` retains the original fictional browser-only experience, separate from the persisted social app at `/`.
 
-The functional social beta is a locally verified release candidate, with persistent conversations, notifications and private issue priorities. It has not yet passed hosted acceptance with real ChatGPT identities. See [beta setup and migration instructions](docs/BETA_SETUP.md) and the [verification record](docs/VERIFICATION.md) for implemented behavior, synthetic test evidence and remaining release gates.
+The community-event release is a locally verified candidate with persistent conversations, private issue priorities, chosen event interests, and private saves/attendance. It has not yet passed hosted acceptance with real ChatGPT identities. Start with [event pilot setup](docs/event-pilot.md), [social-cycle verification](docs/social-cycle-verification.md), and the [event verification record](docs/event-verification.md).
 
 ## Prerequisites
 
@@ -14,12 +14,12 @@ The functional social beta is a locally verified release candidate, with persist
 
 ## Run locally
 
-While the beta pull request awaits merge, check out `codex/functional-social-beta` after cloning to review these changes. GitHub `main` and the hosted prototype do not yet contain the beta.
+While the release pull request awaits merge, check out `codex/community-events-pilot` after cloning. GitHub `main` and the hosted prototype do not yet contain this candidate.
 
 ```sh
 git clone https://github.com/RAWCoder123/Polis.git
 cd Polis
-git switch --track origin/codex/functional-social-beta
+git switch --track origin/codex/community-events-pilot
 nvm install
 nvm use
 npm ci
@@ -59,7 +59,7 @@ With the development server running in another terminal:
 npm run test:http
 ```
 
-Tests run the real service and migrations against isolated SQLite fixtures, including three-user access checks. The HTTP smoke test creates no user data and checks the local Worker's authentication boundary and rejected writes. Lint currently has seven warnings in preserved MVP components and no errors.
+Tests run the real service and migrations against isolated SQLite fixtures, including three-user access checks. The HTTP smoke test creates no user data and checks the local Worker's authentication boundary and rejected writes. Lint has eight warnings and no errors. `npm run test:browser` exercises the real UI with three isolated synthetic browser sessions; follow its [local-only setup](docs/social-cycle-verification.md) first.
 
 The [CI definition](docs/ci.yml) is prepared for pull requests and pushes to `main`: installation, lint, types, tests, build, and a local Worker smoke check, with read-only permissions and no production credentials or deployment steps. **Remote CI is not active yet:** both available GitHub integrations rejected writing `.github/workflows/ci.yml`. After the owner grants the CLI `workflow` scope or the GitHub app Workflows write permission, move `docs/ci.yml` to `.github/workflows/ci.yml`, push the setup branch, and verify its Actions result. See [setup verification](docs/VERIFICATION.md).
 

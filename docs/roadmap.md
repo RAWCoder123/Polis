@@ -30,6 +30,8 @@ These are local implementation claims. The hosted site still runs the original M
 
 ## Known gaps
 
+The local social-cycle browser journey now passes with independent synthetic sessions, including mobile/desktop overflow, lost-response retry/reload recovery, notifications and attendance privacy. See [current browser verification](social-cycle-verification.md). Hosted authentication and deployment remain unverified.
+
 - Legacy civic records, news, officials, demo map positions, and initial prompts remain fictional or illustrative. The new event catalog is separately sourced. Reference links do not establish those records as real local facts.
 - Three isolated ChatGPT identities, invited site access, and production D1/authentication have not been exercised together.
 - GitHub does not deploy production. Sites source synchronization and saved-version deployment are separate; a prior network restriction prevented the last publication.

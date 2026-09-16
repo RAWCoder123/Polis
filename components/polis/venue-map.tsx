@@ -27,6 +27,11 @@ export default function VenueMap({
         if (canceled || !element.current) return;
         map.current = L.map(element.current, {
           scrollWheelZoom: false,
+          // A route can remove this map before Leaflet's zoom-end timeout.
+          // Instant zoom also respects reduced-motion preferences.
+          zoomAnimation: false,
+          markerZoomAnimation: false,
+          fadeAnimation: false,
         }).setView([42.444, -76.498], 13);
         L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
@@ -85,7 +90,7 @@ export default function VenueMap({
       if (key !== fitted.current && points.length) {
         map.current.fitBounds(
           L.latLngBounds(points.map((e) => [e.latitude!, e.longitude!])),
-          { padding: [42, 42], maxZoom: 15 },
+          { padding: [42, 42], maxZoom: 15, animate: false },
         );
         fitted.current = key;
       }
@@ -94,7 +99,7 @@ export default function VenueMap({
         active &&
         !map.current.getBounds().contains([active.latitude!, active.longitude!])
       )
-        map.current.panTo([active.latitude!, active.longitude!]);
+        map.current.panTo([active.latitude!, active.longitude!], { animate: false });
     });
     return () => {
       canceled = true;

@@ -745,13 +745,18 @@ export function CommunityEventDetail({
   useEffect(() => {
     if (event && event.status !== "draft" && opened.current !== event.id) {
       opened.current = event.id;
-      void run({
-        action: "event.metric",
-        eventId: event.id,
-        kind: "event_open",
+      // Best-effort measurement must not occupy the foreground write lock or
+      // refresh the page while someone is saving a plan.
+      void fetch("/api/polis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId: crypto.randomUUID(),
+          data: { action: "event.metric", eventId: event.id, kind: "event_open" },
+        }),
       }).catch(() => {});
     }
-  }, [event, run]);
+  }, [event]);
   if (!event)
     return (
       <div className="event-empty">

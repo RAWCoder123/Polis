@@ -19,6 +19,7 @@ import {
   type Snapshot,
 } from "@/lib/social/types";
 import type { CommandData } from "@/lib/social/service";
+import { PendingSubmissions } from "@/lib/social/pending-submissions";
 import type { Run, Navigate } from "./social-post";
 export function Modal({
   title,
@@ -74,9 +75,10 @@ export function AudienceField({
     </label>
   );
 }
-function useSubmit(run: Run) {
+function useSubmit(run: Run, draft?: { userId: string; key: string }) {
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [pending] = useState(() => new PendingSubmissions(() => window.sessionStorage));
   return {
     error,
     busy,
@@ -84,7 +86,17 @@ function useSubmit(run: Run) {
       setBusy(true);
       setError("");
       try {
-        return await run(data);
+        const submission = draft ? await pending.start(draft.userId, data) : null;
+        const result = await run(data, submission?.id);
+        if (draft && submission) {
+          // Clear the draft before its token, after the caller's refresh has
+          // finished. A reload while awaiting that refresh can safely retry.
+          try {
+            sessionStorage.removeItem(draft.key);
+          } catch { /* Storage may be unavailable; the in-memory draft is cleared by the form. */ }
+          pending.acknowledge(submission);
+        }
+        return result;
       } catch (e) {
         setError(e instanceof Error ? e.message : "Please try again.");
         return null;
@@ -200,6 +212,7 @@ export function Composer({
     sourceUrl?: string;
     pos?: Position | "";
     aud?: Audience;
+    priorPostId?: string | null;
   }>(() => {
     if (post || prior || copy || options.subjectId || options.kind) return {};
     try {
@@ -208,6 +221,7 @@ export function Composer({
       return {};
     }
   });
+  const priorPostId = prior?.id ?? draft.priorPostId ?? null;
   const [kind, setKind] = useState<
       "opinion" | "question" | "article" | "event_reflection" | "event_share"
     >(
@@ -237,16 +251,16 @@ export function Composer({
     [aud, setAud] = useState<Audience>(
       post?.audience ?? prior?.audience ?? draft.aud ?? "friends",
     );
-  const { error, busy, submit } = useSubmit(run);
+  const { error, busy, submit } = useSubmit(run, post ? undefined : { userId, key });
   useEffect(() => {
     if (post) return;
     try {
       sessionStorage.setItem(
         key,
-        JSON.stringify({ body, subject, kind, aud, pos, sourceUrl }),
+        JSON.stringify({ body, subject, kind, aud, pos, sourceUrl, priorPostId }),
       );
     } catch {}
-  }, [key, body, subject, kind, aud, pos, sourceUrl, post]);
+  }, [key, body, subject, kind, aud, pos, sourceUrl, post, priorPostId]);
   const canPosition =
     kind === "opinion" &&
     (itemById[subject]?.kind === "Policies" ||
@@ -270,7 +284,7 @@ export function Composer({
       title={
         post
           ? "Edit your post"
-          : prior
+          : priorPostId
             ? "What changed your mind?"
             : "Add your perspective"
       }
@@ -303,7 +317,7 @@ export function Composer({
                   sourceUrl,
                   position: canPosition && pos ? pos : null,
                   audience: aud,
-                  priorPostId: prior?.id ?? null,
+                  priorPostId,
                 },
           );
           if (r) {
@@ -315,7 +329,7 @@ export function Composer({
           }
         }}
       >
-        {!post && !prior && (
+        {!post && !priorPostId && (
           <label className="social-field">
             What would you like to share?
             <select
@@ -340,7 +354,7 @@ export function Composer({
           Subject
           <select
             value={subject}
-            disabled={!!post || !!prior}
+            disabled={!!post || !!priorPostId}
             onChange={(e) => {
               setSubject(e.target.value);
               setPos("");
@@ -406,7 +420,7 @@ export function Composer({
         <AudienceField
           value={aud}
           onChange={setAud}
-          disabled={!!post || !!prior}
+          disabled={!!post || !!priorPostId}
         />
         <p className="metadata">
           <Lock size={13} />{" "}
@@ -613,6 +627,7 @@ export function ReplyComposer({
   onCancel,
   run,
   onSaved,
+  disabled = false,
 }: {
   userId: string;
   postId: string;
@@ -621,6 +636,7 @@ export function ReplyComposer({
   onCancel?: () => void;
   run: Run;
   onSaved?: () => void;
+  disabled?: boolean;
 }) {
   const key =
     "polis-reply:" +
@@ -637,7 +653,7 @@ export function ReplyComposer({
       return "";
     }
   });
-  const { submit, error, busy } = useSubmit(run);
+  const { submit, error, busy } = useSubmit(run, editing ? undefined : { userId, key });
   return (
     <form
       className="reply-form"
@@ -686,7 +702,7 @@ export function ReplyComposer({
       <div className="form-actions">
         <button
           className="btn primary small-btn"
-          disabled={busy || !body.trim()}
+          disabled={disabled || busy || !body.trim()}
         >
           {editing ? "Save reply" : "Reply"}
           <Send size={14} />

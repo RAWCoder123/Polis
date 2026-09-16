@@ -31,9 +31,11 @@ npm run build
 POLIS_TEST_ORIGIN=http://127.0.0.1:5176 npm run test:http
 POLIS_TEST_ORIGIN=http://127.0.0.1:5176 npm run test:social-http
 POLIS_TEST_ORIGIN=http://127.0.0.1:5176 npm run test:events-http
+npx playwright install chromium
+POLIS_TEST_ORIGIN=http://127.0.0.1:5176 npm run test:browser
 ```
 
-The last two scripts create synthetic A/B/C identities and local test activity. They reject hosted origins. They must never be run against production. The event script adds the official catalog through the actual authenticated API; it does not write directly to D1. `.dev.vars`, D1 state, screenshots and all test activity remain outside Git. The test account shim is development-only.
+The social/event HTTP scripts create synthetic A/B/C identities and local test activity; run them before the browser script. All three reject hosted origins. They must never run against production. The event script imports through the authenticated API, not directly into D1. `.dev.vars`, D1 state, screenshots and test activity stay outside Git. The test shim is development-only. See the [social-cycle record](social-cycle-verification.md) for browser evidence and its limits.
 
 ## Deployment and migrations
 

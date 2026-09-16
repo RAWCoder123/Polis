@@ -664,13 +664,18 @@ export function Friends({
   run,
   navigate,
   query,
+  section,
+  busy,
 }: {
   data: Snapshot;
   run: Run;
   navigate: Navigate;
   query: string;
+  section?: string;
+  busy: boolean;
 }) {
-  const [tab, setTab] = useState("Friends");
+  const tabs: Record<string, string> = { friends: "Friends", requests: "Requests", discover: "Discover people", blocked: "Blocked" };
+  const tab = tabs[section ?? "friends"] ?? "Friends";
   const people = data.people
     .filter((p) =>
       (p.name + " " + p.username).toLowerCase().includes(query.toLowerCase()),
@@ -686,12 +691,24 @@ export function Friends({
     );
   return (
     <>
-      <div className="social-tabs">
-        {["Friends", "Requests", "Discover people", "Blocked"].map((t) => (
+      <div className="social-tabs" role="tablist" aria-label="People" onKeyDown={(e) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+        const buttons = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+        const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        if (current < 0) return;
+        e.preventDefault();
+        const next = e.key === "Home" ? 0 : e.key === "End" ? buttons.length - 1 : (current + (e.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+        buttons[next].focus();
+        buttons[next].click();
+      }}>
+        {Object.entries(tabs).map(([key, t]) => (
           <button
-            key={t}
+            key={key}
+            role="tab"
+            tabIndex={t === tab ? 0 : -1}
+            aria-selected={t === tab}
             className={t === tab ? "active" : ""}
-            onClick={() => setTab(t)}
+            onClick={() => navigate(key === "friends" ? "friends" : "friends/" + key)}
           >
             {t}
           </button>
@@ -722,6 +739,7 @@ export function Friends({
           </button>
           {p.blocked ? (
             <button
+              disabled={busy}
               className="btn secondary small-btn"
               onClick={() => {
                 void run({
@@ -742,6 +760,7 @@ export function Friends({
             </button>
           ) : p.relationship === "incoming" ? (
             <button
+              disabled={busy}
               className="btn primary small-btn"
               onClick={() => {
                 void run({
@@ -755,6 +774,7 @@ export function Friends({
             </button>
           ) : p.relationship === "outgoing" ? (
             <button
+              disabled={busy}
               className="btn secondary small-btn"
               onClick={() => {
                 void run({
@@ -768,6 +788,7 @@ export function Friends({
             </button>
           ) : (
             <button
+              disabled={busy}
               className="btn primary small-btn"
               onClick={() => {
                 void run({
@@ -1193,6 +1214,7 @@ export function Conversation({
             </small>
             {edit === c.id ? (
               <ReplyComposer
+                disabled={busy}
                 userId={data.me!.id}
                 postId={p.id}
                 editing={c}
@@ -1233,6 +1255,7 @@ export function Conversation({
             </div>
             {replyTo === c.id && (
               <ReplyComposer
+                disabled={busy}
                 userId={data.me!.id}
                 postId={p.id}
                 parentId={c.id}
@@ -1243,7 +1266,7 @@ export function Conversation({
           </div>
         </div>
       ))}
-      <ReplyComposer userId={data.me!.id} postId={p.id} run={run} />
+      <ReplyComposer userId={data.me!.id} postId={p.id} run={run} disabled={busy} />
     </>
   );
 }

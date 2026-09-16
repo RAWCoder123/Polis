@@ -51,8 +51,10 @@ export function Notifications({
                   postId: n.kind === "reaction" ? n.targetId : undefined,
                 }).catch(() => {});
                 navigate(
-                  n.kind === "friend" || n.kind === "friend_request"
-                    ? "friends"
+                  n.kind === "friend_request"
+                    ? "friends/requests"
+                    : n.kind === "friend"
+                      ? "friends"
                     : n.kind === "issue"
                       ? "issue/" + n.targetId
                       : n.kind === "event"

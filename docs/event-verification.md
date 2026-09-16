@@ -1,5 +1,7 @@
 # Event release verification — September 16, 2026
 
+Update: the later [social-cycle browser verification](social-cycle-verification.md) passes at desktop and mobile widths, with 39 unit/service tests after retry fixes. It supersedes the earlier inability to capture mobile evidence below. Hosted deployment/authentication and basemap imagery remain unverified.
+
 ## Verified locally
 
 - Node 24.14.0 / npm 11.9.0; `npm ci` completed (680 packages). Only Leaflet and its types were added; existing locked package records were preserved.
