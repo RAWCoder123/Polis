@@ -1,6 +1,6 @@
 # Event release verification — September 16, 2026
 
-Update: the later [social-cycle browser verification](social-cycle-verification.md) passes at desktop and mobile widths, with 39 unit/service tests after retry fixes. It supersedes the earlier inability to capture mobile evidence below. Hosted deployment/authentication and basemap imagery remain unverified.
+Update: the later [social-cycle browser verification](social-cycle-verification.md) passes at desktop and mobile widths, with 39 unit/service tests after retry fixes. It supersedes the earlier inability to capture mobile evidence below. The subsequent [hosted record](hosted-pilot-verification.md) confirms deployment and owner persistence. Multi-user acceptance and basemap imagery remain unverified. The remaining sections below record the earlier predeployment checks.
 
 ## Verified locally
 

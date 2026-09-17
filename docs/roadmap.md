@@ -30,7 +30,7 @@ These are local implementation claims. The hosted site still runs the original M
 
 ## Known gaps
 
-The local social-cycle browser journey now passes with independent synthetic sessions, including mobile/desktop overflow, lost-response retry/reload recovery, notifications and attendance privacy. See [current browser verification](social-cycle-verification.md). Hosted authentication and deployment remain unverified.
+The local social-cycle browser journey now passes with independent synthetic sessions, including mobile/desktop overflow, lost-response retry/reload recovery, notifications and attendance privacy. See [current browser verification](social-cycle-verification.md). Sites version 2 is now public, and hosted owner profile creation, event import and private save after reload pass. Hosted multi-user acceptance remains pending; see [hosted verification](hosted-pilot-verification.md).
 
 - Legacy civic records, news, officials, demo map positions, and initial prompts remain fictional or illustrative. The new event catalog is separately sourced. Reference links do not establish those records as real local facts.
 - Three isolated ChatGPT identities, invited site access, and production D1/authentication have not been exercised together.
@@ -42,7 +42,7 @@ The local social-cycle browser journey now passes with independent synthetic ses
 
 ## Next three milestones
 
-1. **Verify the hosted social flow.** Resolve Sites source access, restore the Sites connector, deploy the authorized exact validated revision, and exercise A/B friendship/conversation with C denied private content. Record identity, persistence, revocation, blocking, and retry evidence.
+1. **Verify the hosted social flow.** Use the deployed pilot to exercise A/B friendship/conversation with C denied private content. Record identity, persistence, revocation, blocking, and retry evidence.
 2. **Replace samples with sourced local content.** Maintain the sourced event seed and curate Ithaca/Cornell issues, sources, registration requirements, and timelines; agree owner review responsibilities and freshness before inviting participants.
 3. **Finish pilot usability and operations.** Activate the reviewed GitHub workflow after workflow permission is granted, validate map gestures and assistive-technology journeys on target devices, and establish retention, moderation, and minimal activation/reciprocity/return reporting.
 

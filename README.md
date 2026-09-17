@@ -2,7 +2,7 @@
 
 Polis is an invite-only social app for politics and local civic life: discover an issue, express a view, hear from a friend, and follow what happens next. This repository is its development home.
 
-The actual Sites application source is preserved, including the white/cobalt/navy design, sidebar, mobile navigation, assets, pairwise and manual rankings, and illustrative event map. The imported local social pilot goes beyond the currently deployed prototype. `/demo` retains the original fictional browser-only experience, separate from the persisted social app at `/`.
+The actual Sites application source is preserved, including the white/cobalt/navy design, sidebar, mobile navigation, assets, pairwise and manual rankings, and illustrative event map. The social/event pilot is deployed as Sites version 2. `/demo` retains the original fictional browser-only experience, separate from the persisted social app at `/`.
 
 The community-event release is a locally verified candidate with persistent conversations, private issue priorities, chosen event interests, and private saves/attendance. It has not yet passed hosted acceptance with real ChatGPT identities. Start with [event pilot setup](docs/event-pilot.md), [social-cycle verification](docs/social-cycle-verification.md), and the [event verification record](docs/event-verification.md).
 
@@ -73,7 +73,7 @@ See [architecture](docs/architecture.md), [contributing](CONTRIBUTING.md), [agen
 
 ## Deployment relationship
 
-The [existing prototype](https://polis-community.raymondaw2006.chatgpt.site) is hosted by Sites and remains owner-only. **Pushing to GitHub does not deploy it.** Sites currently serves the original MVP revision; this repository also contains later local pilot work. No production deployment or access change is part of this import.
+The [Polis pilot](https://polis-community.raymondaw2006.chatgpt.site) is deployed on Sites with public site access, explicitly selected by the owner on September 17, 2026. Community membership still requires an invitation. **Pushing to GitHub does not deploy it.** See the [hosted verification record](docs/hosted-pilot-verification.md) for the deployed revision, owner persistence checks and outstanding multi-user acceptance.
 
 GitHub is the development remote; Sites retains its separate source repository and saved-version deployment workflow. See [deployment and source provenance](docs/deployment.md) and [pilot configuration](docs/PILOT_SETUP.md). Hosted acceptance still requires three isolated ChatGPT identities with Sites viewing access and Polis invitations.
 

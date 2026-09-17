@@ -181,7 +181,7 @@ export function Admin({ data, run }: { data: Snapshot; run: Run }) {
     <div className="admin-view">
       <p className="catalog-notice">
         Community owner tools · Invitation links are email-bound and expire
-        after seven days. Invitees also need access to this private site.
+        after seven days. Community membership is separate from site visibility.
       </p>
       <section>
         <h2>Invite someone into the community</h2>
@@ -243,8 +243,8 @@ export function Admin({ data, run }: { data: Snapshot; run: Run }) {
               {copied ? "Copied" : "Copy invitation"}
             </button>
             <p className="metadata">
-              Nothing has been sent. Share the link with this person after
-              granting private site access.
+              Nothing has been sent. Share the link with this person. If site
+              access is restricted, grant them access in Sites as well.
             </p>
           </div>
         )}

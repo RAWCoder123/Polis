@@ -4,9 +4,9 @@ This release extends the existing Vinext/React, Sites authentication and D1 soci
 
 ## Current delivery boundary
 
-The release has not been deployed or verified with hosted ChatGPT identities. The existing HTTPS site still serves its earlier prototype. Local synthetic sessions are not evidence of hosted signup, invitations or production persistence. Do not distribute the old deployment as this event pilot.
+Sites version 2 is deployed at https://polis-community.raymondaw2006.chatgpt.site with public site access explicitly selected by the owner. Hosted owner profile creation, curator import, event deep link and private save after reload passed. Invited multi-user acceptance remains outstanding; see the [hosted verification record](hosted-pilot-verification.md).
 
-Sites publishing currently cannot proceed: `git.chatgpt-team.site` times out from this environment, and Sites connector tools became unavailable in this task. Restore the Sites plugin/session access and approved network connectivity to the source host. No alternate Worker, public access change or temporary tunnel was substituted.
+Changing to an authorized working network resolved the source-host timeout and allowed deployment. Sites tools became unavailable again afterward, so subsequent wording corrections are saved but not deployed. No alternate Worker or temporary tunnel was substituted.
 
 See [verification record](event-verification.md) for actual results and unexercised cases.
 
@@ -54,7 +54,7 @@ The owner opens **Community tools → Manage event listings & suggestions** (`#e
 
 ## Tester journey once the hosted release is verified
 
-The site remains private. A tester needs both permitted site access and an email-bound Polis community invitation from the owner. Changing the profile city cannot grant membership. Sign in with the invited ChatGPT account; open the shared `#event/<occurrence-id>` link; optionally choose interests; save; choose Interested or Going; set Private, Friends, or Community visibility deliberately; start a conversation and respond from a second accepted friend's account. Reload and verify persistence. Community means invited community members, not the anonymous internet. Save is always private and RSVP is intention only; organizer registration is separate.
+The site has public access. A tester still needs an email-bound Polis community invitation from the owner. Changing the profile city cannot grant membership. Sign in with the invited ChatGPT account; open the shared `#event/<occurrence-id>` link; optionally choose interests; save; choose Interested or Going; set Private, Friends, or Community visibility deliberately; start a conversation and respond from a second accepted friend's account. Reload and verify persistence. Community means invited community members, not the anonymous internet. Save is always private and RSVP is intention only; organizer registration is separate.
 
 ## Data and privacy
 
