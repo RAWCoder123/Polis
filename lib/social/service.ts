@@ -165,6 +165,8 @@ const action = z.discriminatedUnion("action", [
     reason: z.string().trim().min(3).max(1000),
   }),
   z.object({ action: z.literal("invite"), email: z.string().email().max(254) }),
+  z.object({ action: z.literal("invite.code"), maxUses: z.number().int().min(1).max(100).default(25), expiresDays: z.union([z.literal(1), z.literal(7), z.literal(30)]).default(7) }),
+  z.object({ action: z.literal("invite.revoke"), codeId: z.string().min(1).max(100) }),
   z.object({
     action: z.literal("question.save"),
     questionId: id.optional(),
@@ -613,6 +615,9 @@ export function socialService(
     const admin =
       me.role === "owner"
         ? {
+            invitationCodes: await all<NonNullable<Snapshot["admin"]>["invitationCodes"][number]>(
+              "SELECT id,createdAt,expiresAt,maxUses,useCount,revokedAt FROM invitation_codes ORDER BY createdAt DESC LIMIT 100",
+            ),
             invitations: await all<
               NonNullable<Snapshot["admin"]>["invitations"][number]
             >(
@@ -845,8 +850,20 @@ export function socialService(
             identity!.email.toLowerCase(),
             now,
           );
-      if (!owner && !invite)
-        fail(403, "Use an unexpired invitation for your signed-in email.");
+      // Shared codes are case/spacing insensitive; legacy email-bound tokens
+      // retain their exact digest and email checks above.
+      const normalizedCode = data.invite.replace(/[\s-]/g, "").toUpperCase();
+      const sharedCode = owner || invite ? null : await one<{ id: string }>(
+        "SELECT id FROM invitation_codes WHERE tokenHash=? AND revokedAt IS NULL AND useCount<maxUses AND expiresAt>?",
+        await digest(normalizedCode), now,
+      );
+      if (!owner && !invite && !sharedCode)
+        fail(403, "Use an active invitation code, or an email invitation matching your signed-in email.");
+      if (sharedCode)
+        guard(
+          "EXISTS(SELECT 1 FROM invitation_codes WHERE id=? AND revokedAt IS NULL AND useCount<maxUses AND expiresAt>?)",
+          sharedCode.id, now,
+        );
       if (invite)
         guard(
           "EXISTS(SELECT 1 FROM invitations WHERE id=? AND usedBy IS NULL AND expiresAt>?)",
@@ -874,6 +891,8 @@ export function socialService(
           uid,
           invite.id,
         );
+      if (sharedCode)
+        add("UPDATE invitation_codes SET useCount=useCount+1 WHERE id=?", sharedCode.id);
       if (owner)
         add(
           `INSERT OR IGNORE INTO questions(id,issueId,title,background,sourceUrl,sample,optionsJson,startsAt,endsAt,status) VALUES('sample-housing','housing',?,?,?,?,?,?,?,'scheduled')`,
@@ -1691,6 +1710,24 @@ export function socialService(
             JSON.stringify(evidence),
             now,
           );
+          break;
+        }
+        case "invite.code": {
+          owner();
+          // Twelve uniformly sampled base32 characters give 60 bits of entropy.
+          const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+          const code = Array.from(crypto.getRandomValues(new Uint8Array(12)), byte => alphabet[byte % 32]).join("");
+          const token = "POLIS-" + code.match(/.{4}/g)!.join("-");
+          add("INSERT INTO invitation_codes(id,tokenHash,createdBy,createdAt,expiresAt,maxUses) VALUES(?,?,?,?,?,?)",
+            objectId, await digest(token.replace(/-/g, "")), uid, now,
+            new Date(Date.parse(now) + data.expiresDays * 86400000).toISOString(), data.maxUses);
+          result = { ok: true, invitationCode: token };
+          break;
+        }
+        case "invite.revoke": {
+          owner();
+          if (!(await one("SELECT id FROM invitation_codes WHERE id=?", data.codeId))) fail(404, "Invitation code unavailable.");
+          add("UPDATE invitation_codes SET revokedAt=COALESCE(revokedAt,?) WHERE id=?", now, data.codeId);
           break;
         }
         case "invite": {

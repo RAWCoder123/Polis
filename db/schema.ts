@@ -33,6 +33,16 @@ export const invitations = sqliteTable("invitations", {
   expiresAt: text().notNull(),
   usedBy: text(),
 });
+export const invitationCodes = sqliteTable("invitation_codes", {
+  id: text().primaryKey(),
+  tokenHash: text().notNull().unique(),
+  createdBy: text().notNull(),
+  createdAt: text().notNull(),
+  expiresAt: text().notNull(),
+  maxUses: integer().notNull(),
+  useCount: integer().notNull().default(0),
+  revokedAt: text(),
+});
 export const friendships = sqliteTable(
   "friendships",
   {

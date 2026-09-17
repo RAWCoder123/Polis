@@ -1,4 +1,5 @@
 "use client";
+import { InvitationCodes } from "./social-invitations";
 import { useState } from "react";
 import { Copy, Check, ArrowUpRight } from "lucide-react";
 import { issues } from "@/lib/social/catalog";
@@ -180,11 +181,12 @@ export function Admin({ data, run }: { data: Snapshot; run: Run }) {
   return (
     <div className="admin-view">
       <p className="catalog-notice">
-        Community owner tools · Invitation links are email-bound and expire
-        after seven days. Community membership is separate from site visibility.
+        Community owner tools · Share a code with your testers, or create an
+        email-specific invitation. Community membership is separate from site visibility.
       </p>
+      <InvitationCodes data={data} run={run} />
       <section>
-        <h2>Invite someone into the community</h2>
+        <h2>Email-specific invitation · optional</h2>
         <form
           onSubmit={async (e) => {
             e.preventDefault();

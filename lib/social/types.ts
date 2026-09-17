@@ -69,6 +69,7 @@ export type CommandResult = {
   postId?: string;
   commentId?: string;
   invite?: string;
+  invitationCode?: string;
   plan?: PlanConfirmation;
 };
 export const audiences: Record<Audience, string> = {
@@ -203,6 +204,7 @@ export type Snapshot = {
     name: string;
   }[];
   admin?: {
+    invitationCodes: { id: string; createdAt: string; expiresAt: string; maxUses: number; useCount: number; revokedAt: string | null }[];
     invitations: {
       id: string;
       email: string;

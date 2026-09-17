@@ -1322,3 +1322,62 @@ test("one series occurrence cannot be duplicated under another ID and curator au
   );
   assert.equal((await f.snap("b")).events[0].status, "published");
 });
+
+test("shared codes admit different emails up to their limit and retries consume one use", async () => {
+  const f = fixture(); await f.setup();
+  const key = crypto.randomUUID();
+  const data = { action: "invite.code", maxUses: 2, expiresDays: 7 } as const;
+  const code = await f.act("owner", data, key);
+  assert.deepEqual(await f.act("owner", data, key), code);
+  assert.match(code.invitationCode as string, /^POLIS-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/);
+  const command = { requestId: crypto.randomUUID(), data: { action: "join", name: "First", username: "first_code", invite: String(code.invitationCode).toLowerCase().replaceAll("-", " ") } };
+  await f.service("first").execute(command);
+  await f.service("first").execute(command);
+  assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, 1);
+  await f.act("second", { action: "join", name: "Second", username: "second_code", invite: code.invitationCode as string });
+  await denied(f.act("third", { action: "join", name: "Third", username: "third_code", invite: code.invitationCode as string }), 403);
+  assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, 2);
+  assert.equal((await f.snap("first")).me?.role, "member");
+  assert.equal((await f.snap("first")).admin, undefined);
+  const rows = (await f.snap("owner")).admin!.invitationCodes;
+  assert.equal(rows.length, 1);
+  assert.equal("tokenHash" in rows[0], false);
+  assert.equal(JSON.stringify(rows).includes(String(code.invitationCode)), false);
+  f.raw.close();
+});
+
+test("only owner can create/revoke codes; invalid, expired and revoked codes cannot join", async () => {
+  const f = fixture(); await f.setup();
+  await denied(f.act("a", { action: "invite.code", maxUses: 25, expiresDays: 7 }), 403);
+  await denied(f.act("owner", { action: "invite.code", maxUses: 101, expiresDays: 7 }), 400);
+  const code = await f.act("owner", { action: "invite.code", maxUses: 25, expiresDays: 1 });
+  const id = (await f.snap("owner")).admin!.invitationCodes[0].id;
+  await denied(f.act("a", { action: "invite.revoke", codeId: id }), 403);
+  const join = { action: "join", name: "New", username: "new_code", invite: code.invitationCode as string } as const;
+  await denied(f.act("new", { ...join, invite: "POLIS-INVALID" }), 403);
+  f.raw.prepare("UPDATE invitation_codes SET expiresAt=? WHERE id=?").run("2000-01-01T00:00:00.000Z", id);
+  await denied(f.act("new", join), 403);
+  f.raw.prepare("UPDATE invitation_codes SET expiresAt=? WHERE id=?").run("2099-01-01T00:00:00.000Z", id);
+  await f.act("owner", { action: "invite.revoke", codeId: id });
+  await denied(f.act("new", join), 403);
+  assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, 0);
+  assert.equal(f.raw.prepare("SELECT id FROM profiles WHERE id='new'").get(), undefined);
+  f.raw.close();
+});
+
+test("last code use and revocation are checked transactionally before profile creation", async () => {
+  for (const revoke of [false, true]) {
+    const f = fixture(); await f.setup();
+    const code = await f.act("owner", { action: "invite.code", maxUses: 1, expiresDays: 7 });
+    const id = (await f.snap("owner")).admin!.invitationCodes[0].id;
+    const gate = pauseOnce(f, "INSERT INTO profiles");
+    const first = f.act("first", { action: "join", name: "First", username: "first_code", invite: code.invitationCode as string });
+    await gate.atGate;
+    if (revoke) await f.act("owner", { action: "invite.revoke", codeId: id });
+    else await f.act("second", { action: "join", name: "Second", username: "second_code", invite: code.invitationCode as string });
+    gate.release(); await denied(first, 409);
+    assert.equal(f.raw.prepare("SELECT id FROM profiles WHERE id='first'").get(), undefined);
+    assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, revoke ? 0 : 1);
+    f.raw.close();
+  }
+});

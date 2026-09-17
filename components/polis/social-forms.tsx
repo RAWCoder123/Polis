@@ -157,12 +157,15 @@ export function Onboarding({ name, run }: { name: string; run: Run }) {
           <input
             value={invite}
             onChange={(e) => setInvite(e.target.value)}
-            placeholder="From your community invitation"
+            placeholder="POLIS-XXXX-XXXX-XXXX"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
           />
         </label>
         <p className="metadata">
-          An invitation is linked to your signed-in email. The configured
-          community owner can leave this blank.
+          Enter a shared code from your community owner, or use your email-specific
+          invitation. The configured community owner can leave this blank.
         </p>
         {error && (
           <p role="alert" className="form-error">

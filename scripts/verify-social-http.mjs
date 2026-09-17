@@ -217,3 +217,21 @@ await act("a", {
 console.log(
   "PASS local Worker HTTP: three isolated synthetic sessions, invitations, friendship retries, feed, private direct-link denial, ownership, reactions, reply notifications and exact links, read/unread, edits, private saves, mute, block, deletion. Hosted ChatGPT identities remain unverified.",
 );
+
+// Reusable-code administration stays on the authenticated owner boundary.
+const codeKey = crypto.randomUUID();
+const codeCommand = { action: "invite.code", maxUses: 2, expiresDays: 7 };
+await act("b", codeCommand, 403);
+const generated = await act("a", codeCommand, 200, codeKey);
+assert.match(generated.invitationCode, /^POLIS-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/);
+assert.deepEqual(await act("a", codeCommand, 200, codeKey), generated);
+const codes = (await snapshot("a")).admin.invitationCodes;
+const activeCode = codes.find(row => row.maxUses === 2 && !row.revokedAt);
+assert.ok(activeCode);
+assert.equal(activeCode.useCount, 0);
+assert.equal("tokenHash" in activeCode, false);
+assert.equal((await snapshot("b")).admin, undefined);
+await act("b", { action: "invite.revoke", codeId: activeCode.id }, 403);
+await act("a", { action: "invite.revoke", codeId: activeCode.id });
+assert.ok((await snapshot("a")).admin.invitationCodes.find(row => row.id === activeCode.id).revokedAt);
+console.log("PASS local Worker HTTP: owner-only code generation/revocation, duplicate creation retry, private code metadata and persisted revocation.");

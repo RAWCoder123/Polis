@@ -30,6 +30,8 @@ These are local implementation claims. The hosted site still runs the original M
 
 ## Known gaps
 
+Reusable invitation codes with usage limits, expiration and revocation are implemented and locally tested, but await UI verification and deployment. See [invitation codes](invitation-codes.md).
+
 The local social-cycle browser journey now passes with independent synthetic sessions, including mobile/desktop overflow, lost-response retry/reload recovery, notifications and attendance privacy. See [current browser verification](social-cycle-verification.md). Sites version 2 is now public, and hosted owner profile creation, event import and private save after reload pass. Hosted multi-user acceptance remains pending; see [hosted verification](hosted-pilot-verification.md).
 
 - Legacy civic records, news, officials, demo map positions, and initial prompts remain fictional or illustrative. The new event catalog is separately sourced. Reference links do not establish those records as real local facts.
