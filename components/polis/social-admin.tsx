@@ -1,4 +1,5 @@
 "use client";
+import { InvitationCodes } from "./social-invitations";
 import { useState } from "react";
 import { Copy, Check, ArrowUpRight } from "lucide-react";
 import { issues } from "@/lib/social/catalog";
@@ -38,58 +39,75 @@ export function Notifications({
       {[...groups.values()].map((group) => {
         const n = group[0];
         return (
-          <button
-            key={n.id}
-            className={
-              "notification-row " +
-              (group.some((v) => !v.readAt) ? "unread" : "")
-            }
-            onClick={() => {
-              void run({
-                action: "notifications.read",
-                notificationId: n.kind === "reaction" ? undefined : n.id,
-                postId: n.kind === "reaction" ? n.targetId : undefined,
-              }).catch(() => {});
-              navigate(
-                n.kind === "friend"
-                  ? "friends"
-                  : n.kind === "issue"
-                    ? "issue/" + n.targetId
-                    : n.kind === "event"
-                      ? "item/" + n.targetId
-                      : "post/" +
-                        n.targetId +
-                        (n.commentId ? "/" + n.commentId : ""),
-              );
-            }}
-          >
-            <span className="notification-dot" />
-            <span>
-              <strong>
-                {n.kind === "reply"
-                  ? n.name + " replied to your conversation"
-                  : n.kind === "reaction"
-                    ? n.name +
-                      (group.length > 1
-                        ? " and " + (group.length - 1) + " others"
-                        : "") +
-                      " reacted to your post"
+          <div key={n.id} className="notification-item">
+            <button
+              className={
+                "notification-row " +
+                (group.some((v) => !v.readAt) ? "unread" : "")
+              }
+              onClick={() => {
+                void run({
+                  action: "notifications.read",
+                  notificationId: n.kind === "reaction" ? undefined : n.id,
+                  postId: n.kind === "reaction" ? n.targetId : undefined,
+                }).catch(() => {});
+                navigate(
+                  n.kind === "friend_request"
+                    ? "friends/requests"
                     : n.kind === "friend"
-                      ? n.name + " accepted your friend request"
+                      ? "friends"
+                    : n.kind === "issue"
+                      ? "issue/" + n.targetId
                       : n.kind === "event"
-                        ? "An event in your plans is coming up"
-                        : "An issue you follow has an update"}
-              </strong>
-              <small>{new Date(n.createdAt).toLocaleString()}</small>
-            </span>
-            <ArrowUpRight size={17} />
-          </button>
+                        ? "item/" + n.targetId
+                        : "post/" +
+                          n.targetId +
+                          (n.commentId ? "/" + n.commentId : ""),
+                );
+              }}
+            >
+              <span className="notification-dot" />
+              <span>
+                <strong>
+                  {n.kind === "reply"
+                    ? n.name + " replied to your conversation"
+                    : n.kind === "reaction"
+                      ? n.name +
+                        (group.length > 1
+                          ? " and " + (group.length - 1) + " others"
+                          : "") +
+                        " reacted to your post"
+                      : n.kind === "friend_request"
+                        ? n.name + " sent you a friend request"
+                        : n.kind === "friend"
+                          ? n.name + " accepted your friend request"
+                          : n.kind === "event"
+                            ? "An event in your plans is coming up"
+                            : "An issue you follow has an update"}
+                </strong>
+                <small>{new Date(n.createdAt).toLocaleString()}</small>
+              </span>
+              <ArrowUpRight size={17} />
+            </button>
+            <button
+              className="text-button notification-read"
+              onClick={() => {
+                void run({
+                  action: "notifications.read",
+                  notificationId: n.kind === "reaction" ? undefined : n.id,
+                  postId: n.kind === "reaction" ? n.targetId : undefined,
+                  read: !group.every((v) => v.readAt),
+                }).catch(() => {});
+              }}
+            >
+              {group.every((v) => v.readAt) ? "Mark unread" : "Mark read"}
+            </button>
+          </div>
         );
       })}
       {!data.notifications.length && (
         <Quiet title="You’re all caught up.">
-          Replies, accepted requests, and followed-issue updates will appear
-          here.
+          Replies, friend requests, and followed-issue updates will appear here.
         </Quiet>
       )}
       <details className="notification-preferences">
@@ -112,7 +130,7 @@ export function Notifications({
             />
             {
               {
-                replies: "Replies and accepted friendships",
+                replies: "Replies and friendship requests",
                 reactions: "Reactions to your posts",
                 issues: "Important followed-issue updates",
                 events: "In-app event reminders (within 24 hours)",
@@ -163,11 +181,12 @@ export function Admin({ data, run }: { data: Snapshot; run: Run }) {
   return (
     <div className="admin-view">
       <p className="catalog-notice">
-        Community owner tools · Invitation links are email-bound and expire
-        after seven days. Invitees also need access to this private site.
+        Community owner tools · Share a code with your testers, or create an
+        email-specific invitation. Community membership is separate from site visibility.
       </p>
+      <InvitationCodes data={data} run={run} />
       <section>
-        <h2>Invite someone into the community</h2>
+        <h2>Email-specific invitation · optional</h2>
         <form
           onSubmit={async (e) => {
             e.preventDefault();
@@ -226,8 +245,8 @@ export function Admin({ data, run }: { data: Snapshot; run: Run }) {
               {copied ? "Copied" : "Copy invitation"}
             </button>
             <p className="metadata">
-              Nothing has been sent. Share the link with this person after
-              granting private site access.
+              Nothing has been sent. Share the link with this person. If site
+              access is restricted, grant them access in Sites as well.
             </p>
           </div>
         )}

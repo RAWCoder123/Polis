@@ -2,6 +2,7 @@
 import { useState } from "react";
 import {
   ArrowRight,
+  Bookmark,
   CalendarDays,
   Check,
   Clock3,
@@ -45,7 +46,7 @@ export default function EventExplorer({
   const day = ["12", "13", "14", "15"].includes(params.get("day") ?? "")
     ? params.get("day")!
     : "all";
-  const scope = ["mine", "friends"].includes(params.get("scope") ?? "")
+  const scope = ["mine", "friends", "saved"].includes(params.get("scope") ?? "")
     ? params.get("scope")!
     : "all";
   const layout = params.get("layout") === "list" ? "list" : "map";
@@ -64,9 +65,11 @@ export default function EventExplorer({
         (type === "All types" || i.event.type === type) &&
         (day === "all" || i.event.day === day) &&
         (scope === "all" ||
-          (scope === "mine" ? myPlans : friendPlans).some(
-            (p) => p.eventId === i.id,
-          )) &&
+          (scope === "saved"
+            ? data.saved.includes(i.id)
+            : (scope === "mine" ? myPlans : friendPlans).some(
+                (p) => p.eventId === i.id,
+              ))) &&
         (!query ||
           (i.title + " " + i.topic + " " + i.summary + " " + i.event.place)
             .toLowerCase()
@@ -191,6 +194,7 @@ export default function EventExplorer({
           >
             <option value="all">All events</option>
             <option value="mine">My plans</option>
+            <option value="saved">Saved privately</option>
             <option value="friends">Friends’ shared plans</option>
           </select>
         </label>
@@ -211,7 +215,11 @@ export default function EventExplorer({
       <div className="event-result-line">
         <span role="status">
           {events.length} {events.length === 1 ? "event" : "events"}
-          {activeFilters ? " match your filters" : " to explore"}
+          {activeFilters
+            ? events.length === 1
+              ? " matches your filters"
+              : " match your filters"
+            : " to explore"}
         </span>
         <span>Sample week · September 12–15, 2026</span>
       </div>
@@ -284,6 +292,22 @@ export default function EventExplorer({
                       <CalendarDays size={15} />
                     )}{" "}
                     {planLabel(selected)}
+                  </button>
+                  <button
+                    className="btn secondary"
+                    aria-pressed={data.saved.includes(selected.id)}
+                    onClick={() => {
+                      void run({
+                        action: "save",
+                        targetId: selected.id,
+                        enabled: !data.saved.includes(selected.id),
+                      }).catch(() => {});
+                    }}
+                  >
+                    <Bookmark size={15} />
+                    {data.saved.includes(selected.id)
+                      ? "Saved privately"
+                      : "Save privately"}
                   </button>
                   <button
                     className="btn secondary"
@@ -377,6 +401,20 @@ export default function EventExplorer({
                 <div className="event-card-actions">
                   <button
                     className="text-button"
+                    aria-pressed={data.saved.includes(item.id)}
+                    onClick={() => {
+                      void run({
+                        action: "save",
+                        targetId: item.id,
+                        enabled: !data.saved.includes(item.id),
+                      }).catch(() => {});
+                    }}
+                  >
+                    <Bookmark size={14} />
+                    {data.saved.includes(item.id) ? "Saved" : "Save privately"}
+                  </button>
+                  <button
+                    className="text-button"
                     onClick={() => setPlanning(item.id)}
                   >
                     {mine ? "Edit plan" : "Make a plan"}
@@ -398,7 +436,9 @@ export default function EventExplorer({
                   ? "Your saved plans will appear here. Explore all events to find one."
                   : scope === "friends"
                     ? "Your friends haven’t shared matching plans with you yet."
-                    : "Try another date, event type, or search."}
+                    : scope === "saved"
+                      ? "Events you save privately will appear here. Saving is separate from a plan or registration."
+                      : "Try another date, event type, or search."}
               </p>
               <button
                 className="btn secondary"

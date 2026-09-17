@@ -1,4 +1,12 @@
 "use client";
+import { WelcomeSteps } from "./issue-priorities";
+import {
+  AroundEvents,
+  CommunityEvents,
+  CommunityEventDetail,
+  EventCollections,
+} from "./community-events";
+import { EventManager } from "./event-manager";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Asterisk,
@@ -21,13 +29,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
-import { items, itemById, type CivicItem } from "@/lib/polis-data";
+import { itemById, type CivicItem } from "@/lib/polis-data";
 import type { Post } from "@/lib/social/types";
 import type { DemoState } from "@/lib/polis-state";
 import { useSocial } from "@/lib/social/use-social";
 import { issues, subjectTitle } from "@/lib/social/catalog";
 import { Avatar } from "./common";
-import CommunityMap from "./community-map";
 import { RankDialog } from "./dialogs";
 import { PostCard } from "./social-post";
 import {
@@ -95,6 +102,7 @@ export default function SocialApp() {
   if (view === "post" || view === "list") params.set("post", id ?? "");
   if (view === "post" && commentId) params.set("comment", commentId);
   if (view === "issue") params.set("issue", id ?? "");
+  if (view === "event") params.set("event", id ?? "");
   if (view === "profile") params.set("author", id ?? "me");
   if (view === "saved") params.set("filter", "saved");
   if (query && view === "home") params.set("q", query);
@@ -176,7 +184,10 @@ export default function SocialApp() {
       location.href = signin;
       return;
     }
-    setComposer(o);
+    setComposer({
+      ...o,
+      subjectLabel: data.events.find((e) => e.id === o.subjectId)?.title,
+    });
   }
   function editPost(p: Post) {
     if (p.priorPostId === "publish-change")
@@ -343,6 +354,15 @@ export default function SocialApp() {
               </span>
             </button>
           )}
+          {me?.role === "curator" && (
+            <button
+              className="text-button"
+              onClick={() => navigate("event-manager")}
+            >
+              <Settings size={16} />
+              Manage events
+            </button>
+          )}
           {me?.role === "owner" && (
             <button className="text-button" onClick={() => navigate("admin")}>
               <Settings size={16} />
@@ -386,7 +406,9 @@ export default function SocialApp() {
                   : view === "home"
                     ? "Search conversations"
                     : view === "explore"
-                      ? "Search the civic catalog"
+                      ? !id || id === "events"
+                        ? "Search events and places"
+                        : "Search the civic catalog"
                       : "Search local issues · Enter"
               }
               aria-label={
@@ -395,7 +417,9 @@ export default function SocialApp() {
                   : view === "friends"
                     ? "Search people"
                     : view === "explore"
-                      ? "Search the civic catalog"
+                      ? !id || id === "events"
+                        ? "Search events and places"
+                        : "Search the civic catalog"
                       : "Search local issues; press Enter"
               }
               value={query}
@@ -453,7 +477,14 @@ export default function SocialApp() {
           tabIndex={-1}
           className={
             "social-layout " +
-            (["explore", "admin"].includes(view) ? "social-wide" : "") +
+            ([
+              "explore",
+              "admin",
+              "event-collections",
+              "event-manager",
+            ].includes(view)
+              ? "social-wide"
+              : "") +
             (view === "explore" && id === "events" ? " events-wide" : "")
           }
         >
@@ -475,11 +506,15 @@ export default function SocialApp() {
               <div role="alert" className="social-error">
                 <p>{error}</p>
                 <button onClick={() => void refresh()} className="text-button">
-                  Try again
+                  Reload page data
                 </button>
               </div>
             )}
-            {data.status === "signed_out" ? (
+            {loading && !data.me ? (
+              <p className="notice" role="status">
+                Loading your community…
+              </p>
+            ) : data.status === "signed_out" ? (
               <>
                 <section className="daily-card">
                   <div className="social-section-label">
@@ -513,6 +548,10 @@ export default function SocialApp() {
               <>
                 {view === "home" && (
                   <>
+                    <WelcomeSteps data={data} run={run} navigate={navigate} />
+                    <div className="home-community-events">
+                      <AroundEvents data={data} run={run} navigate={navigate} />
+                    </div>
                     <DailyQuestion
                       key={
                         (data.question?.id ?? "") + JSON.stringify(data.answer)
@@ -535,14 +574,21 @@ export default function SocialApp() {
                       aria-label="Feed audience"
                     >
                       {[
-                        { id: "friends", label: "Friends" },
-                        { id: "following", label: "Followed issues" },
+                        { id: "friends", label: "Following" },
                         { id: "community", label: "Community" },
                       ].map((f) => (
                         <button
                           role="tab"
-                          aria-selected={filter === f.id}
-                          className={filter === f.id ? "active" : ""}
+                          aria-selected={
+                            filter === f.id ||
+                            (filter === "following" && f.id === "friends")
+                          }
+                          className={
+                            filter === f.id ||
+                            (filter === "following" && f.id === "friends")
+                              ? "active"
+                              : ""
+                          }
                           key={f.id}
                           onClick={() => setFilter(f.id)}
                         >
@@ -550,6 +596,21 @@ export default function SocialApp() {
                         </button>
                       ))}
                     </div>
+                    {filter !== "community" && (
+                      <button
+                        className="text-button feed-issue-filter"
+                        aria-pressed={filter === "following"}
+                        onClick={() =>
+                          setFilter(
+                            filter === "following" ? "friends" : "following",
+                          )
+                        }
+                      >
+                        {filter === "following"
+                          ? "Showing followed issues · Show people"
+                          : "Show followed issues"}
+                      </button>
+                    )}
                     <p className="feed-context">
                       {filter === "friends"
                         ? "Your contributions and accepted friends, newest first."
@@ -560,18 +621,65 @@ export default function SocialApp() {
                     {feed}
                   </>
                 )}
-                {view === "explore" && (
-                  <Explore
-                    query={query}
-                    navigate={navigate}
-                    explore={(next) => navigate(next, { preserveScroll: true })}
+                {view === "explore" &&
+                  (!id || (id === "events" && !commentId)) && (
+                    <CommunityEvents
+                      data={data}
+                      run={run}
+                      navigate={navigate}
+                      params={exploreParams}
+                      query={query}
+                    />
+                  )}
+                {view === "event-collections" && (
+                  <CommunityEvents
                     data={data}
                     run={run}
-                    category={id}
-                    selectedId={commentId}
+                    navigate={navigate}
                     params={exploreParams}
+                    collection={id}
                   />
                 )}
+                {view === "event" && (
+                  <CommunityEventDetail
+                    key={
+                      id +
+                      ":" +
+                      JSON.stringify(
+                        data.plans.find(
+                          (p) => p.eventId === id && p.userId === me?.id,
+                        ),
+                      )
+                    }
+                    id={id}
+                    data={data}
+                    run={run}
+                    navigate={navigate}
+                    compose={compose}
+                    report={setActionTarget}
+                  >
+                    {feed}
+                  </CommunityEventDetail>
+                )}
+                {view === "event-manager" && (
+                  <EventManager data={data} run={run} navigate={navigate} />
+                )}
+                {view === "explore" &&
+                  id &&
+                  (id !== "events" || !!commentId) && (
+                    <Explore
+                      query={query}
+                      navigate={navigate}
+                      explore={(next) =>
+                        navigate(next, { preserveScroll: true })
+                      }
+                      data={data}
+                      run={run}
+                      category={id}
+                      selectedId={commentId}
+                      params={exploreParams}
+                    />
+                  )}
                 {view === "rankings" && (
                   <RankingList
                     data={data}
@@ -587,7 +695,12 @@ export default function SocialApp() {
                     run={run}
                     navigate={navigate}
                     query={query}
+                    section={id}
+                    busy={busy}
                   />
+                )}
+                {view === "profile" && (!id || id === me!.id) && (
+                  <EventCollections data={data} run={run} navigate={navigate} />
                 )}
                 {view === "profile" && (
                   <Profile
@@ -661,11 +774,12 @@ export default function SocialApp() {
                         setComposer({
                           ...o,
                           kind:
-                            i?.kind === "News"
+                            o.kind ??
+                            (i?.kind === "News"
                               ? "article"
                               : i?.event
                                 ? "event_reflection"
-                                : "opinion",
+                                : "opinion"),
                         } as ComposeOptions);
                       }}
                       rank={rank}
@@ -731,6 +845,9 @@ export default function SocialApp() {
                   "notifications",
                   "admin",
                   "saved",
+                  "event",
+                  "event-collections",
+                  "event-manager",
                 ].includes(view) && (
                   <Quiet title="Page unavailable.">
                     <button
@@ -744,7 +861,17 @@ export default function SocialApp() {
                 {view === "notifications" && (
                   <Notifications data={data} run={run} navigate={navigate} />
                 )}
-                {view === "admin" && <Admin data={data} run={run} />}
+                {view === "admin" && (
+                  <>
+                    <button
+                      className="btn primary"
+                      onClick={() => navigate("event-manager")}
+                    >
+                      Manage event listings & suggestions
+                    </button>
+                    <Admin data={data} run={run} />
+                  </>
+                )}
                 {view === "saved" && (
                   <>
                     <p className="catalog-notice">
@@ -812,42 +939,9 @@ export default function SocialApp() {
                 </div>
               ))}
             </section>
-            <section>
-              <div className="section-heading">
-                <h2>Around the corner</h2>
-                <button
-                  aria-label="Explore events"
-                  onClick={() => navigate("explore/events")}
-                >
-                  <ArrowUpRight size={18} />
-                </button>
-              </div>
-              <CommunityMap
-                compact
-                showFriends={false}
-                onSelect={(i) => navigate("explore/events/" + i.id)}
-              />
-              {items
-                .filter((i) => i.event)
-                .sort((a, b) => Number(a.event!.day) - Number(b.event!.day))
-                .slice(0, 2)
-                .map((i) => (
-                  <button
-                    className="social-event-row"
-                    onClick={() => navigate("item/" + i.id)}
-                    key={i.id}
-                  >
-                    <span className="social-date">
-                      {i.event?.day}
-                      <small>SEP</small>
-                    </span>
-                    <span>
-                      <strong>{i.title}</strong>
-                      <small>Sample · Sep {i.event?.day}, 2026</small>
-                    </span>
-                  </button>
-                ))}
-            </section>
+            {data.status === "ready" && (
+              <AroundEvents data={data} run={run} navigate={navigate} />
+            )}
             <p className="social-rail-note">
               A place for questions, different perspectives, and showing up
               together.

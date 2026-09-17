@@ -15,6 +15,27 @@
       "when": 1789101044069,
       "tag": "0001_lowly_ted_forrester",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789425296669,
+      "tag": "0002_majestic_trish_tilby",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789565617335,
+      "tag": "0003_gorgeous_wong",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1789683507209,
+      "tag": "0004_odd_lord_hawal",
+      "breakpoints": true
     }
   ]
 }

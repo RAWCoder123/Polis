@@ -43,3 +43,10 @@ export const eventStart = (id: string) =>
     "transit-walk": "2026-09-13T19:00:00.000Z",
     "library-forum": "2026-09-15T21:30:00.000Z",
   })[id];
+export const eventEnd = (id: string) =>
+  ({
+    "housing-meeting": "2026-09-13T00:00:00.000Z",
+    "creek-cleanup": "2026-09-14T15:00:00.000Z",
+    "transit-walk": "2026-09-13T20:30:00.000Z",
+    "library-forum": "2026-09-15T23:00:00.000Z",
+  })[id];

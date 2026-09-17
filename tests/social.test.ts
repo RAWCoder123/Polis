@@ -561,7 +561,10 @@ test("unchanged event plans retain their conversation; changed audiences start a
   } as const;
   const first = await f.act("a", plan);
   assert.deepEqual(first.plan, {
-    userId: "a", eventId: plan.eventId, status: plan.status, audience: plan.audience,
+    userId: "a",
+    eventId: plan.eventId,
+    status: plan.status,
+    audience: plan.audience,
   });
   const postId = first.postId!;
   await f.act("b", {
@@ -586,7 +589,10 @@ test("unchanged event plans retain their conversation; changed audiences start a
   await denied(f.snap("b", { post: postId }), 404);
   const removed = await f.act("a", { ...plan, status: null });
   assert.deepEqual(removed.plan, {
-    userId: "a", eventId: plan.eventId, status: null, audience: "only_me",
+    userId: "a",
+    eventId: plan.eventId,
+    status: null,
+    audience: "only_me",
   });
 });
 
@@ -724,4 +730,654 @@ test("an invitation can be consumed only once, even across simultaneous identiti
       .get()!.n,
     1,
   );
+});
+
+test("issue opinions accept safe sources, preserve them on text edits, and reject unsafe links", async () => {
+  const f = fixture();
+  await f.setup();
+  await f.friends();
+  const result = await f.act("a", {
+    action: "post",
+    kind: "opinion",
+    subjectId: "transit",
+    position: "learning",
+    text: "Learning about buses",
+    sourceUrl: "https://tcatbus.com/",
+  });
+  await f.act("a", {
+    action: "post.edit",
+    postId: result.postId!,
+    text: "Updated view",
+    position: "mixed",
+  });
+  const p = (await f.snap("b", { post: result.postId! })).posts[0];
+  assert.equal(p.position, "mixed");
+  assert.equal(JSON.parse(p.attachmentJson).sourceUrl, "https://tcatbus.com/");
+  for (const sourceUrl of [
+    "javascript:alert(1)",
+    "https://user:password@example.test/",
+    "not a URL",
+  ])
+    await denied(
+      f.act("a", {
+        action: "post",
+        kind: "opinion",
+        subjectId: "transit",
+        text: "link",
+        sourceUrl,
+      }),
+      400,
+    );
+  const article = await f.act("a", {
+    action: "post",
+    kind: "article",
+    subjectId: "transit",
+    text: "An article with context",
+    sourceUrl: "https://example.test/article",
+  });
+  assert.ok(article.postId);
+  await denied(
+    f.act("a", {
+      action: "post.edit",
+      postId: article.postId!,
+      text: "Article context",
+      sourceUrl: "",
+    }),
+    400,
+  );
+  await denied(
+    f.act("a", {
+      action: "post",
+      kind: "article",
+      subjectId: "transit",
+      text: "No article link",
+    }),
+    400,
+  );
+});
+
+test("unknown and prototype-named civic items cannot become saved items or rankings", async () => {
+  const f = fixture();
+  await f.setup();
+  for (const itemId of [
+    "constructor",
+    "__proto__",
+    "toString",
+    "unknown-item",
+  ]) {
+    await denied(
+      f.act("a", { action: "save", targetId: itemId, enabled: true }),
+      404,
+    );
+    await denied(
+      f.act("a", { action: "ranking", itemId, score: 5, note: "" }),
+      400,
+    );
+    await denied(
+      f.act("a", { action: "plan", eventId: itemId, status: "interested" }),
+      404,
+    );
+  }
+  assert.equal(f.count("saves"), 0);
+  assert.equal(f.count("rankings"), 0);
+
+  // Older unsupported records must not poison the profile or saved-items response.
+  f.raw.exec("INSERT INTO saves(userId,targetId) VALUES('a','constructor')");
+  f.raw.exec(
+    "INSERT INTO rankings(userId,itemId,score,note,priority) VALUES('a','constructor',5,'',0)",
+  );
+  await f.act("a", {
+    action: "save",
+    targetId: "housing-meeting",
+    enabled: true,
+  });
+  await f.act("a", { action: "ranking", itemId: "homes", score: 7, note: "" });
+  const snapshot = await f.snap("a");
+  assert.deepEqual(snapshot.saved, ["housing-meeting"]);
+  assert.deepEqual(
+    snapshot.rankings.map((r) => r.itemId),
+    ["homes"],
+  );
+  await denied(
+    f.act("a", {
+      action: "ranking.share",
+      itemIds: ["constructor"],
+      title: "Invalid item",
+      text: "",
+    }),
+    400,
+  );
+});
+
+test("friend request and reply inboxes deduplicate, honor access, and support unread state", async () => {
+  const f = fixture();
+  await f.setup();
+  const request = crypto.randomUUID();
+  for (let i = 0; i < 2; i++)
+    await f.act(
+      "a",
+      { action: "friend", targetId: "b", operation: "request" },
+      request,
+    );
+  assert.equal(
+    (await f.snap("b")).notifications.filter((n) => n.kind === "friend_request")
+      .length,
+    1,
+  );
+  await f.act("b", { action: "friend", targetId: "a", operation: "accept" });
+  assert.equal(
+    (await f.snap("b")).notifications.filter((n) => n.kind === "friend_request")
+      .length,
+    0,
+  );
+  const p = await f.post("community");
+  const top = await f.act("b", {
+    action: "comment",
+    postId: p,
+    text: "Question",
+  });
+  const rid = crypto.randomUUID();
+  const reply = await f.act(
+    "c",
+    {
+      action: "comment",
+      postId: p,
+      parentId: top.commentId!,
+      text: "Response",
+    },
+    rid,
+  );
+  const repeatedReply = await f.act(
+    "c",
+    {
+      action: "comment",
+      postId: p,
+      parentId: top.commentId!,
+      text: "Response",
+    },
+    rid,
+  );
+  assert.equal(repeatedReply.commentId, reply.commentId);
+  for (const user of ["a", "b"]) {
+    const notices = (await f.snap(user)).notifications.filter(
+      (n) => n.commentId === reply!.commentId,
+    );
+    assert.equal(notices.length, 1);
+    await f.act(user, {
+      action: "notifications.read",
+      notificationId: notices[0].id,
+    });
+    assert.ok(
+      (await f.snap(user)).notifications.find((n) => n.id === notices[0].id)!
+        .readAt,
+    );
+    await f.act(user, {
+      action: "notifications.read",
+      notificationId: notices[0].id,
+      read: false,
+    });
+    assert.equal(
+      (await f.snap(user)).notifications.find((n) => n.id === notices[0].id)!
+        .readAt,
+      null,
+    );
+  }
+  assert.equal((await f.snap("c")).notifications.length, 0);
+  await f.act("c", { action: "comment.delete", commentId: reply!.commentId! });
+  assert.equal(
+    (await f.snap("a", { post: p, comment: reply!.commentId! }))
+      .commentUnavailable,
+    true,
+  );
+  assert.equal(
+    (await f.snap("a")).notifications.some(
+      (n) => n.commentId === reply!.commentId,
+    ),
+    false,
+  );
+});
+
+test("issue priorities stay private, reorder independently from support, and share selected immutable snapshots", async () => {
+  const f = fixture();
+  await f.setup();
+  await f.friends();
+  await f.act("a", {
+    action: "ranking",
+    itemId: "homes",
+    score: 8,
+    note: "Private policy note",
+  });
+  await f.act("a", {
+    action: "priority.save",
+    issueId: "housing",
+    note: "Private housing reason",
+  });
+  await f.act("a", {
+    action: "priority.save",
+    issueId: "transit",
+    note: "Private transit reason",
+  });
+  await f.act("a", { action: "priority.save", issueId: "housing" });
+  assert.equal(
+    (await f.snap("a")).priorities[0].note,
+    "Private housing reason",
+  );
+  await f.act("a", {
+    action: "priority.order",
+    issueIds: ["transit", "housing"],
+  });
+  assert.deepEqual(
+    (await f.snap("a")).priorities.map((p) => p.issueId),
+    ["transit", "housing"],
+  );
+  assert.equal((await f.snap("a")).rankings[0].score, 8);
+  assert.deepEqual((await f.snap("b", { author: "a" })).priorities, []);
+  const shared = await f.act("a", {
+    action: "priority.share",
+    issueIds: ["housing", "transit"],
+    title: "Priorities",
+    text: "",
+    audience: "friends",
+  });
+  const before = (await f.snap("b", { post: shared.postId! })).posts[0]
+    .attachmentJson;
+  assert.equal(before.includes("Private"), false);
+  assert.deepEqual(
+    JSON.parse(before).items.map((r: { itemId: string }) => r.itemId),
+    ["transit", "housing"],
+  );
+  await f.act("a", { action: "priority.remove", issueId: "transit" });
+  assert.equal(
+    (await f.snap("b", { post: shared.postId! })).posts[0].attachmentJson,
+    before,
+  );
+  await denied(f.snap("c", { post: shared.postId! }), 404);
+  await denied(
+    f.act("b", {
+      action: "priority.share",
+      issueIds: ["housing"],
+      title: "No access",
+      text: "",
+    }),
+    400,
+  );
+  await denied(
+    f.act("a", { action: "priority.order", issueIds: ["housing", "housing"] }),
+    400,
+  );
+  await denied(
+    f.act("a", { action: "priority.order", issueIds: ["transit", "housing"] }),
+    409,
+  );
+  await f.act("a", { action: "onboarding.complete" });
+  assert.equal((await f.snap("a")).me!.onboardingComplete, 1);
+  assert.equal((await f.snap("b")).me!.onboardingComplete, 0);
+});
+
+test("beta migration upgrades existing profiles without losing activity", () => {
+  const raw = new DatabaseSync(":memory:");
+  const files = readdirSync("drizzle")
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  for (const file of files.slice(0, 2))
+    raw.exec(readFileSync("drizzle/" + file, "utf8"));
+  raw.exec(
+    "INSERT INTO profiles(id,name,username,createdAt) VALUES('old','Existing','existing','2026-09-01'); INSERT INTO saves(userId,targetId) VALUES('old','library-forum');",
+  );
+  for (const file of files.slice(2))
+    raw.exec(readFileSync("drizzle/" + file, "utf8"));
+  assert.equal(
+    raw.prepare("SELECT onboardingComplete FROM profiles WHERE id='old'").get()!
+      .onboardingComplete,
+    0,
+  );
+  assert.equal(
+    raw.prepare("SELECT COUNT(*) n FROM saves WHERE userId='old'").get()!.n,
+    1,
+  );
+  raw.close();
+});
+
+// Dated event coverage uses synthetic records only; the migration and service are real.
+import type { CommunityEvent } from "../lib/social/types.ts";
+const futureEvent = (id = "fixture-garden-date"): CommunityEvent => ({
+  id,
+  seriesId: "fixture-garden",
+  title: "SYNTHETIC garden tour",
+  description: "A synthetic event used only to verify privacy.",
+  organizer: "Test organizer",
+  sourceUrl: "https://example.test/event",
+  checkedAt: "2026-01-01T00:00:00.000Z",
+  venue: "Test venue",
+  address: "Test address",
+  city: "Ithaca",
+  latitude: 42.4,
+  longitude: -76.5,
+  imageUrl: "",
+  startsAt: "2099-09-20T14:00:00.000Z",
+  endsAt: "2099-09-20T15:00:00.000Z",
+  timezone: "America/New_York",
+  category: "outdoors",
+  cost: "unknown",
+  costDetails: "",
+  accessibility: "",
+  registration: "Organizer signup required",
+  registrationUrl: "https://example.test/register",
+  issueId: "",
+  status: "published",
+  sample: true,
+});
+
+test("dated event saves and private attendance persist, deduplicate, and never expose names or counts to other members", async () => {
+  const f = fixture();
+  await f.setup();
+  await f.friends();
+  const event = futureEvent();
+  await f.act("owner", { action: "event.save", event });
+  const request = crypto.randomUUID();
+  const plan = {
+    action: "plan",
+    eventId: event.id,
+    status: "attending",
+    audience: "only_me",
+  } as const;
+  await f.act("a", plan, request);
+  await f.act("a", plan, request);
+  await f.act("a", plan);
+  assert.equal(f.count("plans"), 1);
+  assert.equal(f.count("posts"), 0);
+  assert.equal((await f.snap("a")).plans[0].status, "attending");
+  for (const id of ["b", "c"]) assert.equal((await f.snap(id)).plans.length, 0);
+  const save = { action: "save", targetId: event.id, enabled: true } as const;
+  await f.act("a", save);
+  await f.act("a", save);
+  assert.equal(f.count("saves"), 1);
+  assert.deepEqual((await f.snap("a")).saved, [event.id]);
+  assert.equal((await f.snap("b")).saved.length, 0);
+  await denied(
+    f.service("b").execute({
+      requestId: crypto.randomUUID(),
+      data: { ...plan, userId: "a" },
+    }),
+    400,
+  );
+  assert.equal((await f.snap(null)).events.length, 0);
+  const metrics = f.raw
+    .prepare("SELECT userId,objectId FROM metrics WHERE event LIKE 'event_%'")
+    .all();
+  assert.ok(
+    metrics.every((x) => x.userId === "aggregate" && x.objectId === null),
+  );
+});
+
+test("event privacy changes revoke prior discussions, honor friends, mutes and blocks, and preserve explicit sharing", async () => {
+  const f = fixture();
+  await f.setup();
+  await f.friends();
+  const e = futureEvent();
+  await f.act("owner", { action: "event.save", event: e });
+  await f.act("a", {
+    action: "plan",
+    eventId: e.id,
+    status: "interested",
+    audience: "friends",
+  });
+  const p = (await f.snap("b", { event: e.id })).posts[0];
+  assert.equal(p.subjectId, e.id);
+  assert.equal((await f.snap("b")).plans.length, 1);
+  assert.equal((await f.snap("c")).plans.length, 0);
+  const reply = await f.act("b", {
+    action: "comment",
+    postId: p.id,
+    text: "SYNTHETIC question",
+  });
+  assert.ok(
+    (await f.snap("a")).notifications.some(
+      (n) => n.commentId === reply.commentId,
+    ),
+  );
+  await f.act("a", {
+    action: "plan",
+    eventId: e.id,
+    status: "interested",
+    audience: "only_me",
+  });
+  await denied(f.snap("b", { post: p.id }), 404);
+  assert.equal((await f.snap("b")).plans.length, 0);
+  await f.act("a", {
+    action: "plan",
+    eventId: e.id,
+    status: "interested",
+    audience: "community",
+  });
+  assert.equal((await f.snap("c")).plans.length, 1);
+  await f.act("b", { action: "mute", targetId: "a", enabled: true });
+  assert.equal((await f.snap("b")).plans.length, 0);
+  await f.act("c", { action: "block", targetId: "a", enabled: true });
+  assert.equal((await f.snap("c")).plans.length, 0);
+  await f.act("a", { action: "plan", eventId: e.id, status: null });
+  assert.equal(f.count("plans"), 0);
+});
+
+test("curation permissions, seed retries, private preferences and suggestion review are enforced", async () => {
+  const f = fixture();
+  await f.setup();
+  const event = futureEvent();
+  await denied(f.act("a", { action: "event.save", event }), 403);
+  await f.act("owner", { action: "event.save", event, createOnly: true });
+  await f.act("owner", {
+    action: "event.save",
+    event: { ...event, title: "Curator corrected title" },
+  });
+  await f.act("owner", { action: "event.save", event, createOnly: true });
+  assert.equal(f.count("community_events"), 1);
+  assert.equal((await f.snap("a")).events[0].title, "Curator corrected title");
+  await f.act("a", {
+    action: "event.preferences",
+    city: "Ithaca",
+    interests: ["outdoors"],
+  });
+  assert.deepEqual((await f.snap("a")).eventPreferences.interests, [
+    "outdoors",
+  ]);
+  assert.deepEqual((await f.snap("b")).eventPreferences.interests, []);
+  const request = crypto.randomUUID(),
+    suggest = {
+      action: "event.suggest",
+      title: "Test suggestion",
+      sourceUrl: "https://example.test/event",
+      note: "SYNTHETIC review note",
+    } as const;
+  await f.act("a", suggest, request);
+  await f.act("a", suggest, request);
+  assert.equal(f.count("event_suggestions"), 1);
+  assert.equal((await f.snap("b")).eventSuggestions?.length, 0);
+  const suggestionId = (await f.snap("owner")).eventSuggestions![0].id;
+  await denied(
+    f.act("a", { action: "event.review", suggestionId, status: "reviewed" }),
+    403,
+  );
+  await f.act("owner", {
+    action: "event.review",
+    suggestionId,
+    status: "reviewed",
+  });
+  assert.equal((await f.snap("a")).eventSuggestions![0].status, "reviewed");
+});
+
+test("withdrawal hides event discussions and notifications; cancel keeps informative links but rejects new intent", async () => {
+  const f = fixture();
+  await f.setup();
+  const event = futureEvent();
+  await f.act("owner", { action: "event.save", event });
+  const p = await f.act("a", {
+    action: "post",
+    kind: "question",
+    subjectId: event.id,
+    text: "SYNTHETIC event discussion",
+    audience: "community",
+  });
+  await f.act("b", {
+    action: "comment",
+    postId: p.postId as string,
+    text: "SYNTHETIC reply",
+  });
+  await f.act("owner", {
+    action: "event.status",
+    eventId: event.id,
+    status: "draft",
+  });
+  assert.equal((await f.snap("a")).events.length, 0);
+  assert.equal((await f.snap("a")).notifications.length, 0);
+  await denied(f.snap("a", { post: p.postId as string }), 404);
+  await denied(
+    f.act("a", { action: "save", targetId: event.id, enabled: true }),
+    404,
+  );
+  await f.act("owner", {
+    action: "event.status",
+    eventId: event.id,
+    status: "published",
+  });
+  await f.act("a", { action: "plan", eventId: event.id, status: "attending" });
+  await f.act("owner", {
+    action: "event.status",
+    eventId: event.id,
+    status: "canceled",
+  });
+  assert.equal((await f.snap("a")).events[0].status, "canceled");
+  await denied(
+    f.act("b", { action: "plan", eventId: event.id, status: "interested" }),
+    409,
+  );
+  await f.act("a", {
+    action: "plan",
+    eventId: event.id,
+    status: "attending",
+    audience: "community",
+  });
+  assert.equal((await f.snap("b")).plans.length, 1);
+  await f.act("a", {
+    action: "plan",
+    eventId: event.id,
+    status: "attending",
+    audience: "only_me",
+  });
+  assert.equal((await f.snap("b")).plans.length, 0);
+  await f.act("a", { action: "plan", eventId: event.id, status: null });
+  assert.equal(f.count("plans"), 0);
+});
+
+test("in-flight event RSVP rolls back when a curator cancels the occurrence", async () => {
+  const f = fixture();
+  await f.setup();
+  const event = futureEvent();
+  await f.act("owner", { action: "event.save", event });
+  f.hooks.batch = async () => {
+    f.hooks.batch = null;
+    await f.act("owner", {
+      action: "event.status",
+      eventId: event.id,
+      status: "canceled",
+    });
+  };
+  await denied(
+    f.act("a", {
+      action: "plan",
+      eventId: event.id,
+      status: "attending",
+      audience: "community",
+    }),
+    409,
+  );
+  assert.equal(f.count("plans"), 0);
+  assert.equal(f.count("posts"), 0);
+});
+
+test("one series occurrence cannot be duplicated under another ID and curator authority is checked at commit", async () => {
+  const f = fixture();
+  await f.setup();
+  const event = futureEvent();
+  await f.act("owner", { action: "event.save", event });
+  await denied(
+    f.act("owner", {
+      action: "event.save",
+      event: { ...event, id: "duplicate-other-id" },
+    }),
+    409,
+  );
+  assert.equal(f.count("community_events"), 1);
+  f.raw.exec("UPDATE memberships SET role='curator' WHERE userId='a'");
+  f.hooks.batch = async () => {
+    f.hooks.batch = null;
+    f.raw.exec("UPDATE memberships SET role='member' WHERE userId='a'");
+  };
+  await denied(
+    f.act("a", {
+      action: "event.status",
+      eventId: event.id,
+      status: "canceled",
+    }),
+    409,
+  );
+  assert.equal((await f.snap("b")).events[0].status, "published");
+});
+
+test("shared codes admit different emails up to their limit and retries consume one use", async () => {
+  const f = fixture(); await f.setup();
+  const key = crypto.randomUUID();
+  const data = { action: "invite.code", maxUses: 2, expiresDays: 7 } as const;
+  const code = await f.act("owner", data, key);
+  assert.deepEqual(await f.act("owner", data, key), code);
+  assert.match(code.invitationCode as string, /^POLIS-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/);
+  const command = { requestId: crypto.randomUUID(), data: { action: "join", name: "First", username: "first_code", invite: String(code.invitationCode).toLowerCase().replaceAll("-", " ") } };
+  await f.service("first").execute(command);
+  await f.service("first").execute(command);
+  assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, 1);
+  await f.act("second", { action: "join", name: "Second", username: "second_code", invite: code.invitationCode as string });
+  await denied(f.act("third", { action: "join", name: "Third", username: "third_code", invite: code.invitationCode as string }), 403);
+  assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, 2);
+  assert.equal((await f.snap("first")).me?.role, "member");
+  assert.equal((await f.snap("first")).admin, undefined);
+  const rows = (await f.snap("owner")).admin!.invitationCodes;
+  assert.equal(rows.length, 1);
+  assert.equal("tokenHash" in rows[0], false);
+  assert.equal(JSON.stringify(rows).includes(String(code.invitationCode)), false);
+  f.raw.close();
+});
+
+test("only owner can create/revoke codes; invalid, expired and revoked codes cannot join", async () => {
+  const f = fixture(); await f.setup();
+  await denied(f.act("a", { action: "invite.code", maxUses: 25, expiresDays: 7 }), 403);
+  await denied(f.act("owner", { action: "invite.code", maxUses: 101, expiresDays: 7 }), 400);
+  const code = await f.act("owner", { action: "invite.code", maxUses: 25, expiresDays: 1 });
+  const id = (await f.snap("owner")).admin!.invitationCodes[0].id;
+  await denied(f.act("a", { action: "invite.revoke", codeId: id }), 403);
+  const join = { action: "join", name: "New", username: "new_code", invite: code.invitationCode as string } as const;
+  await denied(f.act("new", { ...join, invite: "POLIS-INVALID" }), 403);
+  f.raw.prepare("UPDATE invitation_codes SET expiresAt=? WHERE id=?").run("2000-01-01T00:00:00.000Z", id);
+  await denied(f.act("new", join), 403);
+  f.raw.prepare("UPDATE invitation_codes SET expiresAt=? WHERE id=?").run("2099-01-01T00:00:00.000Z", id);
+  await f.act("owner", { action: "invite.revoke", codeId: id });
+  await denied(f.act("new", join), 403);
+  assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, 0);
+  assert.equal(f.raw.prepare("SELECT id FROM profiles WHERE id='new'").get(), undefined);
+  f.raw.close();
+});
+
+test("last code use and revocation are checked transactionally before profile creation", async () => {
+  for (const revoke of [false, true]) {
+    const f = fixture(); await f.setup();
+    const code = await f.act("owner", { action: "invite.code", maxUses: 1, expiresDays: 7 });
+    const id = (await f.snap("owner")).admin!.invitationCodes[0].id;
+    const gate = pauseOnce(f, "INSERT INTO profiles");
+    const first = f.act("first", { action: "join", name: "First", username: "first_code", invite: code.invitationCode as string });
+    await gate.atGate;
+    if (revoke) await f.act("owner", { action: "invite.revoke", codeId: id });
+    else await f.act("second", { action: "join", name: "Second", username: "second_code", invite: code.invitationCode as string });
+    gate.release(); await denied(first, 409);
+    assert.equal(f.raw.prepare("SELECT id FROM profiles WHERE id='first'").get(), undefined);
+    assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, revoke ? 0 : 1);
+    f.raw.close();
+  }
 });

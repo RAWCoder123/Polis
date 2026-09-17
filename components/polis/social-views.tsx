@@ -26,6 +26,8 @@ import {
 } from "@/lib/social/types";
 import { Avatar, ItemIcon, Score } from "./common";
 import EventExplorer from "./event-explorer";
+import { sampleEventCalendar } from "@/lib/social/calendar";
+import { IssuePriorities } from "./issue-priorities";
 import { EventPlanEditor } from "./event-plan";
 import { ReplyComposer, type ComposeOptions, Modal } from "./social-forms";
 import { PostCard, type Run, type Navigate } from "./social-post";
@@ -96,7 +98,9 @@ export function Explore({
         ))}
       </nav>
       <p className="catalog-notice">
-        {tab === "Events" ? "Sample events · Fictional gatherings and illustrative locations." : "Sample civic catalog · The proposals, people, stories, and events here are illustrative, not verified current local records."}
+        {tab === "Events"
+          ? "Sample events · Fictional gatherings and illustrative locations."
+          : "Sample civic catalog · The proposals, people, stories, and events here are illustrative, not verified current local records."}
       </p>
       {tab === "Events" ? (
         <EventExplorer
@@ -236,7 +240,11 @@ export function ItemDetail({
             {item.event.place} · illustrative location
           </span>
           <span>Organizer: Polis demo community · fictional event</span>
-          <span>No registration is available for this sample event.</span>
+          <span>Time zone: America/New_York · Cost not provided.</span>
+          <span>
+            No registration or organizer source is available for this sample
+            event.
+          </span>
         </div>
       )}
       <h2>{item.kind === "News" ? "The short read" : "What to know"}</h2>
@@ -256,6 +264,29 @@ export function ItemDetail({
         </>
       )}
       <div className="civic-actions">
+        {item.event && (
+          <>
+            <button
+              className="btn secondary"
+              onClick={() =>
+                compose({ subjectId: item.id, kind: "event_share" })
+              }
+            >
+              Share event with a note
+            </button>
+            <a
+              className="btn secondary"
+              download={"polis-sample-" + item.id + ".ics"}
+              href={
+                "data:text/calendar;charset=utf-8," +
+                encodeURIComponent(sampleEventCalendar(item))
+              }
+            >
+              <CalendarDays size={16} />
+              Download sample calendar file
+            </a>
+          </>
+        )}
         <button
           className="btn primary"
           onClick={() => compose({ subjectId: item.id })}
@@ -364,7 +395,9 @@ export function IssueDetail({
   return (
     <>
       <div className="issue-heading">
-        <span className="social-section-label">ONGOING ISSUE</span>
+        <span className="social-section-label">
+          SAMPLE ISSUE · ITHACA & CORNELL
+        </span>
         <h1>{issue.name}</h1>
         <p>{issue.description}</p>
         <div className="form-actions">
@@ -388,6 +421,27 @@ export function IssueDetail({
           >
             Ask a question
           </button>
+          <button
+            className="btn secondary"
+            onClick={() => compose({ subjectId: id, kind: "opinion" })}
+          >
+            Share a view
+          </button>
+          <button
+            className="btn secondary"
+            onClick={() => {
+              if (data.priorities.some((p) => p.issueId === id))
+                navigate("rankings");
+              else
+                void run({ action: "priority.save", issueId: id }).catch(
+                  () => {},
+                );
+            }}
+          >
+            {data.priorities.some((p) => p.issueId === id)
+              ? "In my priorities"
+              : "Add to my priorities"}
+          </button>
         </div>
         {followed && (
           <label className="check-line">
@@ -408,8 +462,9 @@ export function IssueDetail({
         )}
       </div>
       <p className="catalog-notice">
-        Related civic items are samples. Updates below identify their source or
-        are labeled illustrative.
+        This is sample background, not a verified account of a current proposal.
+        The community reference is a starting point. Dated, sourced updates will
+        appear below when published.
       </p>
       <details className="issue-context" open>
         <summary>Understand this issue</summary>
@@ -480,7 +535,7 @@ export function RankingList({
   share: () => void;
   navigate: Navigate;
 }) {
-  const [kind, setKind] = useState("Policies");
+  const [kind, setKind] = useState("Issues");
   const rows = data.rankings.filter((r) => itemById[r.itemId]?.kind === kind);
   async function move(id: string, d: number) {
     const order = [...rows.map((r) => r.itemId)];
@@ -492,21 +547,23 @@ export function RankingList({
   }
   return (
     <>
-      <div className="civic-actions">
-        <button className="btn primary" onClick={() => rank()}>
-          <Plus size={16} />
-          Add a ranking
-        </button>
-        <button
-          className="btn secondary"
-          onClick={share}
-          disabled={!data.rankings.length}
-        >
-          Share selected list <ArrowUpRight size={16} />
-        </button>
-      </div>
+      {kind !== "Issues" && (
+        <div className="civic-actions">
+          <button className="btn primary" onClick={() => rank()}>
+            <Plus size={16} />
+            Add a ranking
+          </button>
+          <button
+            className="btn secondary"
+            onClick={share}
+            disabled={!data.rankings.length}
+          >
+            Share selected list <ArrowUpRight size={16} />
+          </button>
+        </div>
+      )}
       <div className="social-tabs">
-        {kinds.map((k) => (
+        {["Issues", ...kinds].map((k) => (
           <button
             key={k}
             className={kind === k ? "active" : ""}
@@ -516,82 +573,89 @@ export function RankingList({
           </button>
         ))}
       </div>
-      <p className="catalog-notice">
-        <Lock size={14} /> Your rankings and notes are private. Saving never
-        publishes a post.
-      </p>
-      {rows.map((r, i) => (
-        <article className="live-ranking" key={r.itemId}>
-          <span className="rank-position">
-            {String(i + 1).padStart(2, "0")}
-          </span>
-          <button onClick={() => navigate("item/" + r.itemId)}>
-            <small>
-              {kind === "Policies"
-                ? "Priority " + (i + 1)
-                : kind === "News"
-                  ? "Usefulness"
-                  : kind === "Politicians"
-                    ? "Personal support"
-                    : "Sample experience"}
-            </small>
-            <h2>{subjectTitle(r.itemId)}</h2>
-            {r.note && <p>{r.note}</p>}
-          </button>
-          <Score value={r.score} />
-          <div className="rank-controls">
-            <button
-              className="icon-btn"
-              disabled={i === 0}
-              aria-label={"Move " + subjectTitle(r.itemId) + " up"}
-              onClick={() => void move(r.itemId, -1)}
-            >
-              <ArrowUp size={16} />
-            </button>
-            <button
-              className="icon-btn"
-              disabled={i === rows.length - 1}
-              aria-label={"Move " + subjectTitle(r.itemId) + " down"}
-              onClick={() => void move(r.itemId, 1)}
-            >
-              <ArrowDown size={16} />
-            </button>
-            <button
-              className="icon-btn"
-              aria-label={"Edit " + subjectTitle(r.itemId)}
-              onClick={() => rank(itemById[r.itemId])}
-            >
-              <Pencil size={16} />
-            </button>
-            <button
-              className="icon-btn"
-              aria-label={"Remove " + subjectTitle(r.itemId)}
-              onClick={() => {
-                void run({ action: "ranking.delete", itemId: r.itemId }).catch(
-                  () => {},
-                );
-              }}
-            >
-              <Trash2 size={16} />
-            </button>
-          </div>
-        </article>
-      ))}
-      {!rows.length && (
-        <Quiet title="Your perspective starts with you.">
-          Add an item when you’re ready. You can join a conversation without
-          ranking anything.
-        </Quiet>
+      {kind === "Issues" ? (
+        <IssuePriorities data={data} run={run} navigate={navigate} />
+      ) : (
+        <>
+          <p className="catalog-notice">
+            <Lock size={14} /> Your rankings and notes are private. Saving never
+            publishes a post.
+          </p>
+          {rows.map((r, i) => (
+            <article className="live-ranking" key={r.itemId}>
+              <span className="rank-position">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <button onClick={() => navigate("item/" + r.itemId)}>
+                <small>
+                  {kind === "Policies"
+                    ? "Priority " + (i + 1)
+                    : kind === "News"
+                      ? "Usefulness"
+                      : kind === "Politicians"
+                        ? "Personal support"
+                        : "Sample experience"}
+                </small>
+                <h2>{subjectTitle(r.itemId)}</h2>
+                {r.note && <p>{r.note}</p>}
+              </button>
+              <Score value={r.score} />
+              <div className="rank-controls">
+                <button
+                  className="icon-btn"
+                  disabled={i === 0}
+                  aria-label={"Move " + subjectTitle(r.itemId) + " up"}
+                  onClick={() => void move(r.itemId, -1)}
+                >
+                  <ArrowUp size={16} />
+                </button>
+                <button
+                  className="icon-btn"
+                  disabled={i === rows.length - 1}
+                  aria-label={"Move " + subjectTitle(r.itemId) + " down"}
+                  onClick={() => void move(r.itemId, 1)}
+                >
+                  <ArrowDown size={16} />
+                </button>
+                <button
+                  className="icon-btn"
+                  aria-label={"Edit " + subjectTitle(r.itemId)}
+                  onClick={() => rank(itemById[r.itemId])}
+                >
+                  <Pencil size={16} />
+                </button>
+                <button
+                  className="icon-btn"
+                  aria-label={"Remove " + subjectTitle(r.itemId)}
+                  onClick={() => {
+                    void run({
+                      action: "ranking.delete",
+                      itemId: r.itemId,
+                    }).catch(() => {});
+                  }}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </article>
+          ))}
+          {!rows.length && (
+            <Quiet title="Your perspective starts with you.">
+              Add an item when you’re ready. You can join a conversation without
+              ranking anything.
+            </Quiet>
+          )}
+          <p className="metadata">
+            {kind === "Policies"
+              ? "Priority order and support scores are separate."
+              : kind === "News"
+                ? "Usefulness does not establish factual accuracy."
+                : kind === "Politicians"
+                  ? "Your assessment does not imply a party affiliation."
+                  : "Rate an experience separately from interest or plans to attend."}
+          </p>
+        </>
       )}
-      <p className="metadata">
-        {kind === "Policies"
-          ? "Priority order and support scores are separate."
-          : kind === "News"
-            ? "Usefulness does not establish factual accuracy."
-            : kind === "Politicians"
-              ? "Your assessment does not imply a party affiliation."
-              : "Rate an experience separately from interest or plans to attend."}
-      </p>
     </>
   );
 }
@@ -600,13 +664,18 @@ export function Friends({
   run,
   navigate,
   query,
+  section,
+  busy,
 }: {
   data: Snapshot;
   run: Run;
   navigate: Navigate;
   query: string;
+  section?: string;
+  busy: boolean;
 }) {
-  const [tab, setTab] = useState("Friends");
+  const tabs: Record<string, string> = { friends: "Friends", requests: "Requests", discover: "Discover people", blocked: "Blocked" };
+  const tab = tabs[section ?? "friends"] ?? "Friends";
   const people = data.people
     .filter((p) =>
       (p.name + " " + p.username).toLowerCase().includes(query.toLowerCase()),
@@ -622,12 +691,24 @@ export function Friends({
     );
   return (
     <>
-      <div className="social-tabs">
-        {["Friends", "Requests", "Discover people", "Blocked"].map((t) => (
+      <div className="social-tabs" role="tablist" aria-label="People" onKeyDown={(e) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+        const buttons = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+        const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        if (current < 0) return;
+        e.preventDefault();
+        const next = e.key === "Home" ? 0 : e.key === "End" ? buttons.length - 1 : (current + (e.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+        buttons[next].focus();
+        buttons[next].click();
+      }}>
+        {Object.entries(tabs).map(([key, t]) => (
           <button
-            key={t}
+            key={key}
+            role="tab"
+            tabIndex={t === tab ? 0 : -1}
+            aria-selected={t === tab}
             className={t === tab ? "active" : ""}
-            onClick={() => setTab(t)}
+            onClick={() => navigate(key === "friends" ? "friends" : "friends/" + key)}
           >
             {t}
           </button>
@@ -658,6 +739,7 @@ export function Friends({
           </button>
           {p.blocked ? (
             <button
+              disabled={busy}
               className="btn secondary small-btn"
               onClick={() => {
                 void run({
@@ -678,6 +760,7 @@ export function Friends({
             </button>
           ) : p.relationship === "incoming" ? (
             <button
+              disabled={busy}
               className="btn primary small-btn"
               onClick={() => {
                 void run({
@@ -691,6 +774,7 @@ export function Friends({
             </button>
           ) : p.relationship === "outgoing" ? (
             <button
+              disabled={busy}
               className="btn secondary small-btn"
               onClick={() => {
                 void run({
@@ -704,6 +788,7 @@ export function Friends({
             </button>
           ) : (
             <button
+              disabled={busy}
               className="btn primary small-btn"
               onClick={() => {
                 void run({
@@ -768,10 +853,9 @@ export function Profile({
       .slice()
       .reverse()
       .flatMap((l) =>
-        JSON.parse(l.itemsJson).map((r: { itemId: string; score: number }) => [
-          r.itemId,
-          r,
-        ]),
+        JSON.parse(l.itemsJson)
+          .filter((r: { score?: number }) => typeof r.score === "number")
+          .map((r: { itemId: string; score: number }) => [r.itemId, r]),
       ) ?? [],
   );
   const theirs = new Map<string, { score: number }>(
@@ -779,10 +863,9 @@ export function Profile({
       .slice()
       .reverse()
       .flatMap((l) =>
-        JSON.parse(l.itemsJson).map((r: { itemId: string; score: number }) => [
-          r.itemId,
-          r,
-        ]),
+        JSON.parse(l.itemsJson)
+          .filter((r: { score?: number }) => typeof r.score === "number")
+          .map((r: { itemId: string; score: number }) => [r.itemId, r]),
       ),
   );
   const overlap = [...theirs.entries()].filter(([id]) => myShared.has(id));
@@ -841,6 +924,28 @@ export function Profile({
               >
                 {person.muted ? "Unmute" : "Mute"}
               </button>
+              {person.relationship !== "friends" && (
+                <button
+                  className="btn primary"
+                  disabled={person.relationship === "outgoing"}
+                  onClick={() => {
+                    void run({
+                      action: "friend",
+                      targetId: person.id,
+                      operation:
+                        person.relationship === "incoming"
+                          ? "accept"
+                          : "request",
+                    }).catch(() => {});
+                  }}
+                >
+                  {person.relationship === "incoming"
+                    ? "Accept request"
+                    : person.relationship === "outgoing"
+                      ? "Request sent"
+                      : "Add friend"}
+                </button>
+              )}
               {person.relationship === "friends" && (
                 <button
                   className="text-button"
@@ -865,6 +970,7 @@ export function Profile({
           )}
         </div>
       </div>
+      {self && <IssuePriorities data={data} run={run} navigate={navigate} />}
       <h2 className="discussion-heading">Shared lists</h2>
       {lists.length ? (
         lists.map((l) => (
@@ -914,13 +1020,21 @@ export function Profile({
           <button
             key={p.eventId}
             className="post-subject"
-            onClick={() => navigate("item/" + p.eventId)}
+            onClick={() =>
+              navigate(
+                (data.events.some((e) => e.id === p.eventId)
+                  ? "event/"
+                  : "item/") + p.eventId,
+              )
+            }
           >
             <span>
-              <strong>{subjectTitle(p.eventId)}</strong>
-              {p.status === "attending"
-                ? "Planning to attend"
-                : "Interested"} · {audiences[p.audience]}
+              <strong>
+                {data.events.find((e) => e.id === p.eventId)?.title ||
+                  subjectTitle(p.eventId)}
+              </strong>
+              {p.status === "attending" ? "Planning to attend" : "Interested"} ·{" "}
+              {audiences[p.audience]}
             </span>
             <ArrowUpRight size={17} />
           </button>
@@ -1060,6 +1174,12 @@ export function Conversation({
           Publish a change of view <ArrowRight size={15} />
         </button>
       )}
+      {data.commentUnavailable && (
+        <p className="notice" role="status">
+          That reply was deleted or is no longer available. You can still read
+          this conversation.
+        </p>
+      )}
       <h2 className="discussion-heading">
         {p.replyCount} {p.replyCount === 1 ? "reply" : "replies"}
       </h2>
@@ -1077,7 +1197,12 @@ export function Conversation({
               .join("")}
           />
           <div>
-            <strong>{c.name}</strong>
+            <button
+              className="plain-name"
+              onClick={() => navigate("profile/" + c.authorId)}
+            >
+              {c.name}
+            </button>
             <small>
               {new Date(c.createdAt).toLocaleDateString()}
               {c.editedAt ? " · Edited" : ""}
@@ -1089,6 +1214,7 @@ export function Conversation({
             </small>
             {edit === c.id ? (
               <ReplyComposer
+                disabled={busy}
                 userId={data.me!.id}
                 postId={p.id}
                 editing={c}
@@ -1129,6 +1255,7 @@ export function Conversation({
             </div>
             {replyTo === c.id && (
               <ReplyComposer
+                disabled={busy}
                 userId={data.me!.id}
                 postId={p.id}
                 parentId={c.id}
@@ -1139,7 +1266,7 @@ export function Conversation({
           </div>
         </div>
       ))}
-      <ReplyComposer userId={data.me!.id} postId={p.id} run={run} />
+      <ReplyComposer userId={data.me!.id} postId={p.id} run={run} disabled={busy} />
     </>
   );
 }
