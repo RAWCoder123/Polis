@@ -1,26 +1,43 @@
-# Reusable invitation codes
+# Community invitation codes
 
-Implementation is saved for the next deployment. It is not present in the live version 2 pilot yet.
+Implemented and locally verified September 24, 2026. This update is not deployed: Sites still reports live version 2, while this computer's connection to the Sites source repository times out. GitHub source and local tests do not establish hosted acceptance.
 
-## Owner and tester flow
+## Admin flow
 
-Open **Community tools → Invite with a code**. Choose 1, 25 or 100 people and an expiration of 1, 7 or 30 days, then **Generate invitation code**. The default is 25 people for seven days. Copy the code and send it with the public Polis site link. No email list is required. The generated code is displayed only after creation; copy it before navigating away.
+Open **Community tools → Invite with a code**. Select **Cornell / Ithaca** or **Emory University**, choose an expiration of 1, 7 or 30 days, and optionally set a maximum of 1–10,000 distinct people. Defaults are 25 people and seven days. Clear **Limit the number of people** for no usage limit. Select **Generate code**, then **Copy code**. Copy before leaving the page; plaintext is shown only at creation. If clipboard access fails, the read-only input can be selected and copied manually.
 
-Testers sign in with ChatGPT and enter the code when creating their profile. Matching ignores case, spaces and hyphens. Each successful new profile consumes one use. Existing email-specific invitations still work and retain their email restriction.
+Share the code with the Polis URL in any channel you choose. Polis does not collect recipient emails for this flow or send invitation emails. The list shows the community, redemption count, expiration and status. **Revoke code** prevents new admission and preserves existing memberships. The configured pilot owner can manage codes for both communities; any community-specific owner can only manage their own community's codes.
 
-The owner sees each code's creation date, expiration, use count and status. **Revoke code** stops future joins without removing existing members. Shared codes grant normal community membership, not owner permissions or access to Friends/private activity. Anyone who receives a valid code can redeem it until its limit or expiration.
+## Tester flow
 
-## Persistence and migration
+Open Polis → **Enter invite code** → enter the code → confirm the university/community → complete the existing ChatGPT signup/sign-in → create a profile if needed → **Join**. Case, spaces and hyphens are ignored. Account authentication and any required email verification remain owned by the existing sign-in system.
 
-Additive migration `0004_odd_lord_hawal.sql` creates `invitation_codes`; it does not edit or reset existing tables. Deploy all migrations with the Sites artifact. The table stores a SHA-256 code digest; plaintext is returned on creation and retained in the existing owner-only command receipt for idempotent retries. Admin listings omit both the plaintext and digest.
+The code is retained for up to one hour in an HttpOnly, SameSite=Lax cookie, with Secure on HTTPS. It is not placed in the login URL, browser storage, analytics or ordinary snapshots. The confirmation survives reload and the authentication redirect. Availability is checked again when joining. A failed submission leaves the invitation and entered form values available to retry. A successful acknowledged join clears the handoff cookie.
 
-Codes contain 12 random base32 characters (60 bits) plus the `POLIS` prefix. Membership creation, count increment and the idempotency receipt share one transactional batch. Transaction guards check remaining capacity, revocation and expiration before creation, including concurrent redemption of the last use. Owner authority is checked again in the mutation transaction.
+Existing members can join another community without replacing their profile, earlier membership, saves or rankings. The header's community selector remembers their active community; **Enter invite code…** opens the same flow on desktop and mobile. The invitation grants ordinary membership only, never owner/curator status or verified university enrollment. Repeating a redemption, including with a new request ID or from another device, does not use another slot. A member who already joined can continue after a code expires, fills or is revoked; that is existing access, not a new admission.
+
+Legacy issued email-bound links still redeem under their original restriction. The admin interface offers generated codes only.
+
+## Data and security
+
+- Server-generated codes contain 12 uniformly sampled base32 characters (60 bits) plus the POLIS prefix. The code table stores SHA-256 digests. Plaintext is returned at generation and retained in the creator's existing authenticated command receipt for idempotent retries; admin listings omit both plaintext and hashes.
+- Unique code/user redemption records, membership insertion, use-count increments and request receipts share one D1 transaction. Guards recheck capacity, revocation, confirmed community, ownership and database-clock expiration at commit.
+- Anonymous preview exposes only the matched community, expiration and whether the authenticated caller already belongs. It reserves no slot and grants no access. Reads/writes of social data still require authenticated membership; code preview is the explicit pre-sign-in exception.
+- Community post/deep-link access, event writes, reports and suggestion queues are scoped on the server. One campus curator cannot overwrite another campus event, including through a competing write for the same event ID.
+
+## Migrations and configuration
+
+Deploy the complete generated migration history with Sites. Migration 0004 adds the original code table. Migration 0005 adds community/limit fields, the active community preference, a composite community-membership table, unique redemptions and a view combining new memberships with untouched legacy memberships. Migration 0006 scopes reports and event suggestions. No applied migration is edited and no user database is reset. Existing code counts and memberships retain Cornell/Ithaca as their destination.
+
+Available destinations are declared in `lib/social/communities.ts`. Add a stable ID, display name, slug and location label there to configure another invitation destination. This release does not include an admin community editor or geographic boundaries. Emory is an invitation/conversation pilot configuration with no sourced catalog; it does not substitute Ithaca content. The broader location/officials roadmap remains in `docs/roadmap.md`.
 
 ## Verification
 
-- 42 unit/service tests pass, including separate-email redemption, normalization, duplicate retries, capacity exhaustion, invalid/expired/revoked codes, owner-only management, and races between redemption and the last use or revocation.
-- Existing migration-upgrade coverage preserves profiles and saved activity while applying the additive history; all migrations also apply successfully to a fresh local D1 database.
-- Local HTTP boundary and three-session social checks pass. Added HTTP checks verify owner-only code generation/revocation, retry deduplication, private metadata and persisted revocation.
-- Lint passes with eight inherited warnings; typecheck and production build pass.
-- Chrome blocked the local UI with `ERR_BLOCKED_BY_CLIENT`. Desktop/mobile visual verification and hosted code redemption remain pending. No browser security settings were changed.
-- Sites publishing tools became unavailable again during this work. No production invitation code was generated, and no tester messages were sent.
+- 50 unit/service tests pass, covering anonymous preview, ordinary role grants, confirmation tampering, expiration/revocation/last-use races, concurrent same-person redemption, unlimited codes, profile-conflict rollback, second-community joins, cross-community direct-request denials and migration preservation.
+- Local D1 migrations 0000–0006 apply successfully. Lint has zero errors and eight inherited warnings; typecheck and the Workers production build pass.
+- Local HTTP boundary, three-account social-cycle checks and event integration checks pass. The event HTTP test now uses a separate future synthetic RSVP fixture, keeping the 17 dated organizer imports unchanged when they expire.
+- Desktop (1440×1000) and mobile (390×844) Playwright flows pass using isolated synthetic accounts: generate/copy → anonymous validation → university confirmation → local sign-in redirect → profile completion → deliberately failed submission → retry → reload. A second account joins using the same code; duplicate admission preserves the count; revocation persists and denies an unrelated visitor. No browser runtime errors or horizontal overflow were found. Mobile community switching, keyboard focus and the invite entry action were checked after the final layout changes.
+- Screenshots use synthetic accounts and mask generated codes. Production codes and tester messages were not created.
+- Hosted OAuth, cookie behavior on the actual HTTPS domain, production migration and real multi-user acceptance remain unverified until publishing access is restored.
+
+For a repeatable browser run, start from an isolated checkout with fresh local D1 data: `npm ci`, copy the synthetic `.env.example` to ignored `.dev.vars`, apply local migrations, and run `POLIS_TEST_ACCOUNTS=1 npm run dev -- --port 5180`. Then run `POLIS_TEST_ORIGIN=http://localhost:5180 npm run test:invitations-browser` before the social HTTP fixtures, followed by `test:http`, `test:social-http` and `test:events-http`. Do not reset an existing user database to run fixtures and never point these scripts at a hosted URL.

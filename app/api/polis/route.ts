@@ -1,14 +1,16 @@
 import { env } from "cloudflare:workers";
 import { getChatGPTUser } from "@/app/chatgpt-auth";
 import { socialService, ApiError } from "@/lib/social/service";
+import { invitationCookie, pendingInvitation } from "@/lib/social/invitation-handoff";
 export const dynamic = "force-dynamic";
-const respond = (data: unknown, status = 200) =>
+const respond = (data: unknown, status = 200, cookie?: string) =>
   Response.json(data, {
     status,
     headers: {
       "Cache-Control": "private, no-store",
       Vary: "Cookie",
       "X-Content-Type-Options": "nosniff",
+      ...(cookie ? { "Set-Cookie": cookie } : {}),
     },
   });
 async function handle(request: Request, write: boolean) {
@@ -36,7 +38,26 @@ async function handle(request: Request, write: boolean) {
       const raw = await request.text();
       if (raw.length > 32000)
         return respond({ error: "Submission is too large." }, 413);
-      return respond(await service.execute(JSON.parse(raw)));
+      const input = JSON.parse(raw);
+      if (input?.data?.action === "invite.preview") {
+        if (Object.keys(input.data).some(k => !["action", "code"].includes(k))) return respond({ error: "Invalid invitation request." }, 400);
+        const invitation = await service.previewInvitation(input.data.code);
+        return respond({ invitation }, 200, invitationCookie(request, input.data.code));
+      }
+      if (input?.data?.action === "invite.clear")
+        return respond({ ok: true }, 200, invitationCookie(request, null));
+      if (input?.data?.action === "invite.redeem") {
+        const invite = pendingInvitation(request);
+        if (!invite) return respond({ error: "Enter your invitation code again to continue." }, 403);
+        // Client-submitted codes cannot replace the community preview being confirmed.
+        const result = await service.execute({ ...input, data: { ...input.data, invite } });
+        return respond(result);
+      }
+      return respond(await service.execute(input));
+    }
+    if (new URL(request.url).searchParams.get("invitation") === "1") {
+      const invite = pendingInvitation(request);
+      return respond({ invitation: invite ? await service.previewInvitation(invite) : null });
     }
     return respond(await service.snapshot(new URL(request.url).searchParams));
   } catch (error) {

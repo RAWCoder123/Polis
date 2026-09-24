@@ -10,7 +10,7 @@
 - Event map/list discovery, filtering, pan/zoom, details and reflections, and Interested/Planning to attend plans with explicit audiences.
 - Minimal first-party events without private text, scores, political positions, or precise locations.
 
-These are local implementation claims. The hosted site still runs the original MVP; real hosted multi-user acceptance remains pending. See [verification](VERIFICATION.md).
+These describe the source implementation. Sites reports public version 2; later invitation changes remain local until published. Real hosted multi-user acceptance remains pending. See [hosted verification](hosted-pilot-verification.md) and [invitation codes](invitation-codes.md).
 
 ## Functional social beta additions
 
@@ -30,7 +30,9 @@ These are local implementation claims. The hosted site still runs the original M
 
 ## Known gaps
 
-Reusable invitation codes with usage limits, expiration and revocation are implemented and locally tested, but await UI verification and deployment. See [invitation codes](invitation-codes.md).
+Community-specific invitation codes, optional usage limits, expiration, revocation, and login handoff are implemented and verified locally with two isolated browser accounts. They still await deployment because the current network cannot reach the Sites source server. See [invitation codes](invitation-codes.md).
+
+Cornell/Ithaca and Emory are configured invitation destinations. Memberships, conversations, moderation and active-community preferences are separated on the server. Emory has no sourced event/issue/official catalog yet; it displays honest empty states. The broader location-resolution, officials, curator community-configuration, source-integration and campus-coverage brief remains future work. Selecting or joining a community does not verify enrollment or electoral residence.
 
 The local social-cycle browser journey now passes with independent synthetic sessions, including mobile/desktop overflow, lost-response retry/reload recovery, notifications and attendance privacy. See [current browser verification](social-cycle-verification.md). Sites version 2 is now public, and hosted owner profile creation, event import and private save after reload pass. Hosted multi-user acceptance remains pending; see [hosted verification](hosted-pilot-verification.md).
 

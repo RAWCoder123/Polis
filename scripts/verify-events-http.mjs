@@ -41,9 +41,17 @@ for (const e of officialEvents)
   await act("a", { action: "event.save", event: e, createOnly: true });
 for (const e of officialEvents)
   await act("a", { action: "event.save", event: e, createOnly: true });
-const event = officialEvents.find(
-  (e) => e.id === "cornell-garden-tour-2026-09-20",
-);
+// Keep organizer import checks separate from a durable synthetic RSVP fixture.
+// Real September listings eventually end; their dates must never be rewritten.
+const event = {
+  ...officialEvents[0],
+  id: "synthetic-http-garden", seriesId: "synthetic-http-series",
+  title: "SYNTHETIC integration garden visit", description: "Local HTTP fixture only.",
+  organizer: "Test organizer", sourceUrl: "https://example.test/fixture",
+  startsAt: "2099-09-20T14:00:00.000Z", endsAt: "2099-09-20T15:00:00.000Z",
+  registrationUrl: "https://example.test/fixture", sample: true, status: "published",
+};
+await act("a", { action: "event.save", event });
 assert.equal((await read("a")).events.filter((e) => !e.sample).length, 17);
 await act("b", {
   action: "event.preferences",

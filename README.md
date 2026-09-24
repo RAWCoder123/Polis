@@ -77,4 +77,6 @@ The [Polis pilot](https://polis-community.raymondaw2006.chatgpt.site) is deploye
 
 GitHub is the development remote; Sites retains its separate source repository and saved-version deployment workflow. See [deployment and source provenance](docs/deployment.md) and [pilot configuration](docs/PILOT_SETUP.md). Hosted acceptance still requires three isolated ChatGPT identities with Sites viewing access and Polis invitations.
 
+The next invitation release adds community-specific reusable codes, optional use limits, pre-login confirmation, and separate Cornell/Ithaca and Emory memberships. It is locally verified and awaiting publication; see [invitation setup and verification](docs/invitation-codes.md). This does not claim local event/official coverage for Emory.
+
 No project-wide open-source license has been selected. Existing third-party notices in `build/` and `vendor/` are preserved; public source visibility does not itself grant an application license.

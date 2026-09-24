@@ -19,7 +19,8 @@
     "test:http": "node scripts/verify-local-http.mjs",
     "test:social-http": "node scripts/verify-social-http.mjs",
     "test:events-http": "node scripts/verify-events-http.mjs",
-    "test:browser": "node scripts/verify-social-browser.mjs"
+    "test:browser": "node scripts/verify-social-browser.mjs",
+    "test:invitations-browser": "node scripts/verify-invitations-browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

@@ -57,19 +57,23 @@ for (const [user, name] of [
   ["b", "Beta Blair"],
   ["c", "Beta Casey"],
 ]) {
-  if ((await snapshot(user)).status === "onboarding") {
+  if (!(await snapshot(user)).communities.some(c => c.id === "ithaca")) {
     const inv = await act("a", {
-      action: "invite",
-      email: `beta_${user}@sites.test`,
+      action: "invite.code",
+      communityId: "ithaca",
+      maxUses: 1,
     });
     await act(user, {
       action: "join",
       name,
       username: `beta_${user}`,
-      invite: inv.invite,
+      invite: inv.invitationCode,
+      confirmedCommunityId: "ithaca",
     });
   }
 }
+for (const user of ["a", "b", "c"])
+  await act(user, { action: "community.select", communityId: "ithaca" });
 a = await snapshot("a");
 b = await snapshot("b");
 c = await snapshot("c");

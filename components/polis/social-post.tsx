@@ -63,7 +63,7 @@ export function PostCard({
   const attachment = JSON.parse(post.attachmentJson || "{}");
   const subjectKind = itemById[post.subjectId]?.kind;
   const subjectLabel =
-    post.kind === "event_plan"
+    post.subjectId === "community" ? "COMMUNITY CONVERSATION" : post.kind === "event_plan"
       ? "SHARED PLAN"
       : subjectKind === "Events" || attachment.eventId
         ? "RELATED EVENT"
@@ -274,7 +274,7 @@ export function PostCard({
         className="post-subject"
         onClick={() =>
           navigate(
-            (attachment.eventId
+            post.subjectId === "community" ? "post/" + post.id : (attachment.eventId
               ? "event/"
               : itemById[post.subjectId]
                 ? "item/"
