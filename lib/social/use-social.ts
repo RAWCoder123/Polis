@@ -16,6 +16,7 @@ export function useSocial(params: string) {
     [busy, setBusy] = useState(false);
   const [snapshotParams, setSnapshotParams] = useState(params);
   const retry = useRef<{ signature: string; id: string } | null>(null);
+  const communityRef = useRef<string | undefined>(undefined);
   const confirmedPlans = useRef(new Map<string, PlanConfirmation>());
   const loadedPages = useRef({ posts: 1, comments: 1 });
   const submittedComment = useRef<string | null>(null);
@@ -108,6 +109,7 @@ export function useSocial(params: string) {
       );
       confirmedPlans.current.clear();
       setData(next);
+      communityRef.current = next.community?.id;
       setSnapshotParams(queryParams);
       setError("");
     } catch (e) {
@@ -150,7 +152,8 @@ export function useSocial(params: string) {
       pending.current = true;
       setBusy(true);
       setError("");
-      const signature = JSON.stringify(values);
+      const communityId = communityRef.current;
+      const signature = JSON.stringify({ communityId, values });
       const submissionId =
         requestId ??
         (retry.current?.signature === signature
@@ -161,7 +164,7 @@ export function useSocial(params: string) {
         const r = await fetch("/api/polis", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ requestId: submissionId, data: values }),
+          body: JSON.stringify({ requestId: submissionId, communityId, data: values }),
         });
         const value = await readResponse<CommandResult & { error?: string }>(r);
         if (!r.ok) throw new Error(value.error ?? "Unable to save.");

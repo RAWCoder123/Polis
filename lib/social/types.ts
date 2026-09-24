@@ -1,3 +1,5 @@
+import type { PilotCommunity } from "./communities";
+export type InvitationPreview = { community: PilotCommunity; expiresAt: string; alreadyJoined: boolean };
 export type Audience = "only_me" | "friends" | "community";
 export type PostType =
   | "opinion"
@@ -70,6 +72,8 @@ export type CommandResult = {
   commentId?: string;
   invite?: string;
   invitationCode?: string;
+  communityId?: string;
+  alreadyJoined?: boolean;
   plan?: PlanConfirmation;
 };
 export const audiences: Record<Audience, string> = {
@@ -90,6 +94,7 @@ export type Person = {
   username: string;
   bio: string;
   communityLabel: string;
+  activeCommunityId?: string;
   role?: string;
   onboardingComplete?: number;
   relationship?: string;
@@ -156,6 +161,8 @@ export type Question = {
   counts?: { choice: string; count: number }[];
 };
 export type Snapshot = {
+  community: PilotCommunity | null;
+  communities: PilotCommunity[];
   events: CommunityEvent[];
   eventPreferences: EventPreferences;
   eventSuggestions?: EventSuggestion[];
@@ -204,7 +211,8 @@ export type Snapshot = {
     name: string;
   }[];
   admin?: {
-    invitationCodes: { id: string; createdAt: string; expiresAt: string; maxUses: number; useCount: number; revokedAt: string | null }[];
+    invitationCommunities: PilotCommunity[];
+    invitationCodes: { id: string; communityId: string; createdAt: string; expiresAt: string; maxUses: number | null; useCount: number; revokedAt: string | null }[];
     invitations: {
       id: string;
       email: string;
@@ -216,6 +224,8 @@ export type Snapshot = {
   };
 };
 export const emptySnapshot: Snapshot = {
+  community: null,
+  communities: [],
   events: [],
   eventPreferences: { city: "Ithaca", interests: [], complete: false },
   me: null,

@@ -8,6 +8,7 @@ import {
   uniqueIndex,
   index,
   check,
+  sqliteView,
 } from "drizzle-orm/sqlite-core";
 export const profiles = sqliteTable("profiles", {
   id: text().primaryKey(),
@@ -17,6 +18,7 @@ export const profiles = sqliteTable("profiles", {
   communityLabel: text().notNull().default("Ithaca, NY"),
   createdAt: text().notNull(),
   onboardingComplete: integer().notNull().default(0),
+  activeCommunityId: text().notNull().default("ithaca"),
 });
 export const memberships = sqliteTable("memberships", {
   userId: text()
@@ -33,6 +35,15 @@ export const invitations = sqliteTable("invitations", {
   expiresAt: text().notNull(),
   usedBy: text(),
 });
+// Preserve legacy memberships in place. New memberships use a composite key.
+export const communityMemberships = sqliteTable("community_memberships", {
+  userId: text().notNull().references(() => profiles.id),
+  communityId: text().notNull(),
+  role: text().notNull().default("member"),
+}, t => [primaryKey({ columns: [t.userId, t.communityId] })]);
+export const pilotMemberships = sqliteView("pilot_memberships", {
+  userId: text().notNull(), communityId: text().notNull(), role: text().notNull(),
+}).as(sql`SELECT userId,communityId,role FROM memberships UNION ALL SELECT c.userId,c.communityId,c.role FROM community_memberships c WHERE NOT EXISTS(SELECT 1 FROM memberships m WHERE m.userId=c.userId AND m.communityId=c.communityId)`);
 export const invitationCodes = sqliteTable("invitation_codes", {
   id: text().primaryKey(),
   tokenHash: text().notNull().unique(),
@@ -42,7 +53,15 @@ export const invitationCodes = sqliteTable("invitation_codes", {
   maxUses: integer().notNull(),
   useCount: integer().notNull().default(0),
   revokedAt: text(),
+  communityId: text().notNull().default("ithaca"),
+  unlimited: integer().notNull().default(0),
 });
+export const invitationRedemptions = sqliteTable("invitation_redemptions", {
+  codeId: text().notNull().references(() => invitationCodes.id),
+  userId: text().notNull().references(() => profiles.id),
+  requestKey: text().notNull(),
+  redeemedAt: text().notNull(),
+}, t => [primaryKey({ columns: [t.codeId, t.userId] })]);
 export const friendships = sqliteTable(
   "friendships",
   {
@@ -209,6 +228,7 @@ export const eventPreferences = sqliteTable("event_preferences", {
 });
 export const eventSuggestions = sqliteTable("event_suggestions", {
   id: text().primaryKey(),
+  communityId: text().notNull().default("ithaca"),
   userId: text()
     .notNull()
     .references(() => profiles.id),
@@ -272,6 +292,7 @@ export const preferences = sqliteTable("preferences", {
 });
 export const reports = sqliteTable("reports", {
   id: text().primaryKey(),
+  communityId: text().notNull().default("ithaca"),
   reporterId: text().notNull(),
   targetId: text().notNull(),
   reason: text().notNull(),

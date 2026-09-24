@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { itemById } from "../polis-data.ts";
 import { eventActions, eventExpired } from "./events.ts";
-import { communityId, issues, issueFor, eventStart } from "./catalog.ts";
+import { issues, issueFor, eventStart } from "./catalog.ts";
+import { communityFor, defaultCommunityId, pilotCommunities } from "./communities.ts";
 import {
   emptySnapshot,
   type Snapshot,
@@ -9,6 +10,7 @@ import {
   type Post,
   type Question,
   type CommunityEvent,
+  type InvitationPreview,
 } from "./types.ts";
 export type Identity = { userId: string; email: string; displayName: string };
 export class ApiError extends Error {
@@ -52,7 +54,10 @@ const action = z.discriminatedUnion("action", [
     name: z.string().trim().min(1).max(50),
     username: z.string().regex(/^[a-z0-9_]{3,24}$/),
     invite: z.string().max(200).default(""),
+    confirmedCommunityId: id.optional(),
   }),
+  z.object({ action: z.literal("invite.redeem"), invite: z.string().max(200), confirmedCommunityId: id, name: z.string().trim().min(1).max(50).optional(), username: z.string().regex(/^[a-z0-9_]{3,24}$/).optional() }),
+  z.object({ action: z.literal("community.select"), communityId: id }),
   z.object({
     action: z.literal("profile"),
     name: z.string().trim().min(1).max(50),
@@ -165,7 +170,7 @@ const action = z.discriminatedUnion("action", [
     reason: z.string().trim().min(3).max(1000),
   }),
   z.object({ action: z.literal("invite"), email: z.string().email().max(254) }),
-  z.object({ action: z.literal("invite.code"), maxUses: z.number().int().min(1).max(100).default(25), expiresDays: z.union([z.literal(1), z.literal(7), z.literal(30)]).default(7) }),
+  z.object({ action: z.literal("invite.code"), communityId: id.optional(), maxUses: z.number().int().min(1).max(10000).nullable().default(25), expiresDays: z.union([z.literal(1), z.literal(7), z.literal(30)]).default(7) }),
   z.object({ action: z.literal("invite.revoke"), codeId: z.string().min(1).max(100) }),
   z.object({
     action: z.literal("question.save"),
@@ -214,7 +219,7 @@ const action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("visit") }),
 ]);
 const command = z
-  .object({ requestId: z.string().uuid(), data: action })
+  .object({ requestId: z.string().uuid(), communityId: id.optional(), data: action })
   .strict();
 export type CommandData = z.input<typeof action>;
 export type Database = Pick<D1Database, "prepare" | "batch">;
@@ -232,6 +237,7 @@ export function socialService(
   ownerEmail = "",
 ) {
   const uid = identity?.userId ?? "";
+  let communityId = defaultCommunityId;
   const prep = (sql: string, ...args: unknown[]) =>
     db.prepare(sql).bind(...args);
   const all = async <T = Record<string, unknown>>(
@@ -242,6 +248,25 @@ export function socialService(
     sql: string,
     ...args: unknown[]
   ) => prep(sql, ...args).first<T>();
+  const resolveCommunity = async (requested?: string | null) => {
+    const profile = uid ? await one<{ activeCommunityId: string }>("SELECT activeCommunityId FROM profiles WHERE id=?", uid) : null;
+    communityId = requested ?? profile?.activeCommunityId ?? defaultCommunityId;
+    if (!communityFor(communityId)) fail(404, "This community is unavailable.");
+  };
+  const pilotOwner = () => !!identity && !!ownerEmail && identity.email.toLowerCase() === ownerEmail.toLowerCase();
+  const normalizeCode = (value: string) => value.replace(/[\s-]/g, "").toUpperCase();
+  const previewInvitation = async (value: unknown): Promise<InvitationPreview> => {
+    if (typeof value !== "string" || value.length > 200 || !/^POLIS[A-Z2-9]{12,16}$/.test(normalizeCode(value)))
+      fail(403, "This code is invalid, expired, revoked, or fully used. Ask the organizer for a new code.");
+    const code = await one<{ communityId: string; expiresAt: string; useCount: number; maxUses: number; unlimited: number; revokedAt: string | null }>(
+      "SELECT communityId,expiresAt,useCount,maxUses,unlimited,revokedAt FROM invitation_codes WHERE tokenHash=?", await digest(normalizeCode(value as string)),
+    );
+    const community = code && communityFor(code.communityId);
+    const alreadyJoined = !!code && !!uid && !!await one("SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?", uid, code.communityId);
+    if (!code || !community || (!alreadyJoined && (code.revokedAt || Date.parse(code.expiresAt) <= Date.now() || (!code.unlimited && code.useCount >= code.maxUses))))
+      fail(403, "This code is invalid, expired, revoked, or fully used. Ask the organizer for a new code.");
+    return { community: community!, expiresAt: code!.expiresAt, alreadyJoined };
+  };
   const eventFor = async (id: string): Promise<CommunityEvent | null> => {
     const row = await one<{
       recordJson: string;
@@ -256,8 +281,8 @@ export function socialService(
   const member = async () => {
     if (!identity) fail(401, "Sign in to continue.");
     const m = await one<{ communityId: string; role: string }>(
-      "SELECT * FROM memberships WHERE userId=?",
-      uid,
+      "SELECT * FROM pilot_memberships WHERE userId=? AND communityId=?",
+      uid, communityId,
     );
     if (!m) fail(403, "An invitation is required to join this community.");
     return m!;
@@ -271,7 +296,7 @@ export function socialService(
       uid,
     ));
   const visibility = (alias = "p") => ({
-    sql: `NOT EXISTS(SELECT 1 FROM community_events ce WHERE ce.id=${alias}.subjectId AND ce.status='draft') AND ${alias}.deletedAt IS NULL AND ${alias}.communityId=? AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=${alias}.authorId) OR (b.ownerId=${alias}.authorId AND b.targetId=?)) AND (${alias}.authorId=? OR ${alias}.audience='community' OR (${alias}.audience='friends' AND EXISTS(SELECT 1 FROM friendships f WHERE f.status='accepted' AND ((f.a=? AND f.b=${alias}.authorId) OR (f.b=? AND f.a=${alias}.authorId)))))`,
+    sql: `NOT EXISTS(SELECT 1 FROM community_events ce WHERE ce.id=${alias}.subjectId AND ce.communityId=${alias}.communityId AND ce.status='draft') AND ${alias}.deletedAt IS NULL AND ${alias}.communityId=? AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=${alias}.authorId) OR (b.ownerId=${alias}.authorId AND b.targetId=?)) AND (${alias}.authorId=? OR ${alias}.audience='community' OR (${alias}.audience='friends' AND EXISTS(SELECT 1 FROM friendships f WHERE f.status='accepted' AND ((f.a=? AND f.b=${alias}.authorId) OR (f.b=? AND f.a=${alias}.authorId)))))`,
     args: [communityId, uid, uid, uid, uid, uid],
   });
   const post = async (postId: string) => {
@@ -286,7 +311,7 @@ export function socialService(
   };
   const person = async (target: string) => {
     const p = await one<Person>(
-      "SELECT p.* FROM profiles p JOIN memberships m ON m.userId=p.id WHERE p.id=? AND m.communityId=?",
+      "SELECT p.* FROM profiles p JOIN pilot_memberships m ON m.userId=p.id WHERE p.id=? AND m.communityId=?",
       target,
       communityId,
     );
@@ -295,6 +320,8 @@ export function socialService(
     return p!;
   };
   const validSubject = (subject: string) => {
+    if (subject === "community") return { id: "" };
+    if (communityId !== defaultCommunityId) fail(400, "This subject is not available in this community. Share a community observation instead.");
     const issue = issueFor(subject);
     if (!issue) fail(400, "Choose an available subject.");
     return issue!;
@@ -343,12 +370,14 @@ export function socialService(
   }
   async function snapshot(params: URLSearchParams): Promise<Snapshot> {
     if (!identity) return { ...emptySnapshot };
+    await resolveCommunity(params.get("community"));
     const me = await one<Person>(
-      "SELECT p.*,m.role FROM profiles p JOIN memberships m ON m.userId=p.id WHERE p.id=? AND m.communityId=?",
+      "SELECT p.*,m.role FROM profiles p JOIN pilot_memberships m ON m.userId=p.id WHERE p.id=? AND m.communityId=?",
       uid,
       communityId,
     );
-    if (!me)
+    if (!me) {
+      if (await one("SELECT 1 FROM profiles WHERE id=?", uid)) fail(403, "Join this community with an invitation code first.");
       return {
         ...emptySnapshot,
         status: "onboarding",
@@ -357,9 +386,10 @@ export function socialService(
           name: identity.displayName,
           username: "",
           bio: "",
-          communityLabel: "Ithaca, NY",
+          communityLabel: "",
         },
       };
+    }
     const v = visibility();
     let sql = `SELECT p.*,u.name,u.username FROM posts p JOIN profiles u ON u.id=p.authorId WHERE ${v.sql}`;
     const args: unknown[] = [...v.args];
@@ -421,7 +451,7 @@ export function socialService(
     const nextCursor =
       rows.length > 20 ? rows[19].createdAt + "|" + rows[19].id : null;
     const people = await all<Person>(
-      `SELECT p.*,CASE WHEN f.status='accepted' THEN 'friends' WHEN f.requester=? THEN 'outgoing' WHEN f.status='pending' THEN 'incoming' ELSE 'none' END relationship,EXISTS(SELECT 1 FROM mutes WHERE ownerId=? AND targetId=p.id) muted,EXISTS(SELECT 1 FROM blocks WHERE ownerId=? AND targetId=p.id) blocked FROM profiles p JOIN memberships m ON m.userId=p.id LEFT JOIN friendships f ON (f.a=? AND f.b=p.id) OR (f.b=? AND f.a=p.id) WHERE p.id<>? AND m.communityId=? AND NOT EXISTS(SELECT 1 FROM blocks b WHERE b.ownerId=p.id AND b.targetId=?) ORDER BY p.name`,
+      `SELECT p.*,CASE WHEN f.status='accepted' THEN 'friends' WHEN f.requester=? THEN 'outgoing' WHEN f.status='pending' THEN 'incoming' ELSE 'none' END relationship,EXISTS(SELECT 1 FROM mutes WHERE ownerId=? AND targetId=p.id) muted,EXISTS(SELECT 1 FROM blocks WHERE ownerId=? AND targetId=p.id) blocked FROM profiles p JOIN pilot_memberships m ON m.userId=p.id LEFT JOIN friendships f ON (f.a=? AND f.b=p.id) OR (f.b=? AND f.a=p.id) WHERE p.id<>? AND m.communityId=? AND NOT EXISTS(SELECT 1 FROM blocks b WHERE b.ownerId=p.id AND b.targetId=?) ORDER BY p.name`,
       uid,
       uid,
       uid,
@@ -470,12 +500,13 @@ export function socialService(
           uid,
         ),
         one<Question>(
-          `SELECT * FROM questions WHERE status='scheduled' AND startsAt<=? AND endsAt>? ORDER BY startsAt DESC,id DESC LIMIT 1`,
+          `SELECT * FROM questions WHERE ?='ithaca' AND status='scheduled' AND startsAt<=? AND endsAt>? ORDER BY startsAt DESC,id DESC LIMIT 1`,
+          communityId,
           new Date().toISOString(),
           new Date().toISOString(),
         ),
         all<Snapshot["updates"][number]>(
-          "SELECT * FROM issue_updates ORDER BY createdAt DESC LIMIT 50",
+          "SELECT * FROM issue_updates WHERE ?='ithaca' ORDER BY createdAt DESC LIMIT 50", communityId,
         ),
         all<Snapshot["plans"][number]>(
           `SELECT e.*,u.name FROM plans e JOIN profiles u ON u.id=e.userId WHERE e.userId=? OR (e.audience='community' OR (e.audience='friends' AND EXISTS(SELECT 1 FROM friendships f WHERE f.status='accepted' AND ((f.a=? AND f.b=e.userId) OR (f.b=? AND f.a=e.userId)))))`,
@@ -486,7 +517,7 @@ export function socialService(
       ]);
     const visibleSaves: string[] = [];
     for (const s of saves) {
-      if (catalogItem(s.targetId) || events.some((e) => e.id === s.targetId))
+      if ((communityId === defaultCommunityId && catalogItem(s.targetId)) || events.some((e) => e.id === s.targetId))
         visibleSaves.push(s.targetId);
       else {
         try {
@@ -507,6 +538,7 @@ export function socialService(
     const notifications: Snapshot["notifications"] = [];
     for (const n of notices) {
       if (n.kind === "friend" || n.kind === "friend_request") {
+        if (!people.some(p => p.id === n.actorId)) continue;
         if (
           await one(
             "SELECT 1 FROM friendships WHERE id=? AND status=? AND (a=? OR b=?)",
@@ -518,6 +550,7 @@ export function socialService(
         )
           notifications.push(n);
       } else if (n.kind === "issue") {
+        if (communityId !== defaultCommunityId) continue;
         if (
           await one(
             "SELECT 1 FROM follows WHERE userId=? AND issueId=? AND notify=1",
@@ -527,6 +560,7 @@ export function socialService(
         )
           notifications.push(n);
       } else if (n.kind === "event") {
+        if (!events.some(e => e.id === n.targetId)) continue;
         if (
           await one(
             "SELECT 1 FROM plans WHERE userId=? AND eventId=?",
@@ -615,25 +649,28 @@ export function socialService(
     const admin =
       me.role === "owner"
         ? {
+            invitationCommunities: pilotOwner() ? [...pilotCommunities] : [communityFor(communityId)!],
             invitationCodes: await all<NonNullable<Snapshot["admin"]>["invitationCodes"][number]>(
-              "SELECT id,createdAt,expiresAt,maxUses,useCount,revokedAt FROM invitation_codes ORDER BY createdAt DESC LIMIT 100",
+              "SELECT id,communityId,createdAt,expiresAt,CASE WHEN unlimited=1 THEN NULL ELSE maxUses END maxUses,useCount,revokedAt FROM invitation_codes WHERE communityId=? OR ?=1 ORDER BY createdAt DESC,id DESC LIMIT 100", communityId, +pilotOwner(),
             ),
             invitations: await all<
               NonNullable<Snapshot["admin"]>["invitations"][number]
             >(
-              "SELECT id,email,expiresAt,usedBy FROM invitations ORDER BY expiresAt DESC LIMIT 100",
+              "SELECT id,email,expiresAt,usedBy FROM invitations WHERE ?='ithaca' ORDER BY expiresAt DESC LIMIT 100", communityId,
             ),
             questions: await all<Question>(
-              "SELECT * FROM questions ORDER BY startsAt DESC LIMIT 100",
+              "SELECT * FROM questions WHERE ?='ithaca' ORDER BY startsAt DESC LIMIT 100", communityId,
             ),
             reports: await all<
               NonNullable<Snapshot["admin"]>["reports"][number]
             >(
-              "SELECT id,reason,status,evidence FROM reports ORDER BY createdAt DESC LIMIT 100",
+              "SELECT id,reason,status,evidence FROM reports WHERE communityId=? ORDER BY createdAt DESC LIMIT 100", communityId,
             ),
           }
         : undefined;
     return {
+      community: communityFor(communityId)!,
+      communities: (await all<{ communityId: string }>("SELECT communityId FROM pilot_memberships WHERE userId=?", uid)).flatMap(m => communityFor(m.communityId) ? [communityFor(m.communityId)!] : []),
       events,
       eventPreferences: eventPrefs
         ? {
@@ -641,29 +678,30 @@ export function socialService(
             interests: JSON.parse(eventPrefs.interestsJson),
             complete: !!eventPrefs.complete,
           }
-        : emptySnapshot.eventPreferences,
+        : { ...emptySnapshot.eventPreferences, city: communityFor(communityId)!.locationLabel.replace(", NY", "") },
       eventSuggestions: await all<
         NonNullable<Snapshot["eventSuggestions"]>[number]
       >(
-        "SELECT * FROM event_suggestions WHERE userId=? OR ? IN ('owner','curator') ORDER BY createdAt DESC LIMIT 100",
+        "SELECT * FROM event_suggestions WHERE (userId=? OR ? IN ('owner','curator')) AND communityId=? ORDER BY createdAt DESC LIMIT 100",
         uid,
         me.role ?? "member",
+        communityId,
       ),
       me,
       status: "ready",
       posts: await decorate(rows.slice(0, 20)),
       nextCursor,
       people,
-      rankings: ranks.filter((r) => catalogItem(r.itemId)),
+      rankings: ranks.filter((r) => communityId === defaultCommunityId && catalogItem(r.itemId)),
       priorities: await all<Snapshot["priorities"][number]>(
-        "SELECT issueId,priority,note FROM issue_priorities WHERE userId=? ORDER BY priority,issueId",
-        uid,
+        "SELECT issueId,priority,note FROM issue_priorities WHERE userId=? AND ?='ithaca' ORDER BY priority,issueId",
+        uid, communityId,
       ),
-      follows,
+      follows: communityId === defaultCommunityId ? follows : [],
       plans: plans.filter(
         (p) =>
           (p.userId === uid || visibleUsers.includes(p.userId)) &&
-          (!!catalogItem(p.eventId) || events.some((e) => e.id === p.eventId)),
+          ((communityId === defaultCommunityId && !!catalogItem(p.eventId)) || events.some((e) => e.id === p.eventId)),
       ),
       saved: visibleSaves,
       preferences: prefs ?? emptySnapshot.preferences,
@@ -689,6 +727,7 @@ export function socialService(
         parsed.error.issues[0]?.message ?? "Check the submitted values.",
       );
     const { requestId, data } = parsed.data!;
+    await resolveCommunity(parsed.data!.communityId);
     if (
       Object.keys((input as { data: Record<string, unknown> }).data).some(
         (k) => !(k in data),
@@ -697,7 +736,7 @@ export function socialService(
       fail(400, "This submission contains unsupported fields.");
     const now = new Date().toISOString();
     const key = await digest(uid + "|" + requestId);
-    const fingerprint = await digest(JSON.stringify(data));
+    const fingerprint = await digest(JSON.stringify(parsed.data!.communityId ? { communityId, data } : data));
     const old = await one<{ fingerprint: string; resultJson: string }>(
       "SELECT * FROM requests WHERE id=? AND userId=?",
       key,
@@ -760,7 +799,7 @@ export function socialService(
     const guardedPerson = async (target: string) => {
       const p = await person(target);
       guard(
-        `EXISTS(SELECT 1 FROM memberships WHERE userId=? AND communityId=?) AND NOT EXISTS(SELECT 1 FROM blocks WHERE (ownerId=? AND targetId=?) OR (ownerId=? AND targetId=?))`,
+        `EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?) AND NOT EXISTS(SELECT 1 FROM blocks WHERE (ownerId=? AND targetId=?) OR (ownerId=? AND targetId=?))`,
         target,
         communityId,
         uid,
@@ -836,8 +875,30 @@ export function socialService(
         );
       result = { ok: true, postId: objectId };
     };
-    if (data.action === "join") {
-      if (await one("SELECT 1 FROM memberships WHERE userId=?", uid))
+    if (data.action === "invite.redeem" || (data.action === "join" && /^POLIS/i.test(normalizeCode(data.invite)))) {
+      const preview = await previewInvitation(data.invite);
+      if (!data.confirmedCommunityId || data.confirmedCommunityId !== preview.community.id)
+        fail(400, "Confirm the community associated with this code.");
+      const target = preview.community.id;
+      const code = await one<{ id: string }>("SELECT id FROM invitation_codes WHERE tokenHash=?", await digest(normalizeCode(data.invite)));
+      if (!code) fail(403, "This invitation is unavailable.");
+      const existing = await one<Person>("SELECT * FROM profiles WHERE id=?", uid);
+      if (!existing && (!data.name || !data.username)) fail(400, "Choose your display name and username to complete your profile.");
+      // Every check uses current database time inside the same transactional batch.
+      // Already admitted members can safely retry even after a code becomes unusable.
+      guard("EXISTS(SELECT 1 FROM invitation_codes WHERE id=? AND communityId=?)", code!.id, target);
+      guard("EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?) OR EXISTS(SELECT 1 FROM invitation_codes WHERE id=? AND revokedAt IS NULL AND (unlimited=1 OR useCount<maxUses) AND expiresAt>strftime('%Y-%m-%dT%H:%M:%fZ','now'))", uid, target, code!.id);
+      if (!existing) {
+        add("INSERT INTO profiles(id,name,username,communityLabel,activeCommunityId,createdAt) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING", uid, data.name!, data.username!, preview.community.locationLabel, target, now);
+      }
+      // Count a person once, including retries with new request IDs or devices.
+      add("INSERT OR IGNORE INTO invitation_redemptions(codeId,userId,requestKey,redeemedAt) SELECT ?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", code!.id, uid, key, now, uid, target);
+      add("UPDATE invitation_codes SET useCount=useCount+1 WHERE id=? AND EXISTS(SELECT 1 FROM invitation_redemptions WHERE codeId=? AND userId=? AND requestKey=?)", code!.id, code!.id, uid, key);
+      add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) SELECT ?,?,'member' WHERE NOT EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", uid, target, uid, target);
+      add("UPDATE profiles SET activeCommunityId=? WHERE id=?", target, uid);
+      result = { ok: true, communityId: target, alreadyJoined: preview.alreadyJoined };
+    } else if (data.action === "join") {
+      if (await one("SELECT 1 FROM pilot_memberships WHERE userId=?", uid))
         fail(409, "You already have a profile.");
       const owner =
         !!ownerEmail &&
@@ -850,20 +911,9 @@ export function socialService(
             identity!.email.toLowerCase(),
             now,
           );
-      // Shared codes are case/spacing insensitive; legacy email-bound tokens
-      // retain their exact digest and email checks above.
-      const normalizedCode = data.invite.replace(/[\s-]/g, "").toUpperCase();
-      const sharedCode = owner || invite ? null : await one<{ id: string }>(
-        "SELECT id FROM invitation_codes WHERE tokenHash=? AND revokedAt IS NULL AND useCount<maxUses AND expiresAt>?",
-        await digest(normalizedCode), now,
-      );
-      if (!owner && !invite && !sharedCode)
-        fail(403, "Use an active invitation code, or an email invitation matching your signed-in email.");
-      if (sharedCode)
-        guard(
-          "EXISTS(SELECT 1 FROM invitation_codes WHERE id=? AND revokedAt IS NULL AND useCount<maxUses AND expiresAt>?)",
-          sharedCode.id, now,
-        );
+      if (!owner && !invite)
+        fail(403, "Use an active invitation code to join your community.");
+      communityId = defaultCommunityId;
       if (invite)
         guard(
           "EXISTS(SELECT 1 FROM invitations WHERE id=? AND usedBy IS NULL AND expiresAt>?)",
@@ -891,8 +941,6 @@ export function socialService(
           uid,
           invite.id,
         );
-      if (sharedCode)
-        add("UPDATE invitation_codes SET useCount=useCount+1 WHERE id=?", sharedCode.id);
       if (owner)
         add(
           `INSERT OR IGNORE INTO questions(id,issueId,title,background,sourceUrl,sample,optionsJson,startsAt,endsAt,status) VALUES('sample-housing','housing',?,?,?,?,?,?,?,'scheduled')`,
@@ -918,8 +966,10 @@ export function socialService(
       );
     } else {
       const m = await member();
+      if (communityId !== defaultCommunityId && (["invite", "question.save", "issue.update", "answer", "follow"].includes(data.action) || data.action.startsWith("priority.") || data.action.startsWith("ranking")))
+        fail(400, "This community does not have a local issue catalog yet.");
       guard(
-        "EXISTS(SELECT 1 FROM memberships WHERE userId=? AND communityId=?)",
+        "EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)",
         uid,
         communityId,
       );
@@ -927,11 +977,19 @@ export function socialService(
         if (m.role !== "owner")
           fail(403, "Community owner access is required.");
         guard(
-          "EXISTS(SELECT 1 FROM memberships WHERE userId=? AND role='owner')",
-          uid,
+          "EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=? AND role='owner')",
+          uid, communityId,
         );
       };
       switch (data.action) {
+        case "community.select": {
+          if (!communityFor(data.communityId)) fail(404, "This community is unavailable.");
+          guard("EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", uid, data.communityId);
+          if (!(await one("SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?", uid, data.communityId))) fail(403, "Join this community with an invitation code first.");
+          add("UPDATE profiles SET activeCommunityId=? WHERE id=?", data.communityId, uid);
+          result = { ok: true, communityId: data.communityId };
+          break;
+        }
         case "event.preferences":
           add(
             "INSERT INTO event_preferences(userId,city,interestsJson,complete) VALUES(?,?,?,?) ON CONFLICT(userId) DO UPDATE SET city=excluded.city,interestsJson=excluded.interestsJson,complete=excluded.complete",
@@ -946,8 +1004,8 @@ export function socialService(
           if (!["owner", "curator"].includes(m.role))
             fail(403, "Curator access is required.");
           guard(
-            "EXISTS(SELECT 1 FROM memberships WHERE userId=? AND role IN ('owner','curator'))",
-            uid,
+            "EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=? AND role IN ('owner','curator'))",
+            uid, communityId,
           );
           const e = data.event;
           if (e.endsAt && e.endsAt <= e.startsAt)
@@ -958,9 +1016,11 @@ export function socialService(
             fail(400, "Choose a related issue or leave it blank.");
           if (Date.parse(e.checkedAt) > Date.now() + 60000)
             fail(400, "Source check time cannot be in the future.");
-          if (catalogItem(e.id) || issues.some((i) => i.id === e.id))
+          if (e.id === "community" || catalogItem(e.id) || issues.some((i) => i.id === e.id))
             fail(400, "This event ID is reserved.");
           const existing = await eventFor(e.id);
+          if (!existing && await one("SELECT 1 FROM community_events WHERE id=?", e.id)) fail(409, "Choose a different event ID.");
+          guard("NOT EXISTS(SELECT 1 FROM community_events WHERE id=? AND communityId<>?)", e.id, communityId);
           if (data.createOnly && existing) break;
           if (data.createOnly)
             guard(
@@ -990,8 +1050,8 @@ export function socialService(
           if (!["owner", "curator"].includes(m.role))
             fail(403, "Curator access is required.");
           guard(
-            "EXISTS(SELECT 1 FROM memberships WHERE userId=? AND role IN ('owner','curator'))",
-            uid,
+            "EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=? AND role IN ('owner','curator'))",
+            uid, communityId,
           );
           if (!(await eventFor(data.eventId))) fail(404, "Event unavailable.");
           add(
@@ -1005,28 +1065,29 @@ export function socialService(
         }
         case "event.suggest":
           add(
-            "INSERT INTO event_suggestions(id,userId,title,sourceUrl,note,createdAt) VALUES(?,?,?,?,?,?)",
+            "INSERT INTO event_suggestions(id,userId,title,sourceUrl,note,createdAt,communityId) VALUES(?,?,?,?,?,?,?)",
             objectId,
             uid,
             data.title,
             data.sourceUrl,
             data.note,
             now,
+            communityId,
           );
           break;
         case "event.review":
           if (
             !(await one(
-              "SELECT 1 FROM event_suggestions WHERE id=?",
-              data.suggestionId,
+              "SELECT 1 FROM event_suggestions WHERE id=? AND communityId=?",
+              data.suggestionId, communityId,
             ))
           )
             fail(404, "Suggestion unavailable.");
           if (!["owner", "curator"].includes(m.role))
             fail(403, "Curator access is required.");
           guard(
-            "EXISTS(SELECT 1 FROM memberships WHERE userId=? AND role IN ('owner','curator'))",
-            uid,
+            "EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=? AND role IN ('owner','curator'))",
+            uid, communityId,
           );
           add(
             "UPDATE event_suggestions SET status=? WHERE id=?",
@@ -1137,7 +1198,7 @@ export function socialService(
           break;
         case "post": {
           const item = catalogItem(data.subjectId);
-          const event = !issueFor(data.subjectId)
+          const event = data.subjectId !== "community" && !issueFor(data.subjectId)
             ? await guardedEvent(data.subjectId)
             : null;
           if (!event) validSubject(data.subjectId);
@@ -1349,6 +1410,7 @@ export function socialService(
           break;
         }
         case "save":
+          if (communityId !== defaultCommunityId && catalogItem(data.targetId)) fail(404, "This item is not available in this community.");
           if (!catalogItem(data.targetId)) {
             if (await eventFor(data.targetId))
               await guardedEvent(data.targetId);
@@ -1546,6 +1608,7 @@ export function socialService(
             );
           break;
         case "plan": {
+          if (communityId !== defaultCommunityId && catalogItem(data.eventId)) fail(404, "This event is not available in this community.");
           const prior = await one<{ status: string; audience: string }>(
             "SELECT status,audience FROM plans WHERE userId=? AND eventId=?",
             uid,
@@ -1702,32 +1765,36 @@ export function socialService(
             evidence = c;
           }
           add(
-            "INSERT INTO reports(id,reporterId,targetId,reason,evidence,createdAt) VALUES(?,?,?,?,?,?)",
+            "INSERT INTO reports(id,reporterId,targetId,reason,evidence,createdAt,communityId) VALUES(?,?,?,?,?,?,?)",
             objectId,
             uid,
             data.targetId,
             data.reason,
             JSON.stringify(evidence),
             now,
+            communityId,
           );
           break;
         }
         case "invite.code": {
           owner();
+          const target = data.communityId ?? communityId;
+          if (!communityFor(target)) fail(400, "Choose an available university or community.");
+          if (target !== communityId && !pilotOwner()) fail(403, "You can only invite people to your own community.");
           // Twelve uniformly sampled base32 characters give 60 bits of entropy.
           const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
           const code = Array.from(crypto.getRandomValues(new Uint8Array(12)), byte => alphabet[byte % 32]).join("");
           const token = "POLIS-" + code.match(/.{4}/g)!.join("-");
-          add("INSERT INTO invitation_codes(id,tokenHash,createdBy,createdAt,expiresAt,maxUses) VALUES(?,?,?,?,?,?)",
+          add("INSERT INTO invitation_codes(id,tokenHash,createdBy,createdAt,expiresAt,maxUses,communityId,unlimited) VALUES(?,?,?,?,?,?,?,?)",
             objectId, await digest(token.replace(/-/g, "")), uid, now,
-            new Date(Date.parse(now) + data.expiresDays * 86400000).toISOString(), data.maxUses);
+            new Date(Date.parse(now) + data.expiresDays * 86400000).toISOString(), data.maxUses ?? 1, target, +(data.maxUses === null));
           result = { ok: true, invitationCode: token };
           break;
         }
         case "invite.revoke": {
           owner();
-          if (!(await one("SELECT id FROM invitation_codes WHERE id=?", data.codeId))) fail(404, "Invitation code unavailable.");
-          add("UPDATE invitation_codes SET revokedAt=COALESCE(revokedAt,?) WHERE id=?", now, data.codeId);
+          if (!(await one("SELECT id FROM invitation_codes WHERE id=? AND (communityId=? OR ?=1)", data.codeId, communityId, +pilotOwner()))) fail(404, "Invitation code unavailable.");
+          add("UPDATE invitation_codes SET revokedAt=COALESCE(revokedAt,?) WHERE id=? AND (communityId=? OR ?=1)", now, data.codeId, communityId, +pilotOwner());
           break;
         }
         case "invite": {
@@ -1834,8 +1901,8 @@ export function socialService(
           owner();
           {
             const r = await one<{ targetId: string }>(
-              "SELECT targetId FROM reports WHERE id=?",
-              data.reportId,
+              "SELECT targetId FROM reports WHERE id=? AND communityId=?",
+              data.reportId, communityId,
             );
             if (!r) fail(404, "Report unavailable.");
             add(
@@ -1982,7 +2049,7 @@ export function socialService(
         if (saved) {
           if (
             saved.fingerprint !==
-            (await digest(JSON.stringify(parsed.data.data)))
+            (await digest(JSON.stringify(parsed.data.communityId ? { communityId: parsed.data.communityId, data: parsed.data.data } : parsed.data.data)))
           )
             fail(409, "This submission key was already used.");
           return JSON.parse(saved.resultJson);
@@ -1991,5 +2058,5 @@ export function socialService(
       throw error;
     }
   }
-  return { snapshot, execute };
+  return { snapshot, execute, previewInvitation };
 }

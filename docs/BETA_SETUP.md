@@ -1,12 +1,12 @@
 # Social beta setup
 
-Use Node 24.14.0 and npm 11.9.0. The application retains its existing Sites Worker, D1 database, routes and private hosting access. GitHub validation does not deploy it.
+Use Node 24.14.0 and npm 11.9.0. The application retains its existing Sites Worker, D1 database and routes. Preserve the current Sites audience, which is public as of the September 24, 2026 check. GitHub validation does not deploy it.
 
 ## Release state
 
 The deliverable is a reproducible local social-beta candidate saved on `codex/functional-social-beta` for review against GitHub `main`. A complete local candidate includes the source and migration, passing checks, the isolated three-user HTTP scenario, and inspected desktop/mobile journeys. Synthetic identities prove the local service flow; they do not establish that production authentication or deployment works.
 
-The hosted prototype still serves the earlier MVP. Hosted release acceptance requires the exact reviewed revision on Sites, applied production migrations, and the real-identity checks in [the verification record](VERIFICATION.md#hosted-pilot-acceptance-gate--not-yet-exercised). Private Sites access must stay unchanged. Curated, dated local sources are also needed before the sample catalog can be presented as real civic activity.
+This section records the original beta candidate; Sites now reports public version 2. The community invitation update described in [invitation codes](invitation-codes.md) still awaits publishing. Hosted release acceptance requires the exact reviewed revision on Sites, applied production migrations, and the real-identity checks in [the verification record](VERIFICATION.md#hosted-pilot-acceptance-gate--not-yet-exercised). Preserve the current Sites audience. Curated, dated local sources are also needed before the sample civic catalog can be presented as real activity.
 
 ## Local development
 
@@ -30,7 +30,7 @@ POLIS_TEST_ORIGIN=http://localhost:5175 npm run test:http
 POLIS_TEST_ORIGIN=http://localhost:5175 npm run test:social-http
 ```
 
-The explicit development flag enables two additional fixed synthetic identities in the loopback-only sign-in shim. The test uses three independent cookie jars, email-bound invitations, and the actual Worker HTTP route and local D1 storage. Caller-provided identity headers are stripped. The extra identities are unavailable without the flag; the entire sign-in shim runs only in Vite development middleware and is absent from the built Worker/client artifacts. This is not ChatGPT authentication verification.
+The explicit development flag enables two additional fixed synthetic identities in the loopback-only sign-in shim. The test uses three independent cookie jars, reusable community invitations, and the actual Worker HTTP route and local D1 storage. Caller-provided identity headers are stripped. The extra identities are unavailable without the flag; the entire sign-in shim runs only in Vite development middleware and is absent from the built Worker/client artifacts. This is not ChatGPT authentication verification.
 
 The HTTP scenario covers friendship request retries and acceptance, Friends feed eligibility, C's direct-link denial, unauthorized edits, reaction replacement/removal, comments and shallow replies, exact notification links, read/unread state, private saves, muting, blocking and deletion. It leaves a clearly labeled example conversation for browser review. Repeated runs may leave additional synthetic review conversations.
 
@@ -38,7 +38,7 @@ The boundary smoke test separately rejects unknown, prototype-property and dupli
 
 ## Product behavior
 
-- The coherent request-and-accept friendship model is retained. Home's Following view contains accepted friends and the viewer's posts; a secondary filter shows eligible followed-issue conversations. Community means invited Ithaca members.
+- The coherent request-and-accept friendship model is retained. Home's Following view contains accepted friends and the viewer's posts; a secondary filter shows eligible followed-issue conversations. Community means invited members of the selected community.
 - Issue priorities are private, separately ordered issues with optional explanations. Sharing publishes selected items in their current order. Explanations are excluded unless explicitly selected; future private changes do not alter the published snapshot.
 - Structured opinions and article/event shares can include HTTPS source links. Text edits retain sources unless explicitly changed. Conversation audiences remain fixed.
 - Friend requests and replies appear in the persistent in-app inbox. A reply can notify both the post author and the parent-comment author, with deduplication and existing access, block and mute checks.
@@ -49,6 +49,6 @@ The boundary smoke test separately rejects unknown, prototype-property and dupli
 
 Run `npm run lint`, `npm run typecheck`, `npm test` and `npm run build`. See [the verification record](VERIFICATION.md) for browser journeys and observed limitations.
 
-Before a hosted pilot, publish the exact reviewed source through the existing Sites workflow, with the configured owner runtime setting and managed `DB`. Sites must apply the migration history, including 0002. Preserve the current private site audience. Three isolated real ChatGPT identities need both authorized Sites access and Polis invitations before hosted acceptance can be exercised. Do not substitute a directly exposed Worker origin for trusted Sites authentication.
+Before testing a hosted update, publish the exact reviewed source through the existing Sites workflow, with the configured owner runtime setting and managed `DB`. Sites must apply the full additive migration history. Preserve the current audience (the owner selected public site access on September 17, 2026). Three isolated real ChatGPT identities need Polis invitations before hosted acceptance can be exercised. Do not substitute a directly exposed Worker origin for trusted Sites authentication.
 
-All catalog issues, news, officials and events remain illustrative. Event registration sources, costs and real local content need owner curation. Native calendar-client import, real-device pinch gestures, production migration/restore drills and a full assistive-technology audit remain unverified.
+Legacy catalog issues, news, officials and demo events remain illustrative. The separate community-event catalog records organizer sources; see [event sources](event-sources.md) for its coverage and verification dates. Event registration sources, costs and real local content still need ongoing owner curation. Native calendar-client import, real-device pinch gestures, production migration/restore drills and a full assistive-technology audit remain unverified.

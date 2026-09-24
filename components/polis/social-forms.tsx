@@ -180,6 +180,7 @@ export function Onboarding({ name, run }: { name: string; run: Run }) {
   );
 }
 export type ComposeOptions = {
+  communityOnly?: boolean;
   subjectLabel?: string;
   subjectId?: string;
   post?: Post;
@@ -206,7 +207,7 @@ export function Composer({
   const post = options.post,
     prior = options.prior,
     copy = options.copy;
-  const key = "polis-draft:" + userId + ":" + (post?.id ?? "new");
+  const key = "polis-draft:" + userId + ":" + (post?.id ?? (options.communityOnly ? "community-new" : "new"));
   const [draft] = useState<{
     kind?:
       "opinion" | "question" | "article" | "event_reflection" | "event_share";
@@ -268,7 +269,7 @@ export function Composer({
     kind === "opinion" &&
     (itemById[subject]?.kind === "Policies" ||
       issues.some((i) => i.id === subject));
-  const choices = items.filter((i) =>
+  const choices = options.communityOnly ? [] : items.filter((i) =>
     kind === "article"
       ? i.kind === "News"
       : kind === "event_reflection" || kind === "event_share"
@@ -278,7 +279,7 @@ export function Composer({
   function changeKind(value: typeof kind) {
     setKind(value);
     setPos("");
-    if (value === "article") setSubject("housing");
+    if (value === "article") setSubject(options.communityOnly ? "community" : "housing");
     if (value === "event_reflection" || value === "event_share")
       setSubject("housing-meeting");
   }
@@ -347,9 +348,11 @@ export function Composer({
               <option value="opinion">An opinion</option>
               <option value="question">A question</option>
               <option value="article">An article with commentary</option>
+              {!options.communityOnly && <>
               <option value="event_share">An event with commentary</option>
               <option value="event_reflection">An event reflection</option>
               <option value="ranking">A selected ranking update</option>
+              </>}
             </select>
           </label>
         )}
@@ -363,7 +366,7 @@ export function Composer({
               setPos("");
             }}
           >
-            {kind !== "event_reflection" &&
+            {!options.communityOnly && kind !== "event_reflection" &&
               kind !== "event_share" &&
               issues.map((i) => (
                 <option key={i.id} value={i.id}>
@@ -372,7 +375,7 @@ export function Composer({
               ))}
             {!itemById[subject] && !issues.some((i) => i.id === subject) && (
               <option value={subject}>
-                {options.subjectLabel || subjectTitle(subject)}
+                {subject === "community" ? "Community observation" : options.subjectLabel || subjectTitle(subject)}
               </option>
             )}
             {choices.map((i) => (

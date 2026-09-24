@@ -1,7 +1,7 @@
 "use client";
 import { InvitationCodes } from "./social-invitations";
 import { useState } from "react";
-import { Copy, Check, ArrowUpRight } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { issues } from "@/lib/social/catalog";
 import type { Snapshot, Question } from "@/lib/social/types";
 import type { Run, Navigate } from "./social-post";
@@ -159,11 +159,7 @@ const newQuestion = (): Question => ({
   status: "draft",
 });
 export function Admin({ data, run }: { data: Snapshot; run: Run }) {
-  const [checkedAt] = useState(() => Date.now());
-  const [email, setEmail] = useState(""),
-    [invite, setInvite] = useState(""),
-    [copied, setCopied] = useState(false),
-    [q, setQ] = useState<Question>(newQuestion),
+  const [q, setQ] = useState<Question>(newQuestion),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [update, setUpdate] = useState({
@@ -181,91 +177,10 @@ export function Admin({ data, run }: { data: Snapshot; run: Run }) {
   return (
     <div className="admin-view">
       <p className="catalog-notice">
-        Community owner tools · Share a code with your testers, or create an
-        email-specific invitation. Community membership is separate from site visibility.
+        Community owner tools · Generate a community code and share it with your testers.
+        No recipient emails or invitation emails are needed.
       </p>
       <InvitationCodes data={data} run={run} />
-      <section>
-        <h2>Email-specific invitation · optional</h2>
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            try {
-              const r = await run({ action: "invite", email });
-              if (r.invite) {
-                setInvite(
-                  location.origin + "/?invite=" + encodeURIComponent(r.invite),
-                );
-                setCopied(false);
-              }
-              setError("");
-            } catch (e) {
-              setError(e instanceof Error ? e.message : "Please retry.");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <label className="social-field">
-            Their ChatGPT email
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </label>
-          <button className="btn primary" disabled={busy}>
-            Create invitation link
-          </button>
-        </form>
-        {invite && (
-          <div className="invite-result">
-            <label className="social-field">
-              Invitation link
-              <input
-                readOnly
-                value={invite}
-                onFocus={(e) => e.target.select()}
-              />
-            </label>
-            <button
-              className="text-button"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(invite);
-                  setCopied(true);
-                } catch {
-                  setError("Select the invitation link and copy it.");
-                }
-              }}
-            >
-              {copied ? <Check size={15} /> : <Copy size={15} />}{" "}
-              {copied ? "Copied" : "Copy invitation"}
-            </button>
-            <p className="metadata">
-              Nothing has been sent. Share the link with this person. If site
-              access is restricted, grant them access in Sites as well.
-            </p>
-          </div>
-        )}
-        <details>
-          <summary>
-            Created invitations ({data.admin.invitations.length})
-          </summary>
-          {data.admin.invitations.map((i) => (
-            <p key={i.id}>
-              {i.email} ·{" "}
-              {i.usedBy
-                ? "Accepted"
-                : Date.parse(i.expiresAt) < checkedAt
-                  ? "Expired"
-                  : "Pending"}
-            </p>
-          ))}
-        </details>
-      </section>
       <section>
         <h2>Daily questions</h2>
         <div className="question-choices">

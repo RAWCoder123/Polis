@@ -1330,12 +1330,12 @@ test("shared codes admit different emails up to their limit and retries consume 
   const code = await f.act("owner", data, key);
   assert.deepEqual(await f.act("owner", data, key), code);
   assert.match(code.invitationCode as string, /^POLIS-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/);
-  const command = { requestId: crypto.randomUUID(), data: { action: "join", name: "First", username: "first_code", invite: String(code.invitationCode).toLowerCase().replaceAll("-", " ") } };
+  const command = { requestId: crypto.randomUUID(), data: { action: "join", confirmedCommunityId: "ithaca", name: "First", username: "first_code", invite: String(code.invitationCode).toLowerCase().replaceAll("-", " ") } };
   await f.service("first").execute(command);
   await f.service("first").execute(command);
   assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, 1);
-  await f.act("second", { action: "join", name: "Second", username: "second_code", invite: code.invitationCode as string });
-  await denied(f.act("third", { action: "join", name: "Third", username: "third_code", invite: code.invitationCode as string }), 403);
+  await f.act("second", { action: "join", confirmedCommunityId: "ithaca", name: "Second", username: "second_code", invite: code.invitationCode as string });
+  await denied(f.act("third", { action: "join", confirmedCommunityId: "ithaca", name: "Third", username: "third_code", invite: code.invitationCode as string }), 403);
   assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, 2);
   assert.equal((await f.snap("first")).me?.role, "member");
   assert.equal((await f.snap("first")).admin, undefined);
@@ -1349,11 +1349,11 @@ test("shared codes admit different emails up to their limit and retries consume 
 test("only owner can create/revoke codes; invalid, expired and revoked codes cannot join", async () => {
   const f = fixture(); await f.setup();
   await denied(f.act("a", { action: "invite.code", maxUses: 25, expiresDays: 7 }), 403);
-  await denied(f.act("owner", { action: "invite.code", maxUses: 101, expiresDays: 7 }), 400);
+  await denied(f.act("owner", { action: "invite.code", maxUses: 10001, expiresDays: 7 }), 400);
   const code = await f.act("owner", { action: "invite.code", maxUses: 25, expiresDays: 1 });
   const id = (await f.snap("owner")).admin!.invitationCodes[0].id;
   await denied(f.act("a", { action: "invite.revoke", codeId: id }), 403);
-  const join = { action: "join", name: "New", username: "new_code", invite: code.invitationCode as string } as const;
+  const join = { action: "join", confirmedCommunityId: "ithaca", name: "New", username: "new_code", invite: code.invitationCode as string } as const;
   await denied(f.act("new", { ...join, invite: "POLIS-INVALID" }), 403);
   f.raw.prepare("UPDATE invitation_codes SET expiresAt=? WHERE id=?").run("2000-01-01T00:00:00.000Z", id);
   await denied(f.act("new", join), 403);
@@ -1371,13 +1371,159 @@ test("last code use and revocation are checked transactionally before profile cr
     const code = await f.act("owner", { action: "invite.code", maxUses: 1, expiresDays: 7 });
     const id = (await f.snap("owner")).admin!.invitationCodes[0].id;
     const gate = pauseOnce(f, "INSERT INTO profiles");
-    const first = f.act("first", { action: "join", name: "First", username: "first_code", invite: code.invitationCode as string });
+    const first = f.act("first", { action: "join", confirmedCommunityId: "ithaca", name: "First", username: "first_code", invite: code.invitationCode as string });
     await gate.atGate;
     if (revoke) await f.act("owner", { action: "invite.revoke", codeId: id });
-    else await f.act("second", { action: "join", name: "Second", username: "second_code", invite: code.invitationCode as string });
+    else await f.act("second", { action: "join", confirmedCommunityId: "ithaca", name: "Second", username: "second_code", invite: code.invitationCode as string });
     gate.release(); await denied(first, 409);
     assert.equal(f.raw.prepare("SELECT id FROM profiles WHERE id='first'").get(), undefined);
     assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, revoke ? 0 : 1);
     f.raw.close();
   }
+});
+
+test("preview reveals only the configured community; confirmation and normal authentication remain mandatory", async () => {
+  const f = fixture(); await f.setup();
+  const { invitationCode } = await f.act("owner", { action: "invite.code", communityId: "emory", maxUses: null });
+  const preview = await f.service(null).previewInvitation(invitationCode);
+  assert.deepEqual(Object.keys(preview).sort(), ["alreadyJoined", "community", "expiresAt"]);
+  assert.equal(preview.community.id, "emory");
+  assert.equal(preview.alreadyJoined, false);
+  assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, 0);
+  const join = { action: "invite.redeem", invite: invitationCode as string, confirmedCommunityId: "emory", name: "New", username: "new_person" } as const;
+  await denied(f.service(null).execute({ requestId: crypto.randomUUID(), data: join }), 401);
+  await denied(f.act("new", { ...join, confirmedCommunityId: "ithaca" }), 400);
+  await denied(f.service("new").execute({ requestId: crypto.randomUUID(), data: { ...join, role: "owner" } }), 400);
+  await f.act("new", join);
+  const snap = await f.snap("new");
+  assert.equal(snap.me?.role, "member");
+  assert.equal(snap.community?.id, "emory");
+  assert.equal(snap.admin, undefined);
+  assert.equal(snap.events.length, 0);
+  assert.equal(snap.question, null);
+  assert.equal((await f.service("new").previewInvitation(invitationCode)).alreadyJoined, true);
+  f.raw.close();
+});
+
+test("joining a second community preserves the profile, original membership and private data", async () => {
+  const f = fixture(); await f.setup();
+  await f.act("a", { action: "save", targetId: "homes", enabled: true });
+  const prior = (await f.snap("a")).me;
+  const { invitationCode } = await f.act("owner", { action: "invite.code", communityId: "emory", maxUses: null });
+  const join = { action: "invite.redeem", invite: invitationCode as string, confirmedCommunityId: "emory" } as const;
+  await f.act("a", join);
+  await f.act("a", join);
+  await f.act("b", join);
+  const a = await f.snap("a");
+  assert.equal(a.me?.username, prior?.username);
+  assert.deepEqual(a.communities.map(c => c.id).sort(), ["emory", "ithaca"]);
+  assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, 2);
+  assert.equal(f.count("invitation_redemptions"), 2);
+  const other = await f.act("owner", { action: "invite.code", communityId: "emory", maxUses: 1 });
+  await f.act("a", { ...join, invite: other.invitationCode as string });
+  assert.equal(f.raw.prepare("SELECT SUM(useCount) n FROM invitation_codes").get()!.n, 2);
+  await f.act("a", { action: "community.select", communityId: "ithaca" });
+  assert.ok((await f.snap("a")).saved.includes("homes"));
+  await denied(f.act("c", { action: "community.select", communityId: "emory" }), 403);
+  // Even the configured owner receives ordinary membership when redeeming a code.
+  await f.act("owner", join);
+  assert.equal((await f.snap("owner")).me?.role, "member");
+  assert.equal((await f.snap("owner", { community: "ithaca" })).me?.role, "owner");
+  f.raw.close();
+});
+
+test("fresh request IDs and simultaneous redemption do not consume another slot for one identity", async () => {
+  const f = fixture(); await f.setup();
+  const { invitationCode } = await f.act("owner", { action: "invite.code", communityId: "emory", maxUses: 1 });
+  const data = { action: "invite.redeem", invite: invitationCode as string, confirmedCommunityId: "emory", name: "New", username: "concurrent_person" } as const;
+  const gate = pauseOnce(f, "INSERT INTO profiles");
+  const first = f.act("new", data);
+  await gate.atGate;
+  await f.act("new", data);
+  gate.release();
+  await first;
+  await f.act("new", data);
+  assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, 1);
+  assert.equal(f.count("invitation_redemptions"), 1);
+  assert.equal(f.raw.prepare("SELECT COUNT(*) n FROM pilot_memberships WHERE userId='new'").get()!.n, 1);
+  await denied(f.act("different", { ...data, username: "different_person" }), 403);
+  f.raw.close();
+});
+
+test("expiration at transaction time and profile errors roll back admission and counts", async () => {
+  const f = fixture(); await f.setup();
+  const { invitationCode } = await f.act("owner", { action: "invite.code", communityId: "emory", maxUses: null });
+  const data = { action: "invite.redeem", invite: invitationCode as string, confirmedCommunityId: "emory", name: "New", username: "person_a" } as const;
+  await denied(f.act("new", data), 409);
+  assert.equal(f.count("invitation_redemptions"), 0);
+  const gate = pauseOnce(f, "INSERT INTO profiles");
+  const pending = f.act("new", { ...data, username: "expires_during_join" });
+  await gate.atGate;
+  f.raw.prepare("UPDATE invitation_codes SET expiresAt=?").run(new Date(Date.now() + 25).toISOString());
+  await new Promise(r => setTimeout(r, 50));
+  gate.release();
+  await denied(pending, 409);
+  assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, 0);
+  assert.equal(f.raw.prepare("SELECT id FROM profiles WHERE id='new'").get(), undefined);
+  assert.equal(f.count("invitation_redemptions"), 0);
+  f.raw.close();
+});
+
+test("communities isolate direct reads, posts, administration, feedback and legacy invitation authority", async () => {
+  const f = fixture(); await f.setup();
+  const cornellPost = await f.post("community");
+  const { invitationCode } = await f.act("owner", { action: "invite.code", communityId: "emory", maxUses: null });
+  for (const u of ["a", "b"]) await f.act(u, { action: "invite.redeem", invite: invitationCode as string, confirmedCommunityId: "emory" });
+  const emoryPost = await f.act("a", { action: "post", kind: "question", subjectId: "community", text: "Where should we volunteer?", audience: "community" });
+  assert.ok((await f.snap("b", { filter: "community" })).posts.some(p => p.id === emoryPost.postId));
+  assert.equal((await f.snap("b")).posts.some(p => p.id === cornellPost), false);
+  await denied(f.snap("c", { community: "emory" }), 403);
+  await denied(f.snap("c", { post: emoryPost.postId as string }), 404);
+  await denied(f.act("c", { action: "reaction", postId: emoryPost.postId as string, kind: "agree" }), 404);
+  await f.act("a", { action: "report", targetId: emoryPost.postId as string, reason: "Synthetic moderation review" });
+  assert.equal((await f.snap("owner")).admin!.reports.length, 0);
+  f.raw.exec("UPDATE community_memberships SET role='owner' WHERE userId='b' AND communityId='emory'");
+  const scoped = await f.snap("b");
+  assert.deepEqual(scoped.admin!.invitationCommunities.map(c => c.id), ["emory"]);
+  assert.equal(scoped.admin!.reports.length, 1);
+  await denied(f.act("b", { action: "invite.code", communityId: "ithaca", maxUses: 3 }), 403);
+  await denied(f.act("b", { action: "invite", email: "someone@example.test" }), 400);
+  await denied(f.act("b", { action: "save", targetId: "homes", enabled: true }), 404);
+  const ownCode = await f.act("b", { action: "invite.code", maxUses: 3 });
+  assert.equal((await f.service(null).previewInvitation(ownCode.invitationCode)).community.id, "emory");
+  const cornellCode = await f.act("owner", { action: "invite.code" });
+  const cornellId = f.raw.prepare("SELECT id FROM invitation_codes WHERE communityId='ithaca'").get()!.id as string;
+  await denied(f.act("b", { action: "invite.revoke", codeId: cornellId }), 404);
+  assert.ok(cornellCode.invitationCode);
+  f.raw.close();
+});
+
+test("invitation migrations preserve existing memberships and code use counts without rewriting legacy tables", () => {
+  const raw = new DatabaseSync(":memory:");
+  const migrations = readdirSync("drizzle").filter(n => n.endsWith(".sql")).sort();
+  for (const file of migrations.filter(n => n < "0005")) raw.exec(readFileSync("drizzle/" + file, "utf8"));
+  raw.exec("INSERT INTO profiles(id,name,username,createdAt) VALUES('old','Existing','existing','2026-01-01'); INSERT INTO memberships(userId,communityId,role) VALUES('old','ithaca','owner'); INSERT INTO invitation_codes(id,tokenHash,createdBy,createdAt,expiresAt,maxUses,useCount) VALUES('legacy-code','opaque-hash','old','2026-01-01','2027-01-01',25,7); INSERT INTO saves(userId,targetId) VALUES('old','homes');");
+  for (const file of migrations.filter(n => n >= "0005")) raw.exec(readFileSync("drizzle/" + file, "utf8"));
+  assert.equal(raw.prepare("SELECT role FROM pilot_memberships WHERE userId='old'").get()!.role, "owner");
+  assert.equal(raw.prepare("SELECT activeCommunityId FROM profiles WHERE id='old'").get()!.activeCommunityId, "ithaca");
+  assert.equal(raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, 7);
+  assert.equal(raw.prepare("SELECT communityId FROM invitation_codes").get()!.communityId, "ithaca");
+  assert.equal(raw.prepare("SELECT COUNT(*) n FROM saves").get()!.n, 1);
+  raw.close();
+});
+
+test("cross-community event ID races cannot overwrite a listing or hide generic conversations", async () => {
+  const f = fixture(); await f.setup();
+  const { invitationCode } = await f.act("owner", { action: "invite.code", communityId: "emory" });
+  await f.act("a", { action: "invite.redeem", invite: invitationCode as string, confirmedCommunityId: "emory" });
+  f.raw.exec("UPDATE community_memberships SET role='owner' WHERE userId='a' AND communityId='emory'");
+  const event = futureEvent("shared-id");
+  const gate = pauseOnce(f, "INSERT INTO community_events");
+  const pending = f.act("a", { action: "event.save", event: { ...event, title: "Emory title" } });
+  await gate.atGate;
+  await f.act("owner", { action: "event.save", event });
+  gate.release(); await denied(pending, 409);
+  assert.equal((await f.snap("owner")).events.find(e => e.id === event.id)?.title, event.title);
+  await denied(f.act("a", { action: "event.save", event: { ...event, id: "community", status: "draft" } }), 400);
+  f.raw.close();
 });
