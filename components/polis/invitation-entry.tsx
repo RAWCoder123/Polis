@@ -31,10 +31,10 @@ export function InvitationEntry({ data, run, onJoined }: { data: Snapshot; run: 
     setCode("");
   }
   return <section className="onboarding-panel invitation-entry">
-    <p className="social-section-label">PILOT INVITATION</p>
+    <p className="social-section-label">OPTIONAL COMMUNITY INVITATION</p>
     <h2>{invitation ? "Your community is waiting." : "Enter invite code"}</h2>
     {loading ? <p role="status">Checking your invitation…</p> : !invitation ? <>
-      <p>Use the code your organizer shared with you. You’ll confirm the community before signing in.</p>
+      <p>Use a code from your university or community organizer. This joins that community; a code isn’t required to create your Polis account.</p>
       <form onSubmit={async e => {
         e.preventDefault(); if (pending.current) return;
         pending.current = true; setBusy(true); setError("");
@@ -81,5 +81,6 @@ export function InvitationEntry({ data, run, onJoined }: { data: Snapshot; run: 
       }}>Use another code</button>
     </>}
     {error && <p className="form-error" role="alert">{error}</p>}
+    <a className="text-button" href={data.status === "ready" ? "#home" : "#signup"}>{data.status === "ready" ? "Back to Polis" : "Continue without a code"}</a>
   </section>;
 }

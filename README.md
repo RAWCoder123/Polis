@@ -1,6 +1,8 @@
 # Polis
 
-Polis is an invite-only social app for politics and local civic life: discover an issue, express a view, hear from a friend, and follow what happens next. This repository is its development home.
+Polis is a social app for politics and local civic life: discover an issue, express a view, hear from a friend, and follow what happens next. This repository is its development home.
+
+The `codex/open-signup` candidate separates account creation from invitations. Authenticated people can create a profile in Polis commons without a code; optional codes join protected university/organization communities. Email and Google are offered by the existing OpenAI login, not a separate Polis identity provider. See [signup setup and verification](docs/open-signup.md). This change is not yet deployed.
 
 The actual Sites application source is preserved, including the white/cobalt/navy design, sidebar, mobile navigation, assets, pairwise and manual rankings, and illustrative event map. The social/event pilot is deployed as Sites version 2. `/demo` retains the original fictional browser-only experience, separate from the persisted social app at `/`.
 

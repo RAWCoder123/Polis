@@ -16,7 +16,7 @@ No account was selected or created during this read-only check. The Google provi
 
 Google is available **through OpenAI sign-in**. It does not eliminate the OpenAI account, create a direct Google session in Polis, or grant community membership. The UI must continue to identify the sign-in as ChatGPT/OpenAI; do not label the existing Polis link as a direct Google login.
 
-The invitation cookie is independent of the identity provider and retains the pending code through login. Existing server-side admission checks remain required after authentication.
+The invitation cookie is independent of the identity provider and retains the pending code through login. In the open-signup candidate, authenticated users can create a profile in Polis commons without a code. Existing server-side admission checks remain required for protected university and organization communities. Account authentication never itself grants access to those communities.
 
 ## Direct Google-only sign-in: not confirmed
 

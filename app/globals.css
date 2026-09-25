@@ -2,6 +2,15 @@
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 
+.account-entry > .btn { margin-top: 22px; }
+.social-topbar > .account-session-label { font-family: var(--font-sans); font-size: 14px; color: var(--muted-foreground); }
+.account-entry .metadata { line-height: 1.8; margin-block: 15px; }
+.account-entry .social-section-label { display: flex; align-items: center; gap: 7px; }
+.account-optional { margin-top: 28px; padding-top: 22px; border-top: 1px solid #e3e9f2; }
+.account-optional strong { font-size: 15px; font-weight: 600; }
+.account-optional p { font-size: 14px; color: #596a83; line-height: 1.8; margin-block: 8px; }
+.account-optional .text-button { min-height: 44px; }
+
 :root{
   --background:#fff;--foreground:#17233b;--card:#fff;--card-foreground:#17233b;--popover:#fff;--popover-foreground:#17233b;
   --primary:#3659e3;--primary-foreground:#fff;--secondary:#f3f6fc;--secondary-foreground:#314363;--muted:#f4f6fa;--muted-foreground:#69758c;
