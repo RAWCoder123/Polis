@@ -30,6 +30,8 @@ These describe the source implementation. Sites reports public version 2; later 
 
 ## Known gaps
 
+The September 25 public showcase candidate adds a community-focused landing page and isolated interactive product examples. It awaits Sites publication; the source server remains unreachable from this network. Direct Google-only authentication is not implemented or confirmed as a supported Sites integration. The existing hosted OpenAI login does visibly offer Continue with Google; see [authentication path](authentication-path.md).
+
 Community-specific invitation codes, optional usage limits, expiration, revocation, and login handoff are implemented and verified locally with two isolated browser accounts. They still await deployment because the current network cannot reach the Sites source server. See [invitation codes](invitation-codes.md).
 
 Cornell/Ithaca and Emory are configured invitation destinations. Memberships, conversations, moderation and active-community preferences are separated on the server. Emory has no sourced event/issue/official catalog yet; it displays honest empty states. The broader location-resolution, officials, curator community-configuration, source-integration and campus-coverage brief remains future work. Selecting or joining a community does not verify enrollment or electoral residence.
