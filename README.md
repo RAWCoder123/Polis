@@ -4,6 +4,8 @@ Polis is an invite-only social app for politics and local civic life: discover a
 
 The actual Sites application source is preserved, including the white/cobalt/navy design, sidebar, mobile navigation, assets, pairwise and manual rankings, and illustrative event map. The social/event pilot is deployed as Sites version 2. `/demo` retains the original fictional browser-only experience, separate from the persisted social app at `/`.
 
+The `codex/polis-showcase` candidate adds a public product showcase at `/welcome` and at `/` for signed-out visitors. Existing app hash links and signed-in Home remain available. Its interactive examples do not read or write social data; the demo and generated imagery are explicitly labeled. This showcase has not been deployed. The current network cannot reach the Sites source server. For the separately confirmed Google-through-OpenAI login path, see [authentication assessment](docs/authentication-path.md).
+
 The community-event release is a locally verified candidate with persistent conversations, private issue priorities, chosen event interests, and private saves/attendance. It has not yet passed hosted acceptance with real ChatGPT identities. Start with [event pilot setup](docs/event-pilot.md), [social-cycle verification](docs/social-cycle-verification.md), and the [event verification record](docs/event-verification.md).
 
 ## Prerequisites
