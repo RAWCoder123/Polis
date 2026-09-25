@@ -30,6 +30,8 @@ These describe the source implementation. Sites reports public version 2; later 
 
 ## Known gaps
 
+The open-signup candidate separates normal profile creation in Polis commons from optional university/organization codes. It preserves existing private-community memberships and the trusted Sites identity boundary. Direct Google-only sessions and email/password authentication owned by Polis remain unimplemented; email/Google use OpenAI's existing login. Source and local verification are documented in [open signup](open-signup.md); hosted acceptance remains pending.
+
 The September 25 public showcase candidate adds a community-focused landing page and isolated interactive product examples. It awaits Sites publication; the source server remains unreachable from this network. Direct Google-only authentication is not implemented or confirmed as a supported Sites integration. The existing hosted OpenAI login does visibly offer Continue with Google; see [authentication path](authentication-path.md).
 
 Community-specific invitation codes, optional usage limits, expiration, revocation, and login handoff are implemented and verified locally with two isolated browser accounts. They still await deployment because the current network cannot reach the Sites source server. See [invitation codes](invitation-codes.md).

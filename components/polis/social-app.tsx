@@ -1,6 +1,7 @@
 "use client";
 import { WelcomeSteps } from "./issue-priorities";
 import { InvitationEntry } from "./invitation-entry";
+import { AccountSetup, SignInChoice } from "./account-entry";
 import {
   AroundEvents,
   CommunityEvents,
@@ -95,7 +96,8 @@ export default function SocialApp() {
     [share, setShare] = useState(false),
     [actionTarget, setActionTarget] = useState(""),
     [editing, setEditing] = useState(false);
-  const [view, id, commentId] = route.split("/");
+  const [requestedView, id, commentId] = route.split("/");
+  const view = requestedView === "signup" ? "home" : requestedView;
   const query =
     view === "explore" ? (exploreParams.get("q") ?? "") : searchQuery;
   const params = new URLSearchParams();
@@ -442,9 +444,10 @@ export default function SocialApp() {
           {data.status === "ready" ? (
             <>
               <label className="top-community"><span className="sr-only">Current community</span>
-                <select aria-label="Current community" value={data.community?.id ?? "ithaca"} disabled={busy} onChange={e => { if (e.target.value === "join") { navigate("join"); return; } void run({ action: "community.select", communityId: e.target.value }).then(() => navigate("home")).catch(() => {}); }}>
+                <select aria-label="Current community" value={data.community?.id ?? "ithaca"} disabled={busy} onChange={e => { if (e.target.value === "join") { navigate("join"); return; } if (e.target.value === "join-open") { void run({ action: "community.joinOpen" }).then(() => navigate("home")).catch(() => {}); return; } void run({ action: "community.select", communityId: e.target.value }).then(() => navigate("home")).catch(() => {}); }}>
                   {data.communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  <option value="join">Enter invite code…</option>
+                  {!data.communities.some(c => c.id === "polis") && <option value="join-open">Polis commons · Open to everyone</option>}
+                  <option value="join">Join with a community code…</option>
                 </select>
               </label>
               <button
@@ -471,9 +474,11 @@ export default function SocialApp() {
                 Post
               </button>
             </>
+          ) : me ? (
+            <span className="account-session-label">Signed in</span>
           ) : (
             <a className="btn secondary" href={signin} target="_top">
-              Sign in with ChatGPT <ArrowRight size={16} />
+              Sign up / Log in <ArrowRight size={16} />
             </a>
           )}
         </header>
@@ -499,7 +504,7 @@ export default function SocialApp() {
                 Local preview · Test activity stays on this computer.
               </p>
             )}
-            {title && (
+            {title && data.status === "ready" && (
               <div className="social-heading">
                 <div>
                   <p>{data.community?.name ?? "Your community"}</p>
@@ -522,40 +527,16 @@ export default function SocialApp() {
             ) : view === "join" ? (
               <InvitationEntry data={data} run={run} onJoined={() => { navigate("home"); toast.success("You’re in. Welcome to your community."); }} />
             ) : data.status === "signed_out" ? (
-              <>
-                <section className="daily-card">
-                  <div className="social-section-label">
-                    A PLACE FOR YOUR PERSPECTIVE
-                  </div>
-                  <h2>Understand an issue. Hear from a friend.</h2>
-                  <p>
-                    Join an invited community to share your views, ask a
-                    question, and follow what happens next.
-                  </p>
-                  <button className="btn primary" onClick={() => navigate("join")}>Enter invite code <ArrowRight size={16} /></button>
-                  <p className="metadata">Already a member? <a href={signin} target="_top">Sign in with ChatGPT</a></p>
-                </section>
-                <div className="social-demo-notice">
-                  The original interactive demo remains available. Its people,
-                  ratings, and events are fictional and saved only in your
-                  browser.
-                </div>
-                <a className="post-subject" href="/demo">
-                  <span>
-                    EXPLORE THE MVP
-                    <strong>Rank, read, and discover your community</strong>
-                  </span>
-                  <ArrowUpRight size={22} />
-                </a>
-              </>
+              <SignInChoice returnTo={currentLocation.pathname + currentLocation.search + currentLocation.hash} />
             ) : data.status === "onboarding" ? (
-              currentLocation.searchParams.has("invite") ? <Onboarding name={me!.name} run={run} /> : <InvitationEntry data={data} run={run} onJoined={() => navigate("home")} />
+              currentLocation.searchParams.has("invite") ? <Onboarding name={me!.name} run={run} /> : <AccountSetup name={me!.name} run={run} onCreated={() => navigate("home")} />
             ) : data.community?.id !== "ithaca" && (["rankings", "issue", "item"].includes(view) || (view === "explore" && id && id !== "events")) ? (
               <Quiet title="Local coverage is coming.">This community’s issues and rankings have not been curated yet. Your existing saves remain with your account. <button className="text-button" onClick={() => navigate("home")}>See community conversations</button></Quiet>
             ) : (
               <>
                 {view === "home" && (
                   <>
+                    {data.community?.id === "polis" && <div className="notice"><strong>Welcome to Polis commons.</strong><p>Start a conversation or find people. Community posts here are visible to other registered members. Have a university or organization code? <button className="text-button" onClick={() => navigate("join")}>Join that community</button> whenever you’re ready.</p></div>}
                     {data.community?.id === "ithaca" && <WelcomeSteps data={data} run={run} navigate={navigate} />}
                     <div className="home-community-events">
                       <AroundEvents data={data} run={run} navigate={navigate} />
@@ -958,7 +939,7 @@ export default function SocialApp() {
           </aside>
         </main>
       </div>
-      <nav className="social-mobile-nav" aria-label="Mobile navigation">
+      {data.status === "ready" && <nav className="social-mobile-nav" aria-label="Mobile navigation">
         {nav.map(({ id, label, Icon }) => (
           <button
             aria-current={view === id ? "page" : undefined}
@@ -970,7 +951,7 @@ export default function SocialApp() {
             <span>{label}</span>
           </button>
         ))}
-      </nav>
+      </nav>}
       {composer && me && (
         <Composer
           onRanking={() => setShare(true)}

@@ -17,12 +17,13 @@ import "./showcase.css";
 const signIn = "/signin-with-chatgpt?return_to=%2F%23home";
 const starterPriorities = ["Housing we can afford", "Getting around town", "Greener public spaces"];
 
-function InviteLink({ className, children }: { className?: string; children: ReactNode }) {
-  return <Link className={className} href="/#join" prefetch={false} onClick={event => {
+function InviteLink({ className, children, invitation = false }: { className?: string; children: ReactNode; invitation?: boolean }) {
+  const destination = invitation ? "/#join" : "/#signup";
+  return <Link className={className} href={destination} prefetch={false} onClick={event => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     // The existing app subscribes to native hash navigation, including login returns.
     event.preventDefault();
-    window.location.assign("/#join");
+    window.location.assign(destination);
   }}>{children}</Link>;
 }
 
@@ -96,7 +97,7 @@ export function PolisShowcase() {
           <a href="#why-polis" onClick={() => setMenuOpen(false)}>Why Polis</a><a href="#how-it-works" onClick={() => setMenuOpen(false)}>How it works</a><a href="#pilot" onClick={() => setMenuOpen(false)}>The pilot</a>
           <a className="sc-signin" href={signIn} target="_top">Log in <ArrowUpRight size={16} aria-hidden="true" /></a>
         </nav>
-        <InviteLink className="sc-button sc-header-cta">Join your community <ArrowUpRight size={16} aria-hidden="true" /></InviteLink>
+        <InviteLink className="sc-button sc-header-cta">Create account <ArrowUpRight size={16} aria-hidden="true" /></InviteLink>
       </div>
     </header>
     <main id="showcase-main" tabIndex={-1}>
@@ -104,7 +105,7 @@ export function PolisShowcase() {
         <div className="sc-hero-copy"><p className="sc-eyebrow"><span /> A little more local. A lot more connected.</p>
           <h1 id="showcase-heading">Politics starts<br />close to <em>home.</em></h1>
           <p className="sc-hero-description">The issues you care about. The people around you. The places you belong. Meet Polis—a more connected way to take part in your community.</p>
-          <div className="sc-hero-actions"><InviteLink className="sc-button">Enter invite code <ArrowUpRight size={19} aria-hidden="true" /></InviteLink><a className="sc-text-link" href="#how-it-works">Meet Polis <ArrowDown size={17} aria-hidden="true" /></a></div>
+          <div className="sc-hero-actions"><InviteLink className="sc-button">Get started <ArrowUpRight size={19} aria-hidden="true" /></InviteLink><a className="sc-text-link" href="#how-it-works">Meet Polis <ArrowDown size={17} aria-hidden="true" /></a></div>
           <div className="sc-pilot-note"><MapPin size={17} aria-hidden="true" /><span>Starting in Cornell / Ithaca.<br /><strong>Built for the places we call home.</strong></span></div>
         </div>
         <figure className="sc-hero-visual">
@@ -138,10 +139,10 @@ export function PolisShowcase() {
       <section className="sc-values" aria-labelledby="values-heading"><div className="sc-container"><div className="sc-values-heading"><p className="sc-eyebrow">A LITTLE CURIOSITY GOES A LONG WAY</p><h2 id="values-heading">Different views.<br /><em>Shared ground.</em></h2><p>You don’t have to agree on everything to care about the same place.</p></div>
         <div className="sc-value-list"><article><Users aria-hidden="true" /><h3>People before labels.</h3><p>Get to know a person’s perspective. Polis doesn’t assign political identities.</p></article><article><LockKeyhole aria-hidden="true" /><h3>Your voice. Your choice.</h3><p>Choose who sees your posts. Personal priorities and saved items start private.</p></article><article><ShieldCheck aria-hidden="true" /><h3>Space for better conversations.</h3><p>Stay curious. Use mute, block, and report when you need them.</p></article></div>
       </div></section>
-      <section className="sc-pilot sc-container" id="pilot" aria-labelledby="pilot-heading"><div className="sc-pilot-box"><div><span className="sc-small-label"><Compass size={17} aria-hidden="true" /> THE POLIS PILOT</span><h2 id="pilot-heading">Your community is<br />better with <em>you.</em></h2><p>We’re starting close to home, with an invited Cornell / Ithaca community. Bring your questions, your priorities, and your perspective.</p><InviteLink className="sc-button">Enter invite code <ArrowUpRight size={19} aria-hidden="true" /></InviteLink><span className="sc-join-note">Have a code? Confirm your community, then sign in.</span></div><Asterisk className="sc-pilot-star" aria-hidden="true" /></div>
-        <div className="sc-faq"><h3>A few things to know.</h3><Accordion type="single" collapsible className="sc-faq-items"><AccordionItem value="join"><AccordionTrigger>How do I join the pilot?</AccordionTrigger><AccordionContent>Use a code shared by your community organizer. Enter it in Polis, confirm the community, and continue through ChatGPT sign-in. No code yet? You can explore the fictional demo without joining.</AccordionContent></AccordionItem><AccordionItem value="party"><AccordionTrigger>Do I have to pick a political side?</AccordionTrigger><AccordionContent>No. Polis is a place to explore civic priorities and have conversations. You can support, oppose, feel mixed, or still be learning about an issue. Your activity isn’t used to assign you a political label.</AccordionContent></AccordionItem><AccordionItem value="preview"><AccordionTrigger>Is the preview real community activity?</AccordionTrigger><AccordionContent>No. The examples on this page and in the demo are fictional. Preview reactions, replies, and saves aren’t published. Real community activity is available to signed-in, invited members.</AccordionContent></AccordionItem></Accordion></div>
+      <section className="sc-pilot sc-container" id="pilot" aria-labelledby="pilot-heading"><div className="sc-pilot-box"><div><span className="sc-small-label"><Compass size={17} aria-hidden="true" /> THE POLIS PILOT</span><h2 id="pilot-heading">Your community is<br />better with <em>you.</em></h2><p>Create your account and bring your questions, priorities, and perspective. Join a university or organization community with a code whenever you’re ready.</p><InviteLink className="sc-button">Get started <ArrowUpRight size={19} aria-hidden="true" /></InviteLink><span className="sc-join-note">No invitation needed to create your account.</span></div><Asterisk className="sc-pilot-star" aria-hidden="true" /></div>
+        <div className="sc-faq"><h3>A few things to know.</h3><Accordion type="single" collapsible className="sc-faq-items"><AccordionItem value="join"><AccordionTrigger>How do I join the pilot?</AccordionTrigger><AccordionContent>Create your Polis profile after signing in through OpenAI with email, Google, or your existing ChatGPT account. No invitation is required. Community codes are optional and let you join a specific university or organization.</AccordionContent></AccordionItem><AccordionItem value="party"><AccordionTrigger>Do I have to pick a political side?</AccordionTrigger><AccordionContent>No. Polis is a place to explore civic priorities and have conversations. You can support, oppose, feel mixed, or still be learning about an issue. Your activity isn’t used to assign you a political label.</AccordionContent></AccordionItem><AccordionItem value="preview"><AccordionTrigger>Is the preview real community activity?</AccordionTrigger><AccordionContent>No. The examples on this page and in the demo are fictional. Preview reactions, replies, and saves aren’t published. Real community activity is available to signed-in members according to each post’s audience.</AccordionContent></AccordionItem></Accordion></div>
       </section>
     </main>
-    <footer className="sc-footer sc-container"><div><Brand /><p>Your community, in focus.</p></div><nav aria-label="Footer"><InviteLink>Enter invite code <ChevronRight size={16} aria-hidden="true" /></InviteLink><a href="/demo">Explore the demo</a><a href={signIn} target="_top">Member login</a></nav><p className="sc-footer-note">An independent community pilot.<br />Not affiliated with or endorsed by Cornell University.</p></footer>
+    <footer className="sc-footer sc-container"><div><Brand /><p>Your community, in focus.</p></div><nav aria-label="Footer"><InviteLink invitation>Optional community code <ChevronRight size={16} aria-hidden="true" /></InviteLink><a href="/demo">Explore the demo</a><a href={signIn} target="_top">Member login</a></nav><p className="sc-footer-note">An independent community pilot.<br />Not affiliated with or endorsed by Cornell University.</p></footer>
   </div>;
 }

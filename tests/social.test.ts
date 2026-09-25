@@ -9,6 +9,67 @@ import {
 } from "../lib/social/service.ts";
 
 // Real migration SQL and service code; only the D1 transport is adapted to SQLite.
+test("open signup creates a persistent ordinary account without consuming a community invitation", async () => {
+  const f = fixture();
+  const command = { action: "account.create" as const, name: "New member", username: "new_member" };
+  const requestId = crypto.randomUUID();
+  await f.act("new", command, requestId);
+  await f.act("new", command, requestId);
+  await f.act("new", { ...command, name: "Should not overwrite", username: "other_name" });
+  const state = await f.snap("new");
+  assert.equal(state.status, "ready");
+  assert.equal(state.me!.name, "New member");
+  assert.equal(state.me!.role, "member");
+  assert.equal(state.community!.id, "polis");
+  assert.deepEqual(state.communities.map(c => c.id), ["polis"]);
+  assert.equal(f.count("profiles"), 1);
+  assert.equal(f.count("community_memberships"), 1);
+  assert.equal(f.count("invitation_redemptions"), 0);
+  await assert.rejects(f.snap("new", { community: "ithaca" }), { status: 403 });
+  await assert.rejects(f.act("new", { action: "community.select", communityId: "emory" }), { status: 403 });
+  await assert.rejects(f.service(null).execute({ requestId: crypto.randomUUID(), data: command }), { status: 401 });
+  await assert.rejects(f.service("forged").execute({ requestId: crypto.randomUUID(), communityId: "emory", data: { ...command, role: "owner" } }), { status: 400 });
+});
+
+test("open accounts converse while invitation-only content and administrative operations stay protected", async () => {
+  const f = fixture(); await f.setup();
+  const privatePost = await f.post("community");
+  for (const id of ["open_a", "open_b"]) await f.act(id, { action: "account.create", name: id, username: id });
+  await assert.rejects(f.snap("open_a", { community: "ithaca", post: privatePost }), { status: 403 });
+  await assert.rejects(f.act("open_a", { action: "invite.code", expiresDays: 7, maxUses: 5 }), { status: 403 });
+  const p = await f.act("open_a", { action: "post", kind: "question", subjectId: "community", text: "What matters in your neighborhood?", audience: "community" });
+  assert.ok((await f.snap("open_b", { filter: "community" })).posts.some(x => x.id === p.postId));
+  await f.act("open_b", { action: "comment", postId: p.postId, text: "A space to meet neighbors." });
+  assert.equal((await f.snap("open_a", { post: p.postId })).comments!.length, 1);
+  assert.ok((await f.snap("open_a")).notifications.some(n => n.targetId === p.postId));
+});
+
+test("optional invitation joins a second community without replacing an open account or double counting", async () => {
+  const f = fixture(); await f.setup();
+  await f.act("new", { action: "account.create", name: "Open member", username: "open_member" });
+  const code = await f.act("owner", { action: "invite.code", communityId: "emory", expiresDays: 7, maxUses: 5 });
+  const redeem = { action: "invite.redeem" as const, invite: code.invitationCode, confirmedCommunityId: "emory" };
+  await f.act("new", redeem); await f.act("new", redeem);
+  const state = await f.snap("new");
+  assert.equal(state.me!.username, "open_member");
+  assert.deepEqual(state.communities.map(c => c.id).sort(), ["emory", "polis"]);
+  assert.equal(f.raw.prepare("SELECT useCount FROM invitation_codes WHERE communityId='emory'").get()!.useCount, 1);
+  await f.act("new", { action: "community.joinOpen" });
+  assert.equal((await f.snap("new")).community!.id, "polis");
+});
+
+test("username conflicts roll back signup and existing profiles can explicitly enter the commons", async () => {
+  const f = fixture(); await f.setup();
+  await assert.rejects(f.act("new", { action: "account.create", name: "New", username: "owner" }), { status: 409 });
+  assert.equal((await f.snap("new")).status, "onboarding");
+  await f.act("a", { action: "account.create", name: "Other", username: "different_name" });
+  assert.equal((await f.snap("a")).community!.id, "ithaca");
+  await f.act("a", { action: "community.joinOpen" });
+  const state = await f.snap("a");
+  assert.equal(state.me!.username, "person_a");
+  assert.deepEqual(state.communities.map(c => c.id).sort(), ["ithaca", "polis"]);
+});
+
 function fixture() {
   const raw = new DatabaseSync(":memory:");
   for (const file of readdirSync("drizzle")

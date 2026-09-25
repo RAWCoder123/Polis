@@ -2,7 +2,7 @@ import { z } from "zod";
 import { itemById } from "../polis-data.ts";
 import { eventActions, eventExpired } from "./events.ts";
 import { issues, issueFor, eventStart } from "./catalog.ts";
-import { communityFor, defaultCommunityId, pilotCommunities } from "./communities.ts";
+import { communityFor, defaultCommunityId, openCommunityId, pilotCommunities } from "./communities.ts";
 import {
   emptySnapshot,
   type Snapshot,
@@ -49,6 +49,12 @@ const source = z
   }, "Use an HTTPS link without embedded credentials.");
 const action = z.discriminatedUnion("action", [
   ...eventActions,
+  z.object({
+    action: z.literal("account.create"),
+    name: z.string().trim().min(1).max(50),
+    username: z.string().regex(/^[a-z0-9_]{3,24}$/),
+  }),
+  z.object({ action: z.literal("community.joinOpen") }),
   z.object({
     action: z.literal("join"),
     name: z.string().trim().min(1).max(50),
@@ -875,7 +881,16 @@ export function socialService(
         );
       result = { ok: true, postId: objectId };
     };
-    if (data.action === "invite.redeem" || (data.action === "join" && /^POLIS/i.test(normalizeCode(data.invite)))) {
+    if (data.action === "account.create") {
+      const existing = await one<Person>("SELECT * FROM profiles WHERE id=?", uid);
+      if (!existing) {
+        if (await one("SELECT 1 FROM profiles WHERE username=? AND id<>?", data.username, uid)) fail(409, "That username is taken. Choose another one.");
+        add("INSERT INTO profiles(id,name,username,communityLabel,activeCommunityId,createdAt) VALUES(?,?,?,'',?,?) ON CONFLICT(id) DO NOTHING", uid, data.name, data.username, openCommunityId, now);
+        add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) VALUES(?,?,?)", uid, openCommunityId, pilotOwner() ? "owner" : "member");
+      }
+      // A fresh retry must not overwrite a profile or move an existing member.
+      result = { ok: true, alreadyCreated: !!existing };
+    } else if (data.action === "invite.redeem" || (data.action === "join" && /^POLIS/i.test(normalizeCode(data.invite)))) {
       const preview = await previewInvitation(data.invite);
       if (!data.confirmedCommunityId || data.confirmedCommunityId !== preview.community.id)
         fail(400, "Confirm the community associated with this code.");
@@ -982,6 +997,12 @@ export function socialService(
         );
       };
       switch (data.action) {
+        case "community.joinOpen": {
+          add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) VALUES(?,?,?)", uid, openCommunityId, pilotOwner() ? "owner" : "member");
+          add("UPDATE profiles SET activeCommunityId=? WHERE id=?", openCommunityId, uid);
+          result = { ok: true, communityId: openCommunityId };
+          break;
+        }
         case "community.select": {
           if (!communityFor(data.communityId)) fail(404, "This community is unavailable.");
           guard("EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", uid, data.communityId);

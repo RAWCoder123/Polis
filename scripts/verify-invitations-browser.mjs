@@ -69,8 +69,7 @@ try {
   console.log("PASS desktop admin: community, expiration, optional limit, generate and copy");
 
   const tester = await session(390);
-  await tester.page.goto(origin);
-  await tester.page.getByRole("button", { name: "Enter invite code", exact: true }).click();
+  await tester.page.goto(origin + "/#join");
   await tester.page.getByRole("textbox", { name: "Invite code", exact: true }).fill("not-a-code");
   await tester.page.getByRole("button", { name: "Check code", exact: true }).click();
   await expect(tester.page.getByRole("alert")).toContainText("invalid");
