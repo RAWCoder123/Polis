@@ -11,7 +11,12 @@ export const eventCategories: Record<EventCategory, string> = {
   festivals_parades: "Festivals & parades",
   outdoors: "Outdoors",
   volunteering: "Volunteering",
-  civic_meetings: "Civic meetings",
+  civic_meetings: "Government & meetings",
+  campus_life: "Campus",
+  music: "Music",
+  sports: "Sports",
+  community: "Community",
+  politics: "Politics & elections",
 };
 const category = z.enum([
   "food_markets",
@@ -20,6 +25,11 @@ const category = z.enum([
   "outdoors",
   "volunteering",
   "civic_meetings",
+  "campus_life",
+  "music",
+  "sports",
+  "community",
+  "politics",
 ]);
 const slug = z.string().regex(/^[a-z0-9][a-z0-9_-]{2,119}$/);
 const https = z
@@ -86,7 +96,7 @@ export const eventActions = [
   z.object({
     action: z.literal("event.preferences"),
     city: z.string().trim().min(2).max(80),
-    interests: z.array(category).max(6),
+    interests: z.array(category).max(11),
     complete: z.boolean().default(true),
   }),
   z.object({
