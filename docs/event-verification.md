@@ -5,7 +5,7 @@ Update: the later [social-cycle browser verification](social-cycle-verification.
 ## Verified locally
 
 - Node 24.14.0 / npm 11.9.0; `npm ci` completed (680 packages). Only Leaflet and its types were added; existing locked package records were preserved.
-- `npm run lint`: no errors. Eight warnings remain: seven inherited demo warnings and one native organizer-image warning.
+- `npm run lint`: no errors. Eight warnings at the time: seven inherited demo warnings and one native organizer-image warning. The organizer image now carries an explicit lint exemption, leaving the seven inherited warnings.
 - `npm run typecheck`: passed.
 - `npm test`: 37 tests pass, including real migration/service tests, private attendance and saves, repeated submissions, suggestions/curation, canceled/ended privacy changes, cancellation and role-revocation races, occurrence uniqueness, filters/timezones, and calendar injection protection.
 - `npm run build` and the Sites build helper completed. The final build includes the new migration in `dist/.openai/drizzle`.

@@ -36,11 +36,11 @@ The local social-cycle browser journey now passes with independent synthetic ses
 
 - Legacy civic records, news, officials, demo map positions, and initial prompts remain fictional or illustrative. The new event catalog is separately sourced. Reference links do not establish those records as real local facts.
 - Three isolated ChatGPT identities, invited site access, and production D1/authentication have not been exercised together.
-- GitHub does not deploy production. Sites source synchronization and saved-version deployment are separate; a prior network restriction prevented the last publication.
+- GitHub does not deploy production. Sites source synchronization and saved-version deployment are separate. A network restriction blocked the first publication attempt; Sites version 2 (source `0c42b64`) deployed on 2026-09-17, and every later revision in this repository remains undeployed until a new authorized Sites publication.
 - GitHub Actions is not active: the available integrations lack permission to write workflow files. The reviewed workflow remains in `docs/ci.yml`; local checks are the current verification evidence.
 - The demo map remains schematic; the new map uses supplied coordinates, but live basemap access was blocked during local testing. Real-device pinch gestures, a full accessibility audit, load testing, and production migration/restore drills remain.
 - No automated metric dashboard or retention/deletion scheduler exists. Agree operational retention before a live pilot.
-- Seven inherited lint warnings remain in original MVP components; organizer image rendering adds one intentional native-image warning; address them in focused maintenance work.
+- Seven inherited lint warnings remain in original MVP components; address them in focused maintenance work. Organizer images intentionally use a native element with an explicit lint exemption.
 
 ## Next three milestones
 
