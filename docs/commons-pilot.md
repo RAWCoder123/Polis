@@ -77,8 +77,8 @@ For isolated local browser QA, use a separate checkout/database, set only a **sy
 
 ## Verification record
 
-- `npm run lint`: passed with the same eight pre-existing warnings, zero errors.
-- `npm run typecheck`, `npm test`: passed; **56 tests**. Includes organization capacity/retry/role restrictions, in-flight code revocation, private-copy separation, access removal, reporting, block/mute, campus switching and cross-campus isolation.
+- `npm run lint`: passed with zero errors and the seven inherited MVP warnings (the organizer-image warning now carries an explicit exemption; this record originally counted eight).
+- `npm run typecheck`, `npm test`: passed; **67 tests** at the candidate's final commit (56 when this record was first written). Includes organization capacity/retry/role restrictions, in-flight code revocation, private-copy separation, access removal, reporting, block/mute, campus switching and cross-campus isolation.
 - `npm run build`: production Worker/client build passed.
 - `POLIS_TEST_ORIGIN=http://localhost:5182 npm run test:http`: passed anonymous isolation, forged-header stripping, cookie/origin/auth rejection and no-store checks.
 - Six isolated Playwright sessions completed campus entry → scoped question → reply → exact notification → follow → source/update → organization code → private announcement/reply → reload. Direct unrelated-account reads returned 404; explicit other-campus queries returned 403.
