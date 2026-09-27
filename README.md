@@ -1,6 +1,8 @@
 # Polis
 
-The latest candidate is `codex/commons-civic-map`, continuing `codex/cornell-uf-commons`: a curated campus Home, a dedicated Commons (For You, Campus, Local, National, Trending, Following), a live civic map with office/building/event cards, reusable entity pages, Cornell and UF email-domain association, and search. See [campus Commons and civic map](docs/campus-civic-map.md) and the underlying [Commons setup, verification and rollout](docs/commons-pilot.md). It is locally verified and has **not** replaced Sites version 2.
+The latest candidate is `codex/polis-anywhere`: Polis is no longer limited to configured campuses. Members can find or start the commons for any town, and students can found their university's campus community with its email domain. Every community gets an honest civic scaffold of local issues, offices with official lookups, Sample starter questions and public places from OpenStreetMap. See [Polis anywhere](docs/anywhere.md). It is locally verified and not deployed.
+
+The previous candidate is `codex/commons-civic-map`, continuing `codex/cornell-uf-commons`: a curated campus Home, a dedicated Commons (For You, Campus, Local, National, Trending, Following), a live civic map with office/building/event cards, reusable entity pages, Cornell and UF email-domain association, and search. See [campus Commons and civic map](docs/campus-civic-map.md) and the underlying [Commons setup, verification and rollout](docs/commons-pilot.md). It is locally verified and has **not** replaced Sites version 2.
 
 Polis is a social app for politics and local civic life: discover an issue, express a view, hear from a friend, and follow what happens next. This repository is its development home.
 
@@ -65,7 +67,7 @@ With the development server running in another terminal:
 npm run test:http
 ```
 
-Tests run the real service and migrations against isolated SQLite fixtures, including three-user access checks. `npm test` currently runs 67 tests; per-feature documents under `docs/` record the counts measured when they were written. The HTTP smoke test creates no user data and checks the local Worker's authentication boundary and rejected writes. Lint has seven inherited warnings in preserved MVP components and no errors. `npm run test:browser` exercises the real UI with three isolated synthetic browser sessions; follow its [local-only setup](docs/social-cycle-verification.md) first.
+Tests run the real service and migrations against isolated SQLite fixtures, including three-user access checks. `npm test` currently runs 77 tests; per-feature documents under `docs/` record the counts measured when they were written. The HTTP smoke test creates no user data and checks the local Worker's authentication boundary and rejected writes. Lint has seven inherited warnings in preserved MVP components and no errors. `npm run test:browser` exercises the real UI with three isolated synthetic browser sessions; follow its [local-only setup](docs/social-cycle-verification.md) first.
 
 The [CI definition](docs/ci.yml) is prepared for pull requests and pushes to `main`: installation, lint, types, tests, build, and a local Worker smoke check, with read-only permissions and no production credentials or deployment steps. **Remote CI is not active yet:** both available GitHub integrations rejected writing `.github/workflows/ci.yml`. After the owner grants the CLI `workflow` scope or the GitHub app Workflows write permission, move `docs/ci.yml` to `.github/workflows/ci.yml`, push the setup branch, and verify its Actions result. See [setup verification](docs/VERIFICATION.md).
 

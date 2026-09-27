@@ -24,7 +24,19 @@ async function get<T>(query: string) {
 }
 
 // Find or start the commons for a real place: any town, or your campus.
-export function FindCommunity({ data, run, navigate, busy }: { data: Snapshot; run: Run; navigate: Navigate; busy: boolean }) {
+export function FindCommunity({
+  data,
+  run,
+  refresh,
+  navigate,
+  busy,
+}: {
+  data: Snapshot;
+  run: Run;
+  refresh: () => Promise<unknown>;
+  navigate: Navigate;
+  busy: boolean;
+}) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CommunitySearchResult[] | null>(null);
   const [places, setPlaces] = useState<PlaceSuggestion[]>([]);
@@ -81,17 +93,27 @@ export function FindCommunity({ data, run, navigate, busy }: { data: Snapshot; r
     }
   }
   async function afterJoin(communityId: string, created: boolean) {
-    if (created) {
-      setStatus("Adding public places from OpenStreetMap…");
-      try {
-        const r = await run({ action: "places.import" }, undefined);
-        toast.success(r.imported ? "Your community is ready with " + r.imported + " public places on its map." : "Your community is ready.");
-      } catch {
-        toast.message("Your community is ready. Public places can be added later from the map.");
-      }
-    } else toast.success("You’re in. Welcome to your community.");
-    void communityId;
     navigate("home");
+    if (!created) {
+      toast.success("You’re in. Welcome to your community.");
+      return;
+    }
+    toast.success("Your community is ready. Adding public places to its map…");
+    // The public-place import can take a while when OpenStreetMap services are
+    // busy, so it runs in the background and Home reloads when it finishes.
+    void fetch("/api/polis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestId: crypto.randomUUID(), communityId, data: { action: "places.import" } }),
+    })
+      .then((r) => readResponse<{ imported?: number; error?: string }>(r).then((v) => ({ ok: r.ok, v })))
+      .then(({ ok, v }) => {
+        if (ok && v.imported) {
+          toast.success(v.imported + " public places added to the map.");
+          void refresh();
+        } else if (!ok) toast.message("Public places couldn’t be added right now. Try again from the map.");
+      })
+      .catch(() => toast.message("Public places couldn’t be added right now. Try again from the map."));
   }
   async function join(r: CommunitySearchResult) {
     const c = r.community;

@@ -7,7 +7,11 @@ import type { CommunityPlace, EntityKind, PlaceSuggestion } from "./types.ts";
 export type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
 const nominatim = "https://nominatim.openstreetmap.org";
 // Public Overpass instances, tried in order; each has its own fair-use policy.
-const overpassEndpoints = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+const overpassEndpoints = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+];
 const headers = (contact: string) => ({
   "User-Agent": "Polis civic community pilot (" + contact + ")",
   Accept: "application/json",
@@ -98,7 +102,7 @@ export function civicQuery(center: [number, number], radiusKm = 3.5) {
     `nwr["office"="government"]["name"];`,
     `nwr["leisure"="park"]["name"];`,
   ].join("");
-  return `[out:json][timeout:25][bbox:${box}];(${tags});out tags center 200;`;
+  return `[out:json][timeout:20][bbox:${box}];(${tags});out tags center 200;`;
 }
 export function placesFromOverpass(
   communityId: string,
@@ -149,31 +153,47 @@ export async function civicPlacesNear(
   center: [number, number],
   fetcher: Fetcher,
   contact: string,
+  retryDelayMs = 2500,
 ): Promise<CommunityPlace[]> {
+  const busy = "Public place data is busy right now. Try again in a few minutes.";
   let lastError = "Public place data is unavailable right now. Try again later.";
+  const deadline = Date.now() + 50000;
   for (const endpoint of overpassEndpoints) {
-    try {
-      const r = await fetcher(endpoint, {
-        method: "POST",
-        headers: { ...headers(contact), "Content-Type": "application/x-www-form-urlencoded" },
-        body: "data=" + encodeURIComponent(civicQuery(center)),
-        signal: AbortSignal.timeout(30000),
-      });
-      const text = await r.text();
-      // Rate limits and overloads can arrive as XML or HTML pages, or as a
-      // JSON "remark" with no elements; none of them mean "no places".
-      let body: { elements?: OverpassElement[]; remark?: string };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const left = deadline - Date.now();
+      if (left < 3000) throw new Error(lastError);
+      let status = 0;
       try {
-        body = JSON.parse(text);
+        const r = await fetcher(endpoint, {
+          method: "POST",
+          headers: { ...headers(contact), "Content-Type": "application/x-www-form-urlencoded" },
+          body: "data=" + encodeURIComponent(civicQuery(center)),
+          signal: AbortSignal.timeout(Math.min(20000, left)),
+        });
+        status = r.status;
+        // Rate limits and overloads can arrive as XML or HTML pages, or as a
+        // JSON "remark" with no elements; none of them mean "no places".
+        const body = parse(await r.text());
+        if (r.ok && body && !/runtime error|timed out|rate_limited/i.test(body.remark ?? ""))
+          return placesFromOverpass(communityId, center, body.elements ?? []);
+        lastError = busy;
+        if (body?.remark) status = 429;
       } catch {
-        lastError = "Public place data is busy right now. Try again in a few minutes.";
-        continue;
+        // Unreachable or too slow: try the next public instance.
+        break;
       }
-      if (!r.ok || /runtime error|timed out|rate_limited/i.test(body.remark ?? "")) continue;
-      return placesFromOverpass(communityId, center, body.elements ?? []);
-    } catch {
-      /* Try the next public instance. */
+      // Per-client slot limits and gateway timeouts usually clear in seconds.
+      if (status !== 429 && status !== 504) break;
+      if (retryDelayMs) await new Promise((done) => setTimeout(done, retryDelayMs));
     }
   }
   throw new Error(lastError);
+}
+function parse(text: string): { elements?: OverpassElement[]; remark?: string } | null {
+  try {
+    const value = JSON.parse(text);
+    return value && typeof value === "object" ? value : null;
+  } catch {
+    return null;
+  }
 }

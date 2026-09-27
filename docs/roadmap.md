@@ -35,7 +35,20 @@ These describe the source implementation. Sites reports public version 2; later 
 - Civic catalog of offices, institutions, buildings, places, organizations, meetings, voting, sample proposals, briefs and structured starter questions; live typed map with compact cards and a Commons bridge; reusable entity cards and pages; unified search; guidelines; optional tab-local device location.
 - Reply perspectives, four reactions and participant counts; trending by distinct people. See [campus Commons and civic map](campus-civic-map.md).
 
+## Polis anywhere additions
+
+- Find your community: search any town, city or university, or list communities near you. Start the first commons for a town, or found a campus community with a plain institutional email domain; later students with that domain are associated automatically.
+- Every located community without a curated catalog gets a civic scaffold: local issues, offices described by role with official lookup links, Sample starter questions, and up to 60 civic places from OpenStreetMap.
+- Server rules: duplicate towns within 25 miles are joined instead of created, a limit of three new communities a day, open town membership, campus domains taken only from the trusted sign-in email, and weekly place imports. See [Polis anywhere](anywhere.md).
+
 ## Known gaps
+
+The September 27 anywhere candidate is locally verified only:
+
+- Production reachability and fair-use capacity of the public Nominatim and Overpass services from the Sites Worker are unconfirmed.
+- Founder-created communities have no community-level moderators, rename, merge or archive UI; reports go to the pilot owner.
+- Non-US civic structure is generic.
+- Town membership does not verify residence.
 
 The civic catalog names offices, not officeholders, and has no licensed headshots or building photos yet; a checked source is required before adding them. Campus sample proposals, briefs, questions and event listings are labeled Sample. UF has no checked event bundle. Email-domain association awaits hosted confirmation that Sites forwards only verified emails.
 

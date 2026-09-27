@@ -62,7 +62,20 @@ else await existing.first().click();
 await expect(main(founder)).toContainText("What’s happening around Burlington today.");
 const s1 = await state(founder);
 assert.equal(s1.community.locality.city, "Burlington");
-if (!process.env.POLIS_SKIP_OSM) assert.ok(s1.places.length > 0, "public places imported from OpenStreetMap");
+// Public places import in the background after founding. When OpenStreetMap is
+// busy the map offers to add them again, which is the path members would take.
+if (!process.env.POLIS_SKIP_OSM) {
+  const placeCount = async () => (await state(founder)).places.length;
+  try {
+    await expect.poll(placeCount, { timeout: 60000 }).toBeGreaterThan(0);
+  } catch {
+    console.log("Background place import did not finish; retrying from the map.");
+    await founder.page.goto(origin + "/#explore");
+    await founder.page.getByRole("button", { name: "Add public places" }).click();
+    await expect.poll(placeCount, { timeout: 90000 }).toBeGreaterThan(0);
+    await founder.page.goto(origin + "/#home");
+  }
+}
 await expect(main(founder)).toContainText("Local council");
 await shot(founder, "f-town-home-desktop");
 
@@ -105,7 +118,7 @@ if (campusState.unclaimedCampusDomain) {
   await student.page.getByRole("button", { name: "Find", exact: true }).click();
   await student.page.locator(".find-choices label").first().click();
   await student.page.getByRole("button", { name: "Start the campus commons" }).click();
-  // Founding imports public places, then opens the new Home.
+  // Founding opens the new Home; public places import in the background.
   await expect(main(student)).toContainText("What’s happening around Example University today.");
 }
 await expect.poll(async () => (await state(student)).community?.campus?.university).toBe("Example University");

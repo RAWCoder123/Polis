@@ -733,7 +733,7 @@ export default function SocialApp() {
                   </SearchView>
                 )}
                 {view === "guidelines" && <CommunityGuidelines navigate={navigate} />}
-                {view === "communities" && <FindCommunity data={data} run={run} navigate={navigate} busy={busy} />}
+                {view === "communities" && <FindCommunity data={data} run={run} refresh={refresh} navigate={navigate} busy={busy} />}
                 {view === "explore" &&
                   id === "events" && !commentId && (
                     <CommunityEvents

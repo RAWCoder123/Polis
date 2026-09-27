@@ -150,7 +150,7 @@ export function HomeDashboard({
       <header className="home-hero">
         <p className="social-section-label">
           {campus ? <GraduationCap size={14} aria-hidden="true" /> : <MapPin size={14} aria-hidden="true" />}{" "}
-          {[campus?.university, locale.city, locale.region].filter(Boolean).join(" · ").toUpperCase()} · {dateLine.toUpperCase()}
+          {[campus?.university, [locale.city, locale.region].filter(Boolean).join(", ")].filter(Boolean).join(" · ").toUpperCase()} · {dateLine.toUpperCase()}
         </p>
         <h1>What’s happening around {locale.shortName} today.</h1>
         <Pulse data={data} navigate={navigate} />
@@ -286,7 +286,8 @@ export function HomeDashboard({
             ))}
             {!upcoming.length && (
               <p className="metadata">
-                Upcoming campus and community events appear here when curators publish them.
+                {campus ? "Upcoming campus and community events" : "Upcoming community events"} appear here when curators publish
+                them.
               </p>
             )}
           </section>

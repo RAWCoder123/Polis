@@ -4,7 +4,7 @@ import { fixture, denied } from "./fixture.ts";
 import { campusDomainOf, communityFromRow, localeOf, shortNameFor } from "../lib/social/communities.ts";
 import { genericCatalog } from "../lib/social/civic/generic.ts";
 import { catalogFor } from "../lib/social/civic/index.ts";
-import { placesFromOverpass, searchPlaces } from "../lib/social/geo.ts";
+import { civicPlacesNear, placesFromOverpass, searchPlaces } from "../lib/social/geo.ts";
 import type { Fetcher } from "../lib/social/geo.ts";
 
 const burlington = { action: "community.create" as const, kind: "city" as const, city: "Burlington", region: "Vermont", country: "US", latitude: 44.4759, longitude: -73.2121, timezone: "America/New_York" };
@@ -164,6 +164,34 @@ test("OpenStreetMap parsing keeps civic places, drops commercial ones and ranks 
   ]);
   assert.deepEqual(places.map((p) => p.id), ["osm-node-8", "osm-relation-6", "osm-node-9"]);
   assert.equal(places.find((p) => p.id === "osm-relation-6")!.website, null);
+});
+
+test("busy or unreachable OpenStreetMap services are retried, then reported instead of mistaken for no places", async () => {
+  const hall = { type: "node", id: 1, lat: 44.4764, lon: -73.2129, tags: { amenity: "townhall", name: "City Hall" } };
+  const xml = (status: number) => new Response("<?xml version='1.0'?><html>busy</html>", { status });
+  // A gateway timeout is retried on the same instance.
+  let calls: string[] = [];
+  let places = await civicPlacesNear("c-x", [44.47, -73.21], async (url) => (calls.push(url), calls.length === 1 ? xml(504) : json({ elements: [hall] })), "t", 0);
+  assert.deepEqual(places.map((p) => p.name), ["City Hall"]);
+  assert.equal(new Set(calls).size, 1);
+  // An unreachable instance and a rate-limit remark move on to the next instance.
+  calls = [];
+  places = await civicPlacesNear(
+    "c-x",
+    [44.47, -73.21],
+    async (url) => {
+      calls.push(url);
+      if (calls.length === 1) throw new TypeError("network");
+      if (calls.length <= 3) return json({ elements: [], remark: "runtime error: rate_limited" });
+      return json({ elements: [hall] });
+    },
+    "t",
+    0,
+  );
+  assert.equal(places.length, 1);
+  assert.equal(new Set(calls).size, 3);
+  // When every instance is busy the import fails with an explanation.
+  await assert.rejects(civicPlacesNear("c-x", [44.47, -73.21], async () => xml(429), "t", 0), /busy/);
 });
 
 test("place search returns settlements only and never runs without sign-in", async () => {

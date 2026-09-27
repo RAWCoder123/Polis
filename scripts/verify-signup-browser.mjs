@@ -57,6 +57,9 @@ try {
       await expect(page.getByRole("textbox", { name: "Username", exact: true })).toHaveValue("signup_" + account);
       await page.screenshot({ path: output + "/setup-" + width + ".png", fullPage: true });
       await page.getByRole("button", { name: "Create my Polis account" }).click();
+      // Members without a campus email are guided to find their local community first.
+      await expect(page.getByRole("heading", { name: "Polis is a commons for a real place." })).toBeVisible();
+      await page.goto(origin + "/#home");
     } else {
       assert.equal(snapshot.status, "ready");
       await command(actor, { action: "community.joinOpen" });
