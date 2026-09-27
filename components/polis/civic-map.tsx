@@ -3,11 +3,12 @@ import "leaflet/dist/leaflet.css";
 import "./civic.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { LayerGroup, Map as LeafletMap, Marker } from "leaflet";
+import type { LayerGroup, Map as LeafletMap, Marker, Popup } from "leaflet";
 import { CalendarDays, LocateFixed, MapPin } from "lucide-react";
 import type { CivicEntity, CommunityEvent, EntityKind, Snapshot } from "@/lib/social/types";
 import { entitiesFor } from "@/lib/social/civic";
 import { distanceMiles, eventExpired, eventCategories } from "@/lib/social/events";
+import { addMapOutline } from "@/lib/social/map-outline";
 import { communityFor } from "@/lib/social/communities";
 import { useDeviceLocation } from "@/lib/social/use-device-location";
 import {
@@ -109,14 +110,16 @@ function declutterPins(map: LeafletMap, markers: Map<string, Marker>, hosts: Map
     });
   }
 }
-function PinFace({ pin, selected }: { pin: MapPinData; selected: boolean }) {
+function PinFace({ pin, selected, plans = [] }: { pin: MapPinData; selected: boolean; plans?: Snapshot["venuePlans"] }) {
   if (pin.events) {
+    const friends = (plans ?? []).filter(p => pin.events!.some(e => e.id === p.eventId));
     const Icon = categoryIcons[pin.events[0].category] ?? CalendarDays;
     return (
       <span className={"civic-pin layer-events cat-" + pin.events[0].category + (selected ? " selected" : "")}>
         <span className="pin-disc">
           <Icon size={17} />
         </span>
+        {friends.length > 0 && <span className="map-plan-faces" aria-label="Friends’ shared plans">{friends.slice(0, 3).map(p => <b key={p.userId + p.eventId} title={p.name + " · " + (p.status === "attending" ? "Going" : "Interested")}>{initialsFor(p.name)}</b>)}</span>}
         {pin.events.length > 1 && <span className="pin-count">{pin.events.length}</span>}
       </span>
     );
@@ -160,6 +163,8 @@ export function CivicMap({
   const markers = useRef(new Map<string, Marker>());
   const hostEls = useRef(new Map<string, HTMLElement>());
   const you = useRef<Marker | null>(null);
+  const popup = useRef<Popup | null>(null);
+  const [popupHost, setPopupHost] = useState<HTMLElement | null>(null);
   const selectRef = useRef(onSelect);
   const fitted = useRef("");
   const [ready, setReady] = useState(false);
@@ -174,36 +179,36 @@ export function CivicMap({
     () => allPins.filter((p) => layer === "all" || p.layer === layer),
     [allPins, layer],
   );
-  const pinKey = pins.map((p) => p.id).join("|");
+  const pinKey = pins.map(p => p.id + ":" + p.lat + ":" + p.lng).join("|");
   const near = location.coords && campus && distanceMiles(location.coords, campus.center) < 25 ? location.coords : undefined;
   const origin: [number, number] | undefined = near ?? campus?.center;
 
   useEffect(() => {
     let canceled = false;
+    const controller = new AbortController();
     void import("leaflet")
       .then((L) => {
         if (canceled || !element.current) return;
         map.current = L.map(element.current, {
           scrollWheelZoom: false,
+          minZoom: 11, maxZoom: 17,
           zoomAnimation: false,
           markerZoomAnimation: false,
           fadeAnimation: false,
           zoomControl: variant === "full",
           attributionControl: true,
         }).setView(campus?.center ?? [42.4475, -76.4885], campus?.zoom ?? 14);
-        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          maxZoom: 19,
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        })
-          .on("tileerror", () => setTiles((t) => (t === "loaded" ? t : "failed")))
-          .on("load", () => setTiles("loaded"))
-          .addTo(map.current);
+        const instance = map.current;
+        void addMapOutline(L, instance, data.community?.id ?? "", controller.signal)
+          .then(loaded => { if (!canceled) setTiles(loaded ? "loaded" : "failed"); })
+          .catch(() => { if (!canceled) setTiles("failed"); });
         group.current = L.layerGroup().addTo(map.current);
         setReady(true);
       })
       .catch(() => setTiles("failed"));
     return () => {
       canceled = true;
+      controller.abort();
       map.current?.remove();
       map.current = null;
     };
@@ -271,6 +276,28 @@ export function CivicMap({
   }, [selected, pins]);
 
   useEffect(() => {
+    let canceled = false;
+    const pin = pins.find(p => p.id === selected);
+    if (!ready || !map.current || !pin) {
+      popup.current?.remove();
+      return;
+    }
+    void import("leaflet").then(L => {
+      if (canceled || !map.current) return;
+      popup.current?.remove();
+      const host = document.createElement("div");
+      const next = L.popup({ closeButton: false, maxWidth: 270, minWidth: 180, maxHeight: variant === "preview" ? 145 : 230, offset: [0, -35], autoPan: true })
+        .setLatLng([pin.lat, pin.lng]).setContent(host).openOn(map.current);
+      popup.current = next;
+      setPopupHost(host);
+    });
+    return () => { canceled = true; popup.current?.remove(); };
+    // Marker geometry is encoded in pinKey; snapshot refreshes keep the popup in place.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, selected, pinKey]);
+  useEffect(() => { popup.current?.update(); }, [popupHost, selected, data.venuePlans]);
+
+  useEffect(() => {
     if (!ready) return;
     void import("leaflet").then((L) => {
       if (!map.current) return;
@@ -320,16 +347,23 @@ export function CivicMap({
         />
         {hosts.map(([id, host]) => {
           const pin = pins.find((p) => p.id === id);
-          return pin ? createPortal(<PinFace pin={pin} selected={id === selected} />, host, id) : null;
+          return pin ? createPortal(<PinFace pin={pin} selected={id === selected} plans={data.venuePlans} />, host, id) : null;
         })}
         {tiles !== "loaded" && (
           <p className="civic-map-status" role="status">
             {tiles === "failed"
-              ? "The basemap could not load. Places remain available in the list."
-              : "Loading the basemap…"}
+              ? "The local outline could not load. Places remain available in the list."
+              : "Loading the local outline…"}
           </p>
         )}
-        {variant === "preview" && card && <div className="civic-map-card">{card}</div>}
+        {active && popupHost && createPortal(<div className="venue-preview">
+          <strong>{active.events?.[0].title ?? active.entity?.name}</strong>
+          <p>{active.events?.[0].venue ?? active.entity?.subtitle}</p>
+          {(data.venuePlans ?? []).filter(p => active.events?.some(e => e.id === p.eventId)).map(p => <p key={p.userId + p.eventId}>{p.name} · {p.status === "attending" ? "Going" : "Interested"}{active.events!.length > 1 ? " at " + active.events!.find(e => e.id === p.eventId)?.title : ""}</p>)}
+          <button className="text-button" onClick={() => navigate(active.events ? "event/" + active.events[0].id : "entity/" + active.entity!.id)}>{active.events ? "View event" : "View details"}</button>
+          <button className="text-button" onClick={() => onSelect("")}>Close preview</button>
+        </div>, popupHost)}
+        <p className="map-caption">Simplified local outline · Venue plans are shared intentions, never a person’s current location.</p>
       </div>
       {variant === "full" && (
         <aside className="civic-map-side">
@@ -356,7 +390,7 @@ export function CivicMap({
             {listed.map(({ pin, miles }) => (
               <li key={pin.id}>
                 <button aria-pressed={pin.id === selected} onClick={() => onSelect(pin.id === selected ? "" : pin.id)}>
-                  <PinFace pin={pin} selected={pin.id === selected} />
+                  <PinFace pin={pin} selected={pin.id === selected} plans={data.venuePlans} />
                   <span>
                     <strong>{pin.label}</strong>
                     <small>

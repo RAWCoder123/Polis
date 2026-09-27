@@ -40,7 +40,7 @@ const costLabel = (e: CommunityEvent) =>
     : e.cost === "paid"
       ? e.costDetails || "Paid · check organizer"
       : "Cost not supplied";
-function EventImage({ event }: { event: CommunityEvent }) {
+export function EventImage({ event }: { event: CommunityEvent }) {
   const [failed, setFailed] = useState(false);
   return event.imageUrl && !failed ? (
     // Organizer images are arbitrary remote URLs; the Worker has no image
@@ -49,7 +49,7 @@ function EventImage({ event }: { event: CommunityEvent }) {
     <img
       className="event-image"
       src={event.imageUrl}
-      alt=""
+      alt={event.imageAlt ?? ""}
       loading="lazy"
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
@@ -77,7 +77,7 @@ export function EventCard({
 } & Props) {
   const [pending, setPending] = useState(false),
     saved = data.saved.includes(event.id);
-  const friends = data.plans.filter(
+  const friends = (data.venuePlans ?? []).filter(
     (p) =>
       p.eventId === event.id &&
       p.userId !== data.me?.id &&
@@ -137,6 +137,7 @@ export function EventCard({
           {friends.length === 1 ? "has" : "have"} shared a plan
         </p>
       )}
+      {event.imageCredit && <p className="event-image-credit">Image: {event.imageCredit}</p>}
       <div className="event-card-actions">
         <button
           className="text-button"
@@ -371,6 +372,8 @@ export function CommunityEvents({
     ),
     data.eventPreferences,
     {
+      scope: p.get("scope") ?? "all",
+      campusId: data.community?.id,
       q: query ?? p.get("q") ?? "",
       city,
       period: p.get("period") ?? "",
@@ -425,6 +428,9 @@ export function CommunityEvents({
           <small> · Your private collection</small>
         </h2>
       )}
+      <div className="event-scope-tabs forum-filters" aria-label="Event community">
+        {[["all", "All"], ["campus", "My campus"], ["town", "Town"]].map(([value, label]) => <button key={value} aria-pressed={(p.get("scope") ?? "all") === value} onClick={() => update("scope", value)}>{label}</button>)}
+      </div>
       <div className="event-discovery-toolbar">
         <label>
           City
@@ -559,6 +565,9 @@ export function CommunityEvents({
             key={city}
             center={cityCenters[city.toLowerCase()]}
             events={mapEvents}
+            communityId={data.community?.id ?? ""}
+            plans={data.venuePlans ?? []}
+            onView={id => navigate("event/" + id)}
             selected={selected}
             onSelect={(id) => update("selected", id)}
           />
@@ -672,7 +681,7 @@ export function AroundEvents({ data, run, navigate }: Props) {
             className="around-event"
             onClick={() => navigate("event/" + event.id)}
           >
-            <CalendarDays size={22} />
+            <EventImage event={event} />
             <span>
               <strong>{event.title}</strong>
               <small>{eventTime(event)}</small>
@@ -791,6 +800,8 @@ export function CommunityEventDetail({
           enable saves, plans and discussions.
         </p>
         <EventImage event={event} />
+      {event.imageCredit && <p className="event-image-credit">{event.imageCredit} · {event.imageNote} {event.imageSourceUrl && <a href={event.imageSourceUrl} target="_blank" rel="noopener noreferrer">Image source ↗</a>}</p>}
+      <p className="metadata">{event.scope === "campus" ? data.community?.campus?.university + " · " : "Town · "}{event.organizationName || event.organizer}</p>
         <p className="event-description">{event.description}</p>
         <p>{eventTime(event)}</p>
         <p>
@@ -811,7 +822,7 @@ export function CommunityEventDetail({
     );
   const active = event.status === "published" && !eventExpired(event),
     saved = data.saved.includes(id);
-  const friends = data.plans.filter(
+  const friends = (data.venuePlans ?? []).filter(
     (p) =>
       p.eventId === id &&
       p.userId !== data.me?.id &&
@@ -867,6 +878,8 @@ export function CommunityEventDetail({
         </p>
       )}
       <EventImage event={event} />
+      {event.imageCredit && <p className="event-image-credit">{event.imageCredit} · {event.imageNote} {event.imageSourceUrl && <a href={event.imageSourceUrl} target="_blank" rel="noopener noreferrer">Image source ↗</a>}</p>}
+      <p className="metadata">{event.scope === "campus" ? data.community?.campus?.university + " · " : "Town · "}{event.organizationName || event.organizer}</p>
       <p className="event-description">{event.description}</p>
       <dl className="event-facts">
         <dt>When</dt>

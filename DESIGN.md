@@ -45,3 +45,9 @@ Extends, not replaces, the system above. Styles live in `components/polis/civic.
 - **Perspectives.** Teal, sage, ochre, slate and pale gray — never red versus blue. Party affiliation appears only when supplied from a checked source.
 - **Commons cards.** Georgia titles, an "About" row of rounded entity chips, four compact reactions (icon-only below 520 px), participant counts. Starter questions use a pale-cobalt card with a perspective bar.
 - **Layout.** Home and Map use a 1240 px wide layout; Home has a 330 px side column that stacks under 1100 px. Mobile navigation: Home, Commons, Map, Friends, Profile (Rankings is on the profile and desktop sidebar).
+
+## Reviewed social milestone (September 27, 2026)
+
+Preserve the existing white/cobalt/navy system. Commons uses title-first rows, Local/National scopes, explicit Following and recency controls, and compact contribution buttons. Topics and introductory guidance sit below conversations on mobile. Existing tab routes remain compatible.
+
+Maps use bundled OSM-derived outlines, with ODbL attribution, original geographic venue coordinates, anchored previews and an independent list. Initials indicate permitted friends’ shared plans at event venues, never present location. Several occurrences at one venue remain individually selectable. Photos identify sourced events and verified officials; source credits are visible and missing images fall back to icons or initials.

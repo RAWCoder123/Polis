@@ -6,7 +6,6 @@ import {
   BookmarkCheck,
   ArrowUpRight,
   ThumbsUp,
-  ThumbsDown,
   Lightbulb,
   HelpCircle,
   MoreHorizontal,
@@ -41,13 +40,11 @@ export type Run = (
   requestId?: string,
 ) => Promise<CommandResult>;
 export type Navigate = (route: string) => void;
-// Stored kinds keep their original names: "thoughtful" reads as Interesting and
-// "curious" as Needs context. One reaction per person; switching replaces it.
+// Stored reaction kinds remain compatible. One per person; switching replaces it.
 const reactionChoices = [
   { kind: "agree", label: "Agree", Icon: ThumbsUp },
-  { kind: "disagree", label: "Disagree", Icon: ThumbsDown },
-  { kind: "thoughtful", label: "Interesting", Icon: Lightbulb },
-  { kind: "curious", label: "Needs context", Icon: HelpCircle },
+  { kind: "thoughtful", label: "Thought-provoking", Icon: Lightbulb },
+  { kind: "curious", label: "Want to understand more", Icon: HelpCircle },
 ] as const;
 
 export function PostCard({
@@ -93,6 +90,7 @@ export function PostCard({
       id={"post-" + post.id}
       data-position={post.position ?? ""}
     >
+      {compact && <h2 className="forum-title"><button onClick={() => navigate(route)}>{post.title || (post.text.length > 140 ? post.text.slice(0, 137) + "…" : post.text) || subjectTitle(post.subjectId)}</button></h2>}
       <header>
         <button
           className="avatar-link"
@@ -202,7 +200,7 @@ export function PostCard({
         </DropdownMenu>
       </header>
       {/* Untitled posts lead with their text rather than repeating it as a heading. */}
-      {(post.title || !post.text) && (
+      {!compact && (post.title || !post.text) && (
         <h2 className="forum-title">
           <button onClick={() => navigate(route)}>{post.title || subjectTitle(post.subjectId)}</button>
         </h2>
@@ -211,7 +209,7 @@ export function PostCard({
       {post.position && (
         <span className="post-position">{positions[post.position]}</span>
       )}
-      {discussionLabels[post.kind] && <span className="post-position">{post.organizationId && attachment.organizationChannel === "announcements" ? "Announcement" : discussionLabels[post.kind]}</span>}
+      {!compact && discussionLabels[post.kind] && <span className="post-position">{post.organizationId && attachment.organizationChannel === "announcements" ? "Announcement" : discussionLabels[post.kind]}</span>}
       {post.kind === "ranking" && (
         <span className="post-position">
           {attachment.rankingKind === "issue_priorities"
@@ -233,7 +231,7 @@ export function PostCard({
           An updated view · Read the earlier post <ArrowRight size={14} />
         </button>
       )}
-      <p className="post-text">{post.text}</p>
+      {(!compact || !!post.title) && <p className="post-text">{post.text}</p>}
       {attachment.sourceUrl && (
         <a
           className="post-source"

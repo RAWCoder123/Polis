@@ -39,7 +39,7 @@ async function ensureProfile(a, username) {
   await expect(a.page.getByRole("button", { name: "Create my Polis account" })).toBeVisible();
   await a.page.getByLabel("Username").fill(username);
   await a.page.getByRole("button", { name: "Create my Polis account" }).click();
-  await expect(a.page.getByRole("heading", { level: 1 })).toContainText("today");
+  await expect.poll(async () => (await state(a)).status).toBe("ready");
   return true;
 }
 async function shot(a, name) {
@@ -57,7 +57,7 @@ const code = "QA-" + stamp;
 for (const campus of ["ithaca", "uf"]) {
   await command(owner, { action: "community.manage", communityId: campus });
   const s = await state(owner);
-  if (!s.events.length) {
+  if (!s.events.some(e => !e.sample)) {
     const { curatedEventsFor } = await import("../lib/social/campus-events.ts");
     for (const event of curatedEventsFor(campus)) await command(owner, { action: "event.save", event, createOnly: true });
   }
@@ -65,11 +65,24 @@ for (const campus of ["ithaca", "uf"]) {
 await command(owner, { action: "community.select", communityId: "ithaca" });
 await command(owner, { action: "invite.code", communityId: "ithaca", code, expiresDays: null, maxUses: 50 });
 
-// Journey B: a ufl.edu account lands in UF / Gainesville, not Cornell.
+// Join local test identities with curator-issued codes. School email strings
+// alone do not establish verified university membership on Sites.
+async function joinCampus(a, campus) {
+  const s = await state(a);
+  if (!s.communities.some(c => c.id === campus)) {
+    const invitation = await command(owner, { action: "invite.code", communityId: campus, expiresDays: 1, maxUses: 3 });
+    await command(a, { action: "invite.preview", code: invitation.invitationCode, expectedCommunityId: campus });
+    await command(a, { action: "invite.redeem", invite: invitation.invitationCode, confirmedCommunityId: campus, name: "Test " + a.account, username: "test_" + a.account });
+  }
+  await command(a, { action: "community.select", communityId: campus });
+  await a.page.goto(origin + "/#home"); await a.page.reload();
+}
+// Journey B: a code-admitted account lands in UF / Gainesville, not Cornell.
 const gator = await actor("campus_uf");
 if (await ensureProfile(gator, "test_uf_" + stamp.toLowerCase().slice(-5))) {
   /* created */
 } else await gator.page.goto(origin + "/#home");
+await joinCampus(gator, "uf");
 await expect(main(gator)).toContainText("UNIVERSITY OF FLORIDA · GAINESVILLE, FL");
 await expect(main(gator)).toContainText("What’s happening around UF today.");
 await expect(main(gator)).not.toContainText("Ithaca");
@@ -94,6 +107,7 @@ await shot(denied, "d-uf-map-location-declined-mobile");
 // with a perspective and follows the related issue back to the map.
 const student = await actor("campus_cu");
 await ensureProfile(student, "test_cu_" + stamp.toLowerCase().slice(-5));
+await joinCampus(student, "ithaca");
 await student.page.goto(origin + "/#explore?layer=people");
 await student.page.getByRole("button", { name: /Cornell Student Assembly/ }).first().click();
 const card = student.page.locator(".entity-summary");

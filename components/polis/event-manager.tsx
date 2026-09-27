@@ -5,7 +5,7 @@ import type { CommunityEvent, Snapshot } from "@/lib/social/types";
 import { eventCategories, eventRecord, eventTime } from "@/lib/social/events";
 import { issues } from "@/lib/social/catalog";
 import { topicsFor } from "@/lib/social/commons";
-import { officialEvents } from "@/lib/social/official-events";
+import { checkedEventsFor } from "@/lib/social/campus-events";
 import { sampleEventsFor } from "@/lib/social/campus-events";
 import type { Run, Navigate } from "./social-post";
 import { Modal } from "./social-forms";
@@ -46,6 +46,7 @@ export function EventManager({
   run: Run;
   navigate: Navigate;
 }) {
+  const officialEvents = checkedEventsFor(data.community?.id ?? "");
   const [editing, setEditing] = useState<CommunityEvent | null>(null),
     [pending, setPending] = useState(false),
     [message, setMessage] = useState("");
@@ -92,7 +93,7 @@ export function EventManager({
           <Plus size={17} />
           Add an occurrence
         </button>
-        {data.community?.id === "ithaca" && <button
+        {officialEvents.length > 0 && <button
           className="btn secondary"
           disabled={pending || !officialEvents.length}
           onClick={() =>
@@ -118,7 +119,7 @@ export function EventManager({
         </button>}
       </div>
       <p className="catalog-notice">
-        {data.community?.id === "ithaca" ? "Import adds only missing IDs. It never overwrites curator edits, resurrects canceled listings, or deletes activity." : "This campus has no checked event bundle. Add checked local sources; do not reuse another campus’s listings."}{" "}
+        {officialEvents.length ? "Import adds only missing IDs. It never overwrites curator edits, resurrects canceled listings, or deletes activity. Recheck sources before inviting a cohort." : "This campus has no checked event bundle. Add checked local sources."}{" "}
         Sample listings are marked Sample everywhere they appear and link only to general references; archive them before inviting a real cohort.
       </p>
       {message && (
@@ -346,6 +347,13 @@ function EventEditor({
         }}
       >
         {field("title", "Title", true)}
+        <label className="social-field">Community setting<select value={e.scope ?? "town"} onChange={v => setE(s => ({ ...s, scope: v.target.value as "campus" | "town", campusId: v.target.value === "campus" ? communityId : "" }))}><option value="town">Town</option><option value="campus">This campus</option></select></label>
+        {field("organizationName", "Organizing group")}
+        {field("imageAlt", "Image description")}
+        {field("imageCredit", "Image credit")}
+        {field("imageSourceUrl", "Image source URL")}
+        {field("imageNote", "Image context, such as archival photo")}
+
         {field("seriesId", "Series ID · reuse for recurring dates", true)}
         <label className="social-field">
           Description

@@ -4,6 +4,8 @@ import { itemById } from "../../polis-data.ts";
 import { issues as legacyIssues } from "../catalog.ts";
 import { commonsTopics } from "../commons.ts";
 import { cornellEntities } from "./cornell.ts";
+import { verifiedNews } from "./verified-news.ts";
+import { verifiedPeople } from "./verified-people.ts";
 import { ufEntities } from "./uf.ts";
 
 // The manually checked Commons topics are first-class issues: their sourced
@@ -39,7 +41,7 @@ const sourcedTopics: CivicEntity[] = commonsTopics.map((t) => ({
 
 // One reusable civic catalog keyed by community. Pages never branch on a
 // specific campus; they ask for the current community's entities.
-export const civicEntities: CivicEntity[] = [...sourcedTopics, ...cornellEntities, ...ufEntities];
+export const civicEntities: CivicEntity[] = [...verifiedNews, ...verifiedPeople, ...sourcedTopics, ...cornellEntities, ...ufEntities];
 const byId = new Map(civicEntities.map((e) => [e.id, e]));
 export const entityFor = (id: string) => (byId.has(id) ? byId.get(id) : undefined);
 export const entitiesFor = (communityId: string) =>

@@ -27,6 +27,14 @@ export type EventCategory =
   | "community"
   | "politics";
 export type CommunityEvent = {
+  campusId?: string;
+  organizationName?: string;
+  scope?: "campus" | "town";
+  imageAlt?: string;
+  imageCredit?: string;
+  imageSourceUrl?: string;
+  imageNote?: string;
+
   id: string;
   seriesId: string;
   title: string;
@@ -210,7 +218,7 @@ export type EntityKind =
   | "meeting"
   | "elections"
   | "question";
-export type EntityScope = "campus" | "local";
+export type EntityScope = "campus" | "local" | "national";
 export type EntityLink = { title: string; url: string };
 // Code-defined civic context for a community. `sample` marks illustrative
 // content; unsampled records only state what an office or place is.
@@ -228,6 +236,10 @@ export type CivicEntity = {
   location?: { lat: number; lng: number; label: string; approximate?: boolean };
   imageUrl?: string;
   imageAlt?: string;
+  imageCredit?: string;
+  imageSourceUrl?: string;
+  imagePosition?: string;
+  checkedAt?: string;
   monogram?: string;
   sourceUrl?: string;
   sourceLabel?: string;
@@ -299,6 +311,7 @@ export type Snapshot = {
   rankings: Rank[];
   priorities: { issueId: string; priority: number; note: string }[];
   follows: { issueId: string; notify: number }[];
+  venuePlans?: { userId: string; name: string; eventId: string; status: EventPlanStatus }[];
   plans: {
     userId: string;
     name: string;

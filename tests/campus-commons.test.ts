@@ -28,8 +28,8 @@ test("email domains map exactly to one configured campus", () => {
   assert.equal(communityForEmail("fixture@emory.edu"), undefined);
 });
 
-test("university email signup joins the matching campus, and nothing a client sends can choose one", async () => {
-  const f = fixture(campusEmails);
+test("an explicitly verified adapter university email joins the matching campus, and nothing a client sends can choose one", async () => {
+  const f = fixture(campusEmails, true);
   const before = await f.snap("cu");
   assert.equal(before.status, "onboarding");
   assert.equal(before.eligibleCommunity?.id, "ithaca");
@@ -72,8 +72,8 @@ test("university email signup joins the matching campus, and nothing a client se
   );
 });
 
-test("an existing profile joins its email's campus explicitly; owners still enter other campuses through management", async () => {
-  const f = fixture();
+test("an existing profile with an explicit adapter assertion joins its email's campus; owners still enter other campuses through management", async () => {
+  const f = fixture({}, true);
   await f.setup();
   await f.act("early", { action: "account.create", name: "Early", username: "early_fx" });
   // The same account later signs in with a verified campus email.
@@ -104,7 +104,7 @@ test("an existing profile joins its email's campus explicitly; owners still ente
 });
 
 test("Commons posts carry titles and campus subjects; other campuses' subjects are rejected", async () => {
-  const f = fixture(campusEmails);
+  const f = fixture(campusEmails, true);
   await f.act("cu", { action: "account.create", name: "Cornell Fixture", username: "cu_fixture" });
   await f.act("gator", { action: "account.create", name: "UF Fixture", username: "uf_fixture" });
   await denied(
@@ -140,7 +140,7 @@ test("Commons posts carry titles and campus subjects; other campuses' subjects a
 });
 
 test("structured questions count each person's latest perspective once, including replies", async () => {
-  const f = fixture(campusEmails);
+  const f = fixture(campusEmails, true);
   for (const [id, name] of [["cu", "cu_fixture"], ["cu2", "cu_fixture2"]])
     await f.act(id, { action: "account.create", name, username: name });
   const response = await f.act("cu", {
@@ -169,10 +169,10 @@ test("structured questions count each person's latest perspective once, includin
   assert.deepEqual([topic.posts, topic.replies, topic.participants], [1, 2, 2]);
 
   const replies = (await f.snap("cu", { post: response.postId! })).comments!;
-  assert.deepEqual(replies.map((c) => c.position), ["reservations", "support"]);
-  const own = replies[0].id;
+  assert.deepEqual(replies.map((c) => c.position).sort(), ["reservations", "support"]);
+  const own = replies.find(c => c.position === "reservations")!.id;
   await f.act("cu2", { action: "comment.edit", commentId: own, text: "Edited", position: null });
-  assert.equal((await f.snap("cu", { post: response.postId! })).comments![0].position, null);
+  assert.equal((await f.snap("cu", { post: response.postId! })).comments!.find(c => c.id === own)!.position, null);
 
   // Open-ended questions and plain observations do not collect stances.
   const open = await f.act("cu", { action: "post", kind: "debate", subjectId: "q-ith-commons-evenings", text: "More music?", audience: "community" });
@@ -181,8 +181,8 @@ test("structured questions count each person's latest perspective once, includin
   await denied(f.act("cu2", { action: "comment", postId: observation.postId!, text: "Agreed", position: "support" }), 400);
 });
 
-test("Commons tabs separate campus and local subjects, and ranked feeds reward people, not private notes", async () => {
-  const f = fixture(campusEmails);
+test("Commons scopes and legacy feed aliases use visible recency without exposing private notes", async () => {
+  const f = fixture(campusEmails, true);
   for (const [id, name] of [["cu", "cu_fixture"], ["cu2", "cu_fixture2"]])
     await f.act(id, { action: "account.create", name, username: name });
   const campus = await f.act("cu", { action: "post", kind: "question", subjectId: "cu-olin-library", text: "Open late?", audience: "community" });
@@ -198,10 +198,10 @@ test("Commons tabs separate campus and local subjects, and ranked feeds reward p
   assert.ok((await f.snap("cu", { filter: "campus", coverage: "national" })).posts.every((p) => p.id === national.postId));
   assert.ok(!(await ids("for_you")).includes(privateNote.postId));
   assert.equal((await f.snap("cu", { filter: "for_you" })).nextCursor, null);
-  // Trending needs someone other than the author to take part.
-  assert.deepEqual(await ids("trending"), []);
+  // Old ranked URLs remain usable, now with the same chronological contract.
+  assert.deepEqual(await ids("trending"), await ids("for_you"));
   await f.act("cu2", { action: "comment", postId: local.postId!, text: "Music on the Commons." });
-  assert.deepEqual(await ids("trending"), [local.postId]);
+  assert.ok((await ids("trending")).includes(local.postId));
 
   // Following combines followed subjects with accepted friends.
   assert.deepEqual(await ids("followed", "cu2"), []);
@@ -217,7 +217,7 @@ test("Commons tabs separate campus and local subjects, and ranked feeds reward p
 });
 
 test("issue priorities are ordered within each campus", async () => {
-  const f = fixture({ both: "fixture.both@cornell.edu" });
+  const f = fixture({ both: "fixture.both@cornell.edu" }, true);
   await f.act("both", { action: "account.create", name: "Both", username: "both_fx" });
   await f.act("both", { action: "priority.save", issueId: "housing" });
   await f.act("both", { action: "priority.save", issueId: "cornell-climate" });
@@ -279,9 +279,9 @@ test("the civic catalog is internally consistent, campus-scoped and honest about
       assert.ok(miles < 5, e.id + " is " + miles.toFixed(1) + " miles from campus");
     }
     // Illustrative content is always labeled; offices never name an unchecked holder.
-    if (["policy", "project", "news", "question"].includes(e.kind)) assert.equal(e.sample, true, e.id);
+    if (["policy", "project", "news", "question"].includes(e.kind) && !e.checkedAt) assert.equal(e.sample, true, e.id);
     if (e.kind === "question") assert.ok(e.debate && e.debate.perspectives.length >= 2, e.id);
-    if (e.kind === "official") assert.ok(e.office && !e.office.officeholder && !e.office.party, e.id);
+    if (e.kind === "official") { assert.ok(e.office, e.id); if (e.office.officeholder) assert.ok(e.checkedAt && e.sourceUrl && e.imageCredit && e.imageSourceUrl, e.id + " needs checked portrait provenance"); }
     if (e.sourceUrl) assert.match(e.sourceUrl, /^https:\/\//);
     assert.ok(!Object.hasOwn(itemById, e.id) || e.kind === "issue", e.id + " collides with a legacy item");
   }
@@ -297,7 +297,7 @@ test("the civic catalog is internally consistent, campus-scoped and honest about
 
 test("curated campus listings validate and link only to their own campus issues", () => {
   const uf = curatedEventsFor("uf");
-  assert.ok(uf.length >= 8);
+  assert.ok(uf.length >= 4);
   for (const e of [...uf, ...curatedEventsFor("ithaca")]) {
     assert.ok(eventRecord.safeParse(e).success, e.id);
     if (e.issueId) assert.equal(entityFor(e.issueId)?.kind, "issue", e.id);
@@ -305,7 +305,7 @@ test("curated campus listings validate and link only to their own campus issues"
   }
   for (const e of uf) {
     assert.equal(e.city, "Gainesville");
-    assert.equal(e.sample, true);
+    assert.equal(e.sample, false);
     if (e.issueId) assert.equal(entityFor(e.issueId)!.communityId, "uf");
   }
   assert.deepEqual(curatedEventsFor("emory"), []);

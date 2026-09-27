@@ -7,6 +7,7 @@ import { discoverEvents, eventDay, eventTime, eventCategories } from "@/lib/soci
 import { useDeviceLocation } from "@/lib/social/use-device-location";
 import { communityFor } from "@/lib/social/communities";
 import { subjectTitle } from "@/lib/social/catalog";
+import { EventImage } from "./community-events";
 import { CivicMap, mapPins } from "./civic-map";
 import { EntityRow, EntityVisual, EventVisual, entityRoute } from "./civic-cards";
 import { QuestionCard, rankedQuestions } from "./commons";
@@ -39,7 +40,7 @@ function Pulse({ data, navigate }: { data: Snapshot; navigate: Navigate }) {
   const unreadReplies = data.notifications.filter((n) => !n.readAt && n.kind === "reply").length;
   const unread = data.notifications.filter((n) => !n.readAt).length;
   const following = data.follows.length;
-  const members = data.people.length + 1;
+  const members = data.people.filter(p => !p.blocked && !p.muted).length + 1;
   return (
     <div className="home-pulse" aria-label="Your community at a glance">
       <button onClick={() => navigate(unread ? "notifications" : "commons/following")}>
@@ -76,7 +77,9 @@ export function HomeDashboard({
   discuss,
   discussEvent,
   children,
+  selected = "",
 }: {
+  selected?: string;
   data: Snapshot;
   run: Run;
   navigate: Navigate;
@@ -100,8 +103,9 @@ export function HomeDashboard({
     .sort((a, b) => b.news!.publishedAt.localeCompare(a.news!.publishedAt))
     .slice(0, 3);
   const people = [
+    ...entities.filter(e => e.kind === "official" && !!e.office?.officeholder),
     ...entities.filter((e) => e.kind === "official" && e.scope === "campus"),
-    ...entities.filter((e) => e.kind === "official" && e.scope === "local"),
+    ...entities.filter((e) => e.kind === "official" && e.scope === "local" && !e.office?.officeholder),
     ...entities.filter((e) => e.kind === "institution"),
   ].slice(0, 5);
   const discussions = data.posts.filter((p) => p.audience !== "only_me").slice(0, 3);
@@ -126,7 +130,7 @@ export function HomeDashboard({
           </p>
           <p>
             Polis is piloting local maps, issues and campus conversations at Cornell and the University of Florida.
-            Join with your university email or a community code to see your campus. Conversations here stay open to every member.
+            Join with a community code to see your campus. Conversations here stay open to every member.
           </p>
           <div className="form-actions">
             <button className="btn primary" onClick={() => navigate("commons")}>
@@ -167,9 +171,9 @@ export function HomeDashboard({
               discuss={discuss}
               discussEvent={discussEvent}
               variant="preview"
-              selected=""
+              selected={selected}
               onSelect={(id) => {
-                if (id) navigate("explore?selected=" + encodeURIComponent(id));
+                navigate("home" + (id ? "?selected=" + encodeURIComponent(id) : ""));
               }}
             />
             <p className="map-footnote">
@@ -258,6 +262,7 @@ export function HomeDashboard({
             </div>
             {upcoming.slice(0, 4).map((e) => (
               <button key={e.id} className="upcoming-row" onClick={() => navigate("event/" + e.id)}>
+                <EventImage event={e} />
                 <span className="date-chip">
                   <strong>{dayLabel(e).split(" ")[1]}</strong>
                   <small>{dayLabel(e).split(" ")[0].toUpperCase()}</small>

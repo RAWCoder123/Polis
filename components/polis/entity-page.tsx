@@ -173,6 +173,8 @@ export function EntityPage({
               ))}
             </ul>
           )}
+          {entity.checkedAt && <p className="metadata">Source checked {entity.checkedAt}. Office information may change.</p>}
+          {entity.imageCredit && <p className="metadata">Portrait: {entity.imageCredit}. <a href={entity.imageSourceUrl} target="_blank" rel="noopener noreferrer">Original image ↗</a></p>}
           <dl className="entity-facts">
             {entity.office && (
               <>
