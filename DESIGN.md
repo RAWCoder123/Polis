@@ -35,3 +35,13 @@ Comparison points:
 Functional checks passed: first rating and note; disabled save before choosing a score; a second rating and pairwise priority comparison; order and notes after refresh; search results and empty search; text copying; linked news-to-event details; adding a demo plan; map category filtering; mobile navigation; profile plans; following a sample friend; saved news appearing in the profile. The final browser console check showed no application errors. A transient pre-fix module-load error was resolved before these checks.
 
 Known scope: fictional sample data, schematic geographic placements, local browser storage, audience previews, and demo friends. No live data ingestion or multi-user backend is claimed.
+
+## Campus civic extension (September 26, 2026)
+
+Extends, not replaces, the system above. Styles live in `components/polis/civic.css`.
+
+- **Entity visuals.** Offices and bodies use navy seal monograms (no synthetic headshots); proposals and briefs use paper tiles with a folded corner; buildings, places, organizations and meetings use soft tinted icon tiles (slate, green, violet, amber). Licensed photos replace tiles when an `imageUrl` is supplied.
+- **Map pins.** White discs with a colored ring by layer: navy people & offices (filled), slate government & voting, cobalt campus, amber issues & projects, green community, warm orange events. Sample entries carry a small dashed dot. Pins sharing a spot fan out. The basemap is desaturated so civic markers lead.
+- **Perspectives.** Teal, sage, ochre, slate and pale gray — never red versus blue. Party affiliation appears only when supplied from a checked source.
+- **Commons cards.** Georgia titles, an "About" row of rounded entity chips, four compact reactions (icon-only below 520 px), participant counts. Starter questions use a pale-cobalt card with a perspective bar.
+- **Layout.** Home and Map use a 1240 px wide layout; Home has a 330 px side column that stacks under 1100 px. Mobile navigation: Home, Commons, Map, Friends, Profile (Rankings is on the profile and desktop sidebar).

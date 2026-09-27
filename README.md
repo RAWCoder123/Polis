@@ -1,6 +1,6 @@
 # Polis
 
-The latest candidate is `codex/cornell-uf-commons`: one Commons experience with separate Cornell/Ithaca and UF/Gainesville memberships, sourced topics and private organization spaces. See [Commons setup, verification and rollout](docs/commons-pilot.md). It is locally verified and has **not** replaced Sites version 2.
+The latest candidate is `codex/commons-civic-map`, continuing `codex/cornell-uf-commons`: a curated campus Home, a dedicated Commons (For You, Campus, Local, National, Trending, Following), a live civic map with office/building/event cards, reusable entity pages, Cornell and UF email-domain association, and search. See [campus Commons and civic map](docs/campus-civic-map.md) and the underlying [Commons setup, verification and rollout](docs/commons-pilot.md). It is locally verified and has **not** replaced Sites version 2.
 
 Polis is a social app for politics and local civic life: discover an issue, express a view, hear from a friend, and follow what happens next. This repository is its development home.
 

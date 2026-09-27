@@ -28,7 +28,16 @@ These describe the source implementation. Sites reports public version 2; later 
 - Curator listing lifecycle, member suggestion queue, existing owner reports, additive import of 17 organizer-verified occurrences.
 - Privacy, date/filter, duplicate, transactional cancellation and three-session HTTP regression checks. See [event pilot setup](event-pilot.md) and [source record](event-sources.md).
 
+## Campus Commons and civic map additions
+
+- Home dashboard (map preview, Commons highlights, today and this week, upcoming, people & institutions) and a dedicated Commons with For You, Campus, Local, National, Trending and Following.
+- Campus configuration with exact email-domain association for Cornell and UF (community membership, not student verification), memorable and non-expiring invitation codes.
+- Civic catalog of offices, institutions, buildings, places, organizations, meetings, voting, sample proposals, briefs and structured starter questions; live typed map with compact cards and a Commons bridge; reusable entity cards and pages; unified search; guidelines; optional tab-local device location.
+- Reply perspectives, four reactions and participant counts; trending by distinct people. See [campus Commons and civic map](campus-civic-map.md).
+
 ## Known gaps
+
+The civic catalog names offices, not officeholders, and has no licensed headshots or building photos yet; a checked source is required before adding them. Campus sample proposals, briefs, questions and event listings are labeled Sample. UF has no checked event bundle. Email-domain association awaits hosted confirmation that Sites forwards only verified emails.
 
 The September 26 Commons candidate adds Cornell/Ithaca and UF/Gainesville scopes, Question/Debate/Update conversations, thread follows, opt-in notifications for new accounts, four sourced topic documents, and private tester-circle spaces using existing posts/replies and secure reusable codes. Six local browser identities and the service suite verify the two-campus loop. See [Commons pilot](commons-pilot.md) for exact migrations, source coverage, verification, rollout and rollback. Sites publication remains blocked by connectivity to its source server; real hosted multi-user acceptance has not been exercised. UF has no verified upcoming-event bundle. Campus SSO/email verification, licensed map/official imagery, richer civic-map subjects and retention evidence remain explicit follow-ons. Existing account signup is preserved; protected campus admission still requires a matching invitation.
 

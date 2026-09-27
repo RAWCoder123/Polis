@@ -1,6 +1,6 @@
 "use client";
 import "./civic.css";
-import { ArrowRight, ArrowUpRight, GraduationCap, LocateFixed, MessageCircle, Users } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Bell, Bookmark, GraduationCap, LocateFixed, MessageCircle, Users } from "lucide-react";
 import type { CivicEntity, CommunityEvent, Post, Snapshot } from "@/lib/social/types";
 import { entitiesFor, entityFor } from "@/lib/social/civic";
 import { discoverEvents, eventDay, eventTime, eventCategories } from "@/lib/social/events";
@@ -31,6 +31,41 @@ function DiscussionRow({ post, navigate }: { post: Post; navigate: Navigate }) {
         {post.replyCount === 1 ? "reply" : "replies"}
       </small>
     </button>
+  );
+}
+
+// Real signals only: unread activity for you, what you follow, who is here.
+function Pulse({ data, navigate }: { data: Snapshot; navigate: Navigate }) {
+  const unreadReplies = data.notifications.filter((n) => !n.readAt && n.kind === "reply").length;
+  const unread = data.notifications.filter((n) => !n.readAt).length;
+  const following = data.follows.length;
+  const members = data.people.length + 1;
+  return (
+    <div className="home-pulse" aria-label="Your community at a glance">
+      <button onClick={() => navigate(unread ? "notifications" : "commons/following")}>
+        <Bell size={16} aria-hidden="true" />
+        <span>
+          <strong>{unreadReplies ? unreadReplies + (unreadReplies === 1 ? " new reply" : " new replies") : unread ? unread + " new updates" : "You’re caught up"}</strong>
+          <small>{unreadReplies ? "in conversations you’re part of" : unread ? "since your last visit" : "Replies to you will appear here"}</small>
+        </span>
+      </button>
+      <button onClick={() => navigate(following ? "commons/following" : "explore")}>
+        <Bookmark size={16} aria-hidden="true" />
+        <span>
+          <strong>{following ? "Following " + following + (following === 1 ? " topic or place" : " topics and places") : "Follow what you care about"}</strong>
+          <small>{following ? "See their latest discussions" : "Pick a topic, office or place on the map"}</small>
+        </span>
+      </button>
+      <button onClick={() => navigate("friends")}>
+        <Users size={16} aria-hidden="true" />
+        <span>
+          <strong>
+            {members} {members === 1 ? "member" : "members"} here
+          </strong>
+          <small>Find friends in {data.community?.name}</small>
+        </span>
+      </button>
+    </div>
   );
 }
 
@@ -113,6 +148,7 @@ export function HomeDashboard({
           <GraduationCap size={14} aria-hidden="true" /> {campus.university.toUpperCase()} · {campus.city.toUpperCase()}, {campus.state} · {dateLine.toUpperCase()}
         </p>
         <h1>What’s happening around {campus.shortName} today.</h1>
+        <Pulse data={data} navigate={navigate} />
       </header>
       {children}
       <div className="home-grid">
