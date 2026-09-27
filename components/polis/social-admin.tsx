@@ -60,10 +60,10 @@ export function Notifications({
                     : n.kind === "issue"
                       ? (topicFor(n.targetId) ? "topic/" : "issue/") + n.targetId
                       : n.kind === "event"
-                        ? "item/" + n.targetId
+                        ? "event/" + n.targetId
                         : "post/" +
                           n.targetId +
-                          (n.commentId ? "/" + n.commentId : ""),
+                          (n.commentId ? "/" + n.commentId : "") + (n.communityId ? "?community=" + n.communityId : ""),
                 );
               }}
             >

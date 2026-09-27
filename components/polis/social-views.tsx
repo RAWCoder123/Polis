@@ -1229,7 +1229,7 @@ export function Conversation({
               <button
                 onClick={() => {
                   void navigator.clipboard
-                    .writeText(location.origin + "/#post/" + p.id + "/" + c.id)
+                    .writeText(location.origin + "/#post/" + p.id + "/" + c.id + "?community=" + p.communityId)
                     .then(() => toast.success("Reply link copied."))
                     .catch(() => toast.error("Could not copy the link."));
                 }}
@@ -1267,7 +1267,7 @@ export function Conversation({
           </div>
         </div>
       ))}
-      <ReplyComposer userId={data.me!.id} postId={p.id} run={run} disabled={busy} />
+      <div id="discussion-reply"><ReplyComposer userId={data.me!.id} postId={p.id} run={run} disabled={busy} /></div>
     </>
   );
 }

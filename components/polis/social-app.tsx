@@ -1,5 +1,4 @@
 "use client";
-import { WelcomeSteps } from "./issue-priorities";
 import { InvitationEntry } from "./invitation-entry";
 import { AccountSetup, SignInChoice } from "./account-entry";
 import { CommonsIntro, CommonsTopicDetail, WhatChanged } from "./commons";
@@ -45,7 +44,6 @@ import { PostCard } from "./social-post";
 import {
   ActionDialog,
   Composer,
-  DailyQuestion,
   Onboarding,
   ShareRanking,
   type ComposeOptions,
@@ -91,8 +89,10 @@ export default function SocialApp() {
   );
   const route = hashLocation.pathname.slice(1);
   const exploreParams = hashLocation.searchParams;
-  const [filter, setFilter] = useState("community"),
-    [searchQuery, setQuery] = useState(""),
+  const filter = exploreParams.get("filter") ?? "community";
+  const coverage = exploreParams.get("coverage") === "national" ? "national" : "local";
+  const nationalScope = exploreParams.get("scope") === "polis" ? "polis" : "campus";
+  const [searchQuery, setQuery] = useState(""),
     [composer, setComposer] = useState<ComposeOptions | null>(null),
     [rankItem, setRankItem] = useState<CivicItem | undefined>(),
     [rankOpen, setRankOpen] = useState(false),
@@ -105,6 +105,12 @@ export default function SocialApp() {
     view === "explore" ? (exploreParams.get("q") ?? "") : searchQuery;
   const params = new URLSearchParams();
   params.set("filter", view === "home" ? filter : "all");
+  if (view === "home") {
+    params.set("coverage", coverage);
+    params.set("sort", exploreParams.get("sort") ?? "new");
+    if (coverage === "national") params.set("scope", nationalScope);
+  }
+  if (exploreParams.has("community") && ["post", "list", "profile", "official", "news", "event"].includes(view)) params.set("community", exploreParams.get("community")!);
   if (view === "post" || view === "list") params.set("post", id ?? "");
   if (view === "post" && commentId) params.set("comment", commentId);
   if (view === "issue" || view === "topic") params.set("issue", id ?? "");
@@ -174,11 +180,40 @@ export default function SocialApp() {
       document.removeEventListener("keydown", visit);
     };
   }, [data.status, visitorId]);
+  const scrollPositions = useRef(new Map<string, number>());
+  const restoreLocation = useRef("");
+  useEffect(() => {
+    restoreLocation.current = browserLocation;
+    const save = () => scrollPositions.current.set(browserLocation, window.scrollY);
+    window.addEventListener("scroll", save, { passive: true });
+    return () => window.removeEventListener("scroll", save);
+  }, [browserLocation]);
+  useEffect(() => {
+    if (loading || restoreLocation.current !== browserLocation) return;
+    restoreLocation.current = "";
+    const frame = requestAnimationFrame(() => {
+      if (view === "post" && exploreParams.get("reply") === "1") {
+        document.querySelector<HTMLTextAreaElement>("#discussion-reply textarea")?.focus();
+      } else if (!commentId) window.scrollTo({ top: scrollPositions.current.get(browserLocation) ?? 0, behavior: "instant" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [browserLocation, loading, view, commentId, exploreParams]);
+  function updateForum(key: string, value: string) {
+    const next = new URLSearchParams(exploreParams); next.set(key, value);
+    navigate("home?" + next, { preserveScroll: true });
+  }
   function navigate(next: string, options: { preserveScroll?: boolean } = {}) {
+    const destination = new URL(next, "https://polis.invalid/");
+    if (["post", "list", "profile", "event", "official", "news"].includes(destination.pathname.split("/")[1]) && data.community && !destination.searchParams.has("community")) {
+      destination.searchParams.set("community", data.community.id);
+      next = destination.pathname.slice(1) + destination.search;
+    }
+    scrollPositions.current.set(location.href, window.scrollY);
+    if (options.preserveScroll) scrollPositions.current.set(location.origin + location.pathname + location.search + "#" + next, window.scrollY);
     if (location.hash === "#" + next) {
       return;
     }
-    location.hash = next;
+    window.location.assign("#" + next);
     setQuery("");
     if (!options.preserveScroll)
       window.scrollTo({ top: 0, behavior: "instant" });
@@ -200,6 +235,7 @@ export default function SocialApp() {
       return;
     }
     setComposer({
+      coverage: view === "home" ? coverage : "local",
       ...(data.community?.id !== "ithaca" ? { subjectId: "community", communityOnly: true } : {}),
       ...o,
       subjectLabel: data.events.find((e) => e.id === o.subjectId)?.title,
@@ -261,6 +297,8 @@ export default function SocialApp() {
     <PostCard
       key={post.id}
       post={post}
+      compact={view === "home"}
+      unread={data.notifications.some(n => n.targetId === post.id && !!n.commentId && !n.readAt)}
       me={me!}
       run={run}
       navigate={navigate}
@@ -456,7 +494,7 @@ export default function SocialApp() {
           {data.status === "ready" ? (
             <>
               <label className="top-community"><span className="sr-only">Current community</span>
-                <select aria-label="Current community" value={data.community?.id ?? "ithaca"} disabled={busy} onChange={e => { if (e.target.value === "join") { navigate("join"); return; } if (e.target.value === "join-open") { void run({ action: "community.joinOpen" }).then(() => navigate("home")).catch(() => {}); return; } void run({ action: "community.select", communityId: e.target.value }).then(() => navigate("home")).catch(() => {}); }}>
+                <select aria-label="Current community" value={me?.activeCommunityId ?? data.community?.id ?? "ithaca"} disabled={busy} onChange={e => { if (e.target.value === "join") { navigate("join"); return; } if (e.target.value === "join-open") { void run({ action: "community.joinOpen" }).then(() => navigate("home")).catch(() => {}); return; } void run({ action: "community.select", communityId: e.target.value }).then(() => navigate("home")).catch(() => {}); }}>
                   {data.communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   {!data.communities.some(c => c.id === "polis") && <option value="join-open">Polis commons · Open to everyone</option>}
                   <option value="join">Join with a community code…</option>
@@ -552,80 +590,22 @@ export default function SocialApp() {
               <>
                 {view === "home" && (
                   <>
-                    <CommonsIntro data={data} compose={compose} navigate={navigate} run={run} />
-                    {data.community?.id === "polis" && <div className="notice"><strong>Welcome to Polis commons.</strong><p>Start a conversation or find people. Community posts here are visible to other registered members. Have a university or organization code? <button className="text-button" onClick={() => navigate("join")}>Join that community</button> whenever you’re ready.</p></div>}
-                    {data.community?.id === "ithaca" && <WelcomeSteps data={data} run={run} navigate={navigate} />}
-                    <div className="home-community-events">
-                      <AroundEvents data={data} run={run} navigate={navigate} />
+                    <div className="forum-scope social-tabs" role="tablist" aria-label="Discussion scope">
+                      {["local", "national"].map(value => <button key={value} role="tab" aria-selected={coverage === value} className={coverage === value ? "active" : ""} onClick={() => updateForum("coverage", value)}>{value === "local" ? "Local" : "National"}</button>)}
                     </div>
-                    <DailyQuestion
-                      key={
-                        (data.question?.id ?? "") + JSON.stringify(data.answer)
-                      }
-                      data={data}
-                      run={run}
-                      navigate={navigate}
-                    />
-                    <button
-                      className="social-composer-entry"
-                      onClick={() => compose()}
-                    >
-                      <Avatar initials={me!.name[0]} />
-                      <span>What’s on your mind, locally?</span>
-                      <Plus size={20} />
-                    </button>
-                    <div
-                      className="social-tabs"
-                      role="tablist"
-                      aria-label="Feed audience"
-                    >
-                      {[
-                        { id: "community", label: "Community" },
-                        { id: "friends", label: "Friends" },
-                        { id: "conversations", label: "Followed threads" },
-                      ].map((f) => (
-                        <button
-                          role="tab"
-                          aria-selected={
-                            filter === f.id ||
-                            (filter === "following" && f.id === "friends")
-                          }
-                          className={
-                            filter === f.id ||
-                            (filter === "following" && f.id === "friends")
-                              ? "active"
-                              : ""
-                          }
-                          key={f.id}
-                          onClick={() => setFilter(f.id)}
-                        >
-                          {f.label}
-                        </button>
-                      ))}
+                    {coverage === "national" && <div className="national-scope"><div className="event-mode-switch" aria-label="National discussion audience"><button aria-pressed={nationalScope === "campus"} onClick={() => updateForum("scope", "campus")}>My campus</button><button aria-pressed={nationalScope === "polis"} onClick={() => updateForum("scope", "polis")}>Across Polis</button></div><p className="metadata">{nationalScope === "campus" ? "National issues, discussed within your selected community." : "A separate, wider conversation for registered Polis members. Existing campus threads stay where they were published."}</p></div>}
+                    {coverage === "national" && nationalScope === "polis" && !data.nationalJoined ? <section className="commons-background"><h2>Join the wider conversation</h2><p>Join the open Polis community to read and deliberately publish national discussions. Your selected campus and its private conversations stay unchanged.</p><button className="btn primary" disabled={busy} onClick={() => void run({ action: "community.joinNational" }).catch(() => {})}>Join Across Polis</button></section> : <>
+                    <button className="social-composer-entry" onClick={() => compose({ subjectId: "community", kind: "question" })}><Avatar initials={me!.name[0]} /><span>Start a conversation{coverage === "national" ? " about a national issue" : " in your community"}</span><Plus size={20}/></button>
+                    <div className="forum-filters" aria-label="Conversation order">
+                      <button aria-pressed={filter !== "conversations" && exploreParams.get("sort") !== "active"} onClick={() => { const next = new URLSearchParams(exploreParams); next.set("sort", "new"); next.set("filter", "community"); navigate("home?" + next, { preserveScroll: true }); }}>New</button>
+                      <button aria-pressed={filter !== "conversations" && exploreParams.get("sort") === "active"} onClick={() => { const next = new URLSearchParams(exploreParams); next.set("sort", "active"); next.set("filter", "community"); navigate("home?" + next, { preserveScroll: true }); }}>Recently active</button>
+                      <button aria-pressed={filter === "conversations"} onClick={() => updateForum("filter", "conversations")}>Following</button>
+                      <button aria-pressed={filter === "friends"} onClick={() => updateForum("filter", "friends")}>Friends</button>
                     </div>
-                    {["friends", "following"].includes(filter) && (
-                      <button
-                        className="text-button feed-issue-filter"
-                        aria-pressed={filter === "following"}
-                        onClick={() =>
-                          setFilter(
-                            filter === "following" ? "friends" : "following",
-                          )
-                        }
-                      >
-                        {filter === "following"
-                          ? "Showing followed issues · Show people"
-                          : "Show followed issues"}
-                      </button>
-                    )}
-                    <p className="feed-context">
-                      {filter === "friends"
-                        ? "Your contributions and accepted friends, newest first."
-                        : filter === "following"
-                          ? "Visible conversations on the issues you follow."
-                          : filter === "conversations" ? "Threads you chose to follow, with activity you can access." : "Posts shared with " + data.community?.name + " community members."}
-                    </p>
+                    <p className="feed-context">{filter === "conversations" ? "Threads you follow. Only activity you can access appears here." : "Member perspectives · " + (coverage === "local" ? "Campus & town" : nationalScope === "polis" ? "Across Polis" : "Within your community")}</p>
                     {feed}
+                    </>}
+                    {coverage === "local" && <><AroundEvents data={data} run={run} navigate={navigate}/><CommonsIntro data={data} compose={compose} navigate={navigate} run={run}/></>}
                   </>
                 )}
                 {view === "explore" &&

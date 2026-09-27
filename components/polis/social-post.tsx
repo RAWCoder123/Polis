@@ -51,8 +51,12 @@ export function PostCard({
   onReport,
   busy,
   expanded = false,
+  compact = false,
+  unread = false,
 }: {
   expanded?: boolean;
+  compact?: boolean;
+  unread?: boolean;
   post: Post;
   me: Person;
   run: Run;
@@ -62,6 +66,7 @@ export function PostCard({
   busy: boolean;
 }) {
   const [showCounts, setShowCounts] = useState(false);
+  const route = "post/" + post.id + "?community=" + post.communityId;
   const attachment = JSON.parse(post.attachmentJson || "{}");
   const subjectKind = itemById[post.subjectId]?.kind;
   const subjectLabel =
@@ -86,7 +91,7 @@ export function PostCard({
     } catch {}
   };
   return (
-    <article className="social-post" id={"post-" + post.id}>
+    <article className={"social-post " + (compact ? "forum-row" : "") + (unread ? " has-unread" : "")} id={"post-" + post.id}>
       <header>
         <button
           className="avatar-link"
@@ -181,7 +186,7 @@ export function PostCard({
             <DropdownMenuItem
               onClick={() => {
                 void navigator.clipboard
-                  .writeText(location.origin + "/#post/" + post.id)
+                  .writeText(location.origin + "/#" + route)
                   .then(() => toast.success("Conversation link copied."))
                   .catch(() =>
                     toast.error(
@@ -195,6 +200,8 @@ export function PostCard({
           </DropdownMenuContent>
         </DropdownMenu>
       </header>
+      <h2 className="forum-title"><button onClick={() => navigate(route)}>{post.title || post.text.split("\n")[0].slice(0, 140) || subjectTitle(post.subjectId)}</button></h2>
+      {unread && <button className="thread-unread text-button" onClick={() => navigate(route)}>Unread reply · Return to the conversation</button>}
       {post.position && (
         <span className="post-position">{positions[post.position]}</span>
       )}
@@ -316,7 +323,7 @@ export function PostCard({
         ))}
         <button
           className="reaction"
-          onClick={() => navigate("post/" + post.id)}
+          onClick={() => navigate(route + "&reply=1")}
           aria-label={"Open conversation, " + post.replyCount + " replies"}
         >
           <MessageCircle size={17} />

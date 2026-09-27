@@ -183,6 +183,7 @@ export function Onboarding({ name, run }: { name: string; run: Run }) {
   );
 }
 export type ComposeOptions = {
+  coverage?: "local" | "national";
   communityId?: string;
   communityName?: string;
   organizationId?: string;
@@ -219,6 +220,7 @@ export function Composer({
     kind?:
       "opinion" | "question" | "debate" | "update" | "article" | "event_reflection" | "event_share";
     subject?: string;
+    title?: string;
     body?: string;
     sourceUrl?: string;
     pos?: Position | "";
@@ -249,6 +251,7 @@ export function Composer({
         draft.subject ??
         "homes",
     ),
+    [title, setTitle] = useState(post?.title ?? copy?.title ?? draft.title ?? ""),
     [body, setBody] = useState(post?.text ?? copy?.text ?? draft.body ?? ""),
     [sourceUrl, setSourceUrl] = useState<string>(
       JSON.parse(post?.attachmentJson ?? copy?.attachmentJson ?? "{}")
@@ -268,10 +271,10 @@ export function Composer({
     try {
       sessionStorage.setItem(
         key,
-        JSON.stringify({ body, subject, kind, aud, pos, sourceUrl, priorPostId }),
+        JSON.stringify({ title, body, subject, kind, aud, pos, sourceUrl, priorPostId }),
       );
     } catch {}
-  }, [key, body, subject, kind, aud, pos, sourceUrl, post, priorPostId]);
+  }, [key, title, body, subject, kind, aud, pos, sourceUrl, post, priorPostId]);
   const canPosition =
     (kind === "opinion" || kind === "debate") &&
     (itemById[subject]?.kind === "Policies" ||
@@ -315,6 +318,7 @@ export function Composer({
             post
               ? {
                   action: "post.edit",
+                  title,
                   postId: post.id,
                   text: body,
                   sourceUrl,
@@ -322,6 +326,8 @@ export function Composer({
                 }
               : {
                   action: "post",
+                  title,
+                  coverage: options.coverage ?? "local",
                   organizationId: options.organizationId,
                   organizationChannel: options.organizationChannel,
                   kind,
@@ -338,7 +344,7 @@ export function Composer({
               sessionStorage.removeItem(key);
             } catch {}
             onClose();
-            if (r.postId) navigate("post/" + r.postId);
+            if (r.postId) navigate("post/" + r.postId + "?community=" + (options.communityId ?? "ithaca"));
           }
         }}
       >
@@ -398,6 +404,8 @@ export function Composer({
             ))}
           </select>
         </label>
+        <p className="metadata">{post?.coverage === "national" || options.coverage === "national" ? "National discussion" : "Local discussion"} · {options.communityName ?? "Your community"}. The scope and audience stay fixed after publication.</p>
+        <label className="social-field">Discussion title <span>optional</span><input maxLength={160} value={title} onChange={e => setTitle(e.target.value)} placeholder="What would you like to talk about?" /></label>
         {canPosition && (
           <label className="social-field">
             Your position <span>optional</span>
