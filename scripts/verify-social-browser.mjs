@@ -5,6 +5,8 @@ import path from "node:path";
 
 // This writes synthetic records in local D1. It must never run against a host.
 const origin = process.env.POLIS_TEST_ORIGIN ?? "http://127.0.0.1:5176";
+// Conversation and event links carry their community: #post/<id>?community=<id>.
+const postUrl = (path) => new RegExp("#post/" + path + "(\\?community=[a-z]+)?$");
 const url = new URL(origin);
 assert.ok(url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname));
 const require = createRequire(process.env.POLIS_BROWSER_PACKAGE_ROOT
@@ -138,7 +140,7 @@ try {
   await b.page.getByRole("button", { name: "Post", exact: true }).click();
   await expect(dialog.getByRole("textbox", { name: "In your own words", exact: true })).toHaveValue(text);
   await dialog.getByRole("button", { name: "Publish to Friends", exact: true }).click();
-  await expect(b.page).toHaveURL(origin + "/#post/" + committedPost);
+  await expect(b.page).toHaveURL(postUrl(committedPost));
   await b.page.unroute("**/api/polis");
   assert.equal(requestIds.length, 2);
   assert.equal(requestIds[0], requestIds[1]);
@@ -146,18 +148,19 @@ try {
   pass("Mobile opinion publish, default Friends, lost-response draft retained through another command/reload and idempotent retry");
   await b.page.reload();
   await expect(b.page.locator(".post-text")).toHaveText(text);
-  await go(a, "home");
+  // Friends' posts appear in the Commons Following tab (Home is a dashboard).
+  await go(a, "commons/following");
   const card = a.page.locator("#post-" + committedPost);
   await expect(card).toContainText(text);
   await card.getByRole("button", { name: /^Agree(?: \d+)?$/ }).click();
   await expect(card.getByRole("button", { name: /^Agree(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "true");
-  await card.getByRole("button", { name: /^Thought-provoking(?: \d+)?$/ }).click();
+  await card.getByRole("button", { name: /^Interesting(?: \d+)?$/ }).click();
   await expect(card.getByRole("button", { name: /^Agree(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "false");
-  await expect(card.getByRole("button", { name: /^Thought-provoking(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(card.getByRole("button", { name: /^Interesting(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "true");
   await a.page.reload();
-  await expect(card.getByRole("button", { name: /^Thought-provoking(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "true");
-  await card.getByRole("button", { name: /^Thought-provoking(?: \d+)?$/ }).click();
-  await expect(card.getByRole("button", { name: /^Thought-provoking(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "false");
+  await expect(card.getByRole("button", { name: /^Interesting(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "true");
+  await card.getByRole("button", { name: /^Interesting(?: \d+)?$/ }).click();
+  await expect(card.getByRole("button", { name: /^Interesting(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "false");
   const post = (await read(b, { post: committedPost })).posts[0];
   assert.equal(post.reactions.reduce((n, r) => n + r.count, 0), 0);
   await card.getByRole("button", { name: /^Open conversation/ }).click();
@@ -165,7 +168,7 @@ try {
   pass("Friend feed, reaction add/change/remove across reload, and first comment");
   await go(b, "notifications");
   await b.page.getByRole("button", { name: /^Beta Alex replied to your conversation/ }).first().click();
-  await expect(b.page).toHaveURL(origin + "/#post/" + committedPost + "/" + comment);
+  await expect(b.page).toHaveURL(postUrl(committedPost + "/" + comment));
   const commentRow = b.page.locator("#comment-" + comment);
   await expect(commentRow).toBeVisible();
   await commentRow.getByRole("button", { name: "Reply", exact: true }).click();
@@ -175,7 +178,7 @@ try {
   await b.page.screenshot({ path: path.join(output, "mobile-conversation.png"), fullPage: true });
   await go(a, "notifications");
   await a.page.getByRole("button", { name: /^Beta Blair replied to your conversation/ }).first().click();
-  await expect(a.page).toHaveURL(origin + "/#post/" + committedPost + "/" + reply);
+  await expect(a.page).toHaveURL(postUrl(committedPost + "/" + reply));
   await expect(a.page.locator("#comment-" + reply)).toContainText(responseText);
   await a.page.reload();
   await expect(a.page.locator("#comment-" + reply)).toContainText(responseText);
@@ -202,7 +205,7 @@ try {
   await b.page.getByRole("button", { name: "Use my location", exact: true }).click();
   await expect(b.page.getByText("Location was not shared. You can still browse by city.")).toBeVisible();
   await b.page.getByRole("combobox", { name: "Category", exact: true }).selectOption("food_markets");
-  await b.page.getByRole("button", { name: "Map", exact: true }).click();
+  await b.page.locator(".event-mode-switch").getByRole("button", { name: "Map", exact: true }).click();
   await expect(b.page.locator(".polis-venue-pin")).toHaveCount(1);
   await b.page.locator(".polis-venue-pin").click();
   await expect(b.page.locator(".community-event-card.selected")).toHaveCount(1);
@@ -212,7 +215,7 @@ try {
   await layout(b.page, "Mobile event map/list");
   await b.page.screenshot({ path: path.join(output, "mobile-discovery.png"), fullPage: true });
   await selection.getByRole("button", { name: "Details", exact: true }).click();
-  await expect(b.page).toHaveURL(origin + "/#event/" + eventId);
+  await expect(b.page).toHaveURL(new RegExp("#event/" + eventId + "(\\?community=[a-z]+)?$"));
   if (await b.page.getByRole("button", { name: "Remove plan", exact: true }).count()) {
     await b.page.getByRole("button", { name: "Remove plan", exact: true }).click();
     await expect(b.page.getByRole("button", { name: "Remove plan", exact: true })).toHaveCount(0);
