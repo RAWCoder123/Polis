@@ -326,7 +326,7 @@ export function PostCard({
                 key={kind}
                 className={"reaction " + (post.myReaction === kind ? "chosen" : "")}
                 aria-pressed={post.myReaction === kind}
-                aria-label={label + (count ? ", " + count : "")}
+                aria-label={label + (count ? " " + count : "")}
                 title={label}
                 disabled={busy}
                 onClick={() => void react(kind)}
@@ -341,7 +341,7 @@ export function PostCard({
         <button
           className="reaction"
           onClick={() => navigate(route + "&reply=1")}
-          aria-label={"Reply. " + post.replyCount + (post.replyCount === 1 ? " reply" : " replies") + " so far"}
+          aria-label={"Open conversation, " + post.replyCount + (post.replyCount === 1 ? " reply" : " replies")}
         >
           <MessageCircle size={16} />
           {post.replyCount ? post.replyCount + (post.replyCount === 1 ? " reply" : " replies") : "Reply"}

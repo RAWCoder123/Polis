@@ -999,7 +999,7 @@ export default function SocialApp() {
           </section>
           <aside className="social-rail">
             {data.status === "ready" && view === "commons" && tab !== "trending" && <TrendingTopics data={data} navigate={navigate} />}
-            {data.status === "ready" && <WhatChanged communityId={data.community!.id} navigate={navigate} />}
+            {data.status === "ready" && <WhatChanged communityId={data.community?.id ?? ""} navigate={navigate} />}
             <section>
               <h2>
                 {data.follows.length
