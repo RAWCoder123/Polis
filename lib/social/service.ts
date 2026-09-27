@@ -2,8 +2,18 @@ import { z } from "zod";
 import { itemById } from "../polis-data.ts";
 import { eventActions, eventExpired } from "./events.ts";
 import { issues, issueFor, eventStart } from "./catalog.ts";
-import { communityFor, defaultCommunityId, openCommunityId, pilotCommunities } from "./communities.ts";
+import { communityFor, communityForEmail, defaultCommunityId, openCommunityId, pilotCommunities } from "./communities.ts";
 import { topicFor, pilotOrganizations, organizationFor } from "./commons.ts";
+import {
+  entitiesFor,
+  entityFor,
+  entityIn,
+  hasCatalog,
+  issuesIn,
+  replyTakesPosition as replyTakesPositionIn,
+  subjectTakesPosition,
+  topicFor as entityTopic,
+} from "./civic/index.ts";
 import {
   emptySnapshot,
   type Snapshot,
@@ -11,6 +21,7 @@ import {
   type Post,
   type Question,
   type CommunityEvent,
+  type CommonsSummary,
   type InvitationPreview,
 } from "./types.ts";
 export type Identity = { userId: string; email: string; displayName: string };
@@ -27,6 +38,8 @@ const fail = (status: number, message: string): never => {
 const catalogItem = (itemId: string) =>
   Object.hasOwn(itemById, itemId) ? itemById[itemId] : undefined;
 const id = z.string().min(1).max(180);
+// Codes without an expiration keep working until an owner deactivates them.
+export const NO_EXPIRY = "9999-12-31T23:59:59.999Z";
 const audience = z.enum(["only_me", "friends", "community"]);
 const position = z.enum([
   "support",
@@ -58,6 +71,8 @@ const action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("community.joinOpen") }),
   z.object({ action: z.literal("community.joinNational") }),
   z.object({ action: z.literal("community.manage"), communityId: id }),
+  // Campus association from the trusted sign-in email domain.
+  z.object({ action: z.literal("community.join"), communityId: id }),
   z.object({ action: z.literal("conversation.follow"), postId: id, enabled: z.boolean() }),
   z.object({ action: z.literal("conversation.visit"), postId: id }),
   z.object({ action: z.literal("organization.member"), organizationId: id, userId: id, role: z.enum(["member", "organizer", "remove"]) }),
@@ -117,18 +132,22 @@ const action = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("reaction"),
     postId: id,
-    kind: z.enum(["agree", "thoughtful", "curious"]).nullable(),
+    // Agree · Disagree · Interesting · Needs context. Counts stay secondary in
+    // the interface, and ranking uses distinct participants, not reactions.
+    kind: z.enum(["agree", "disagree", "thoughtful", "curious"]).nullable(),
   }),
   z.object({
     action: z.literal("comment"),
     postId: id,
     parentId: id.nullable().default(null),
     text: text.refine((s) => s.length > 0, "Write a reply."),
+    position: position.nullable().default(null),
   }),
   z.object({
     action: z.literal("comment.edit"),
     commentId: id,
     text: text.refine((s) => s.length > 0),
+    position: position.nullable().optional(),
   }),
   z.object({ action: z.literal("comment.delete"), commentId: id }),
   z.object({ action: z.literal("save"), targetId: id, enabled: z.boolean() }),
@@ -189,8 +208,18 @@ const action = z.discriminatedUnion("action", [
     reason: z.string().trim().min(3).max(1000),
   }),
   z.object({ action: z.literal("invite"), email: z.string().email().max(254) }),
-  z.object({ action: z.literal("invite.code"), communityId: id.optional(), organizationId: id.optional(), maxUses: z.number().int().min(1).max(10000).nullable().default(25), expiresDays: z.union([z.literal(1), z.literal(7), z.literal(30)]).default(7) }),
+  z.object({
+    action: z.literal("invite.code"),
+    communityId: id.optional(),
+    organizationId: id.optional(),
+    maxUses: z.number().int().min(1).max(10000).nullable().default(25),
+    // null keeps the code valid until an owner deactivates it.
+    expiresDays: z.union([z.literal(1), z.literal(7), z.literal(30), z.literal(90), z.null()]).default(7),
+    // Optional memorable code such as CORNELL26 or POLIS-UF.
+    code: z.string().trim().max(40).optional(),
+  }),
   z.object({ action: z.literal("invite.revoke"), codeId: z.string().min(1).max(100) }),
+  z.object({ action: z.literal("invite.reactivate"), codeId: z.string().min(1).max(100) }),
   z.object({
     action: z.literal("question.save"),
     questionId: id.optional(),
@@ -275,7 +304,9 @@ export function socialService(
   const pilotOwner = () => !!identity && !!ownerEmail && identity.email.toLowerCase() === ownerEmail.toLowerCase();
   const normalizeCode = (value: string) => value.replace(/[\s-]/g, "").toUpperCase();
   const previewInvitation = async (value: unknown): Promise<InvitationPreview> => {
-    if (typeof value !== "string" || value.length > 200 || !/^POLIS[A-Z2-9]{12,16}$/.test(normalizeCode(value)))
+    // Generated codes are POLIS + 12 base32 characters; owner-chosen codes are
+    // 6–32 letters or digits. Both are looked up only by their digest.
+    if (typeof value !== "string" || value.length > 200 || !/^[A-Z0-9]{6,32}$/.test(normalizeCode(value)))
       fail(403, "This code is invalid, expired, revoked, or fully used. Ask the organizer for a new code.");
     const code = await one<{ communityId: string; organizationId: string | null; expiresAt: string; useCount: number; maxUses: number; unlimited: number; revokedAt: string | null }>(
       "SELECT communityId,organizationId,expiresAt,useCount,maxUses,unlimited,revokedAt FROM invitation_codes WHERE tokenHash=?", await digest(normalizeCode(value as string)),
@@ -342,20 +373,24 @@ export function socialService(
   };
   const validSubject = (subject: string) => {
     if (subject === "community") return { id: "" };
-    const topic = topicFor(subject);
-    if (topic) {
-      if (topic.communityId !== communityId) fail(400, "Choose a subject in your current community.");
-      return topic;
+    // Sourced topics and civic entities belong to exactly one community.
+    const entity = entityFor(subject);
+    if (entity) {
+      if (entity.communityId !== communityId) fail(400, "Choose a subject in your current community.");
+      return { id: entityTopic(entity) };
     }
     if (communityId !== defaultCommunityId) fail(400, "This subject is not available in this community. Share a community observation instead.");
     const issue = issueFor(subject);
     if (!issue) fail(400, "Choose an available subject.");
     return issue!;
   };
+  const replyTakesPosition = (p: { kind: string; subjectId: string }) =>
+    replyTakesPositionIn(communityId, p);
+  const positionable = (subject: string) => subjectTakesPosition(communityId, subject);
   async function decorate(rows: Post[]): Promise<Post[]> {
     return Promise.all(
       rows.map(async (p) => {
-        const [reactions, myReaction, replies, saved] = await Promise.all([
+        const [reactions, myReaction, replies, saved, repliers] = await Promise.all([
           all<{ kind: string; count: number }>(
             `SELECT r.kind,COUNT(*) count FROM reactions r WHERE r.postId=? AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=r.userId) OR (b.ownerId=r.userId AND b.targetId=?)) GROUP BY r.kind`,
             p.id,
@@ -374,6 +409,13 @@ export function socialService(
             uid,
           ),
           one("SELECT 1 FROM saves WHERE userId=? AND targetId=?", uid, p.id),
+          one<{ count: number }>(
+            `SELECT COUNT(DISTINCT c.authorId) count FROM comments c WHERE c.postId=? AND c.deletedAt IS NULL AND c.authorId<>? AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?))`,
+            p.id,
+            p.authorId,
+            uid,
+            uid,
+          ),
         ]);
         let priorPostId = p.priorPostId;
         if (priorPostId) {
@@ -389,12 +431,80 @@ export function socialService(
           reactions,
           myReaction: myReaction?.kind ?? null,
           replyCount: replies?.count ?? 0,
+          participantCount: 1 + (repliers?.count ?? 0),
           latestActivity: replies?.latest ?? p.editedAt ?? p.createdAt,
           following: !!await one("SELECT 1 FROM conversation_follows WHERE userId=? AND postId=?", uid, p.id),
           saved: !!saved,
         };
       }),
     );
+  }
+  // What people in this community are discussing, counted as distinct people.
+  async function commonsSummary(
+    v: { sql: string; args: unknown[] },
+    catalog: ReturnType<typeof entitiesFor>,
+  ): Promise<CommonsSummary> {
+    const since = new Date(Date.now() - 14 * 86400000).toISOString();
+    const notMuted = "NOT EXISTS(SELECT 1 FROM mutes WHERE ownerId=? AND targetId=p.authorId)";
+    const replyVisible =
+      "c.deletedAt IS NULL AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?))";
+    const recentPosts = await all<{ subjectId: string; authorId: string }>(
+      `SELECT p.subjectId,p.authorId FROM posts p WHERE ${v.sql} AND p.audience<>'only_me' AND p.organizationId IS NULL AND ${notMuted} AND p.createdAt>=? LIMIT 1000`,
+      ...v.args, uid, since,
+    );
+    const recentReplies = await all<{ subjectId: string; authorId: string }>(
+      `SELECT p.subjectId,c.authorId FROM comments c JOIN posts p ON p.id=c.postId WHERE ${v.sql} AND p.audience<>'only_me' AND p.organizationId IS NULL AND ${notMuted} AND ${replyVisible} AND c.createdAt>=? LIMIT 3000`,
+      ...v.args, uid, uid, uid, since,
+    );
+    const topics = new Map<string, { posts: number; replies: number; people: Set<string> }>();
+    const topic = (id: string) => {
+      if (!topics.has(id)) topics.set(id, { posts: 0, replies: 0, people: new Set() });
+      return topics.get(id)!;
+    };
+    for (const p of recentPosts) {
+      if (p.subjectId === "community") continue;
+      topic(p.subjectId).posts++;
+      topic(p.subjectId).people.add(p.authorId);
+    }
+    for (const r of recentReplies) {
+      if (r.subjectId === "community") continue;
+      topic(r.subjectId).replies++;
+      topic(r.subjectId).people.add(r.authorId);
+    }
+    const questionIds = catalog.filter((e) => e.kind === "question").map((e) => e.id);
+    const marks = questionIds.map(() => "?").join(",");
+    const stances = questionIds.length
+      ? [
+          ...(await all<{ subjectId: string; authorId: string; position: string | null; createdAt: string; response: number }>(
+            `SELECT p.subjectId,p.authorId,p.position,p.createdAt,1 response FROM posts p WHERE ${v.sql} AND p.audience<>'only_me' AND p.organizationId IS NULL AND ${notMuted} AND p.subjectId IN (${marks})`,
+            ...v.args, uid, ...questionIds,
+          )),
+          ...(await all<{ subjectId: string; authorId: string; position: string | null; createdAt: string; response: number }>(
+            `SELECT p.subjectId,c.authorId,c.position,c.createdAt,0 response FROM comments c JOIN posts p ON p.id=c.postId WHERE ${v.sql} AND p.audience<>'only_me' AND p.organizationId IS NULL AND ${notMuted} AND ${replyVisible} AND p.subjectId IN (${marks})`,
+            ...v.args, uid, uid, uid, ...questionIds,
+          )),
+        ].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      : [];
+    return {
+      topics: [...topics.entries()]
+        .map(([subjectId, t]) => ({ subjectId, posts: t.posts, replies: t.replies, participants: t.people.size }))
+        .sort((a, b) => b.participants - a.participants || b.posts + b.replies - (a.posts + a.replies))
+        .slice(0, 8),
+      questions: questionIds.map((qid) => {
+        const rows = stances.filter((r) => r.subjectId === qid);
+        // Each person's most recent stated perspective counts once.
+        const latest = new Map<string, string>();
+        for (const r of rows) if (r.position) latest.set(r.authorId, r.position);
+        const counts = new Map<string, number>();
+        for (const pos of latest.values()) counts.set(pos, (counts.get(pos) ?? 0) + 1);
+        return {
+          id: qid,
+          responses: rows.filter((r) => r.response).length,
+          participants: new Set(rows.map((r) => r.authorId)).size,
+          positions: [...counts.entries()].map(([position, count]) => ({ position, count })),
+        };
+      }),
+    };
   }
   async function snapshot(params: URLSearchParams): Promise<Snapshot> {
     if (!identity) return { ...emptySnapshot };
@@ -409,6 +519,7 @@ export function socialService(
       return {
         ...emptySnapshot,
         status: "onboarding",
+        eligibleCommunity: communityForEmail(identity.email) ?? null,
         me: {
           id: uid,
           name: identity.displayName,
@@ -431,6 +542,37 @@ export function socialService(
       }
     }
     const v = visibility();
+    const eventRows = await all<{
+      recordJson: string;
+      status: CommunityEvent["status"];
+    }>(
+      "SELECT recordJson,status FROM community_events WHERE communityId=? AND (status<>'draft' OR ? IN ('owner','curator')) ORDER BY startsAt,id LIMIT 1000",
+      communityId,
+      me.role ?? "member",
+    );
+    const events: CommunityEvent[] = eventRows.map((r) => ({
+      ...JSON.parse(r.recordJson),
+      status: r.status,
+    }));
+    const catalog = entitiesFor(communityId);
+    // Campus and Local tabs follow the subject: campus entities and general
+    // community posts are Campus; city entities, legacy items and events are Local.
+    const scopeSubjects = (scope: "campus" | "city") => [
+      ...catalog.filter((e) => e.scope === (scope === "campus" ? "campus" : "local")).map((e) => e.id),
+      ...(scope === "campus"
+        ? ["community"]
+        : communityId === defaultCommunityId
+          ? Object.keys(itemById)
+          : []),
+      ...events
+        .filter((e) => (e.category === "campus_life") === (scope === "campus"))
+        .map((e) => e.id),
+    ];
+    const userFollows = await all<Snapshot["follows"][number]>(
+      "SELECT * FROM follows WHERE userId=?",
+      uid,
+    );
+    const ranked = !params.get("post") && ["for_you", "trending"].includes(params.get("filter") ?? "");
     const activeSort = params.get("sort") === "active";
     const activitySql = `MAX(COALESCE(p.editedAt,p.createdAt),COALESCE((SELECT MAX(c.createdAt) FROM comments c WHERE c.postId=p.id AND c.deletedAt IS NULL AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?)) AND NOT EXISTS(SELECT 1 FROM mutes m WHERE m.ownerId=? AND m.targetId=c.authorId)),p.createdAt))`;
     let sql = `SELECT p.*,u.name,u.username,${activitySql} activitySort FROM posts p JOIN profiles u ON u.id=p.authorId WHERE ${v.sql}`;
@@ -471,7 +613,20 @@ export function socialService(
       } else if (filter === "conversations") {
         sql += " AND EXISTS(SELECT 1 FROM conversation_follows f WHERE f.userId=? AND f.postId=p.id)";
         args.push(uid);
+      } else if (filter === "campus" || filter === "city") {
+        const subjects = scopeSubjects(filter);
+        sql += subjects.length
+          ? ` AND p.subjectId IN (${subjects.map(() => "?").join(",")})`
+          : " AND 0";
+        args.push(...subjects);
+      } else if (filter === "followed") {
+        // Commons "Following": followed threads, followed topics, places or
+        // offices, and accepted friends.
+        sql += ` AND p.authorId<>? AND (EXISTS(SELECT 1 FROM conversation_follows cf WHERE cf.userId=? AND cf.postId=p.id) OR EXISTS(SELECT 1 FROM follows f WHERE f.userId=? AND (f.issueId=p.issueId OR f.issueId=p.subjectId)) OR EXISTS(SELECT 1 FROM friendships f WHERE f.status='accepted' AND ((f.a=? AND f.b=p.authorId) OR (f.b=? AND f.a=p.authorId))))`;
+        args.push(uid, uid, uid, uid, uid);
       }
+      if (["campus", "city", "followed", "for_you", "trending"].includes(filter))
+        sql += " AND p.audience<>'only_me'";
       if (params.get("issue")) {
         sql += " AND p.issueId=?";
         args.push(params.get("issue"));
@@ -498,18 +653,84 @@ export function socialService(
         );
       }
       const cursor = params.get("cursor");
-      if (cursor) {
+      if (cursor && !ranked) {
         const parts = cursor.split("|");
         if (parts.length !== 2) fail(400, "Invalid page cursor.");
         sql += activeSort ? " AND (activitySort<? OR (activitySort=? AND p.id<?))" : " AND (p.createdAt<? OR (p.createdAt=? AND p.id<?))";
         args.push(parts[0], parts[0], parts[1]);
       }
     }
-    sql += activeSort ? " ORDER BY activitySort DESC,p.id DESC LIMIT 21" : " ORDER BY p.createdAt DESC,p.id DESC LIMIT 21";
-    const rows = await all<Post>(sql, ...args);
-    if (postId && !rows.length) fail(404, "This conversation is unavailable.");
-    const nextCursor =
-      rows.length > 20 ? (activeSort ? rows[19].activitySort : rows[19].createdAt) + "|" + rows[19].id : null;
+    let rows: Post[];
+    let nextCursor: string | null = null;
+    if (ranked) {
+      // Ranked feeds are a curated first page, not an infinite scroll. Activity
+      // counts distinct people, so a pile-on of reactions cannot dominate.
+      const windowDays = filter === "trending" ? 7 : 45;
+      const since = new Date(Date.now() - windowDays * 86400000).toISOString();
+      const rankedSql = sql.replace(
+        " activitySort FROM posts p",
+        " activitySort,(SELECT COUNT(DISTINCT c.authorId) FROM comments c WHERE c.postId=p.id AND c.deletedAt IS NULL AND c.authorId<>p.authorId AND c.createdAt>=?) repliers,(SELECT COUNT(*) FROM comments c WHERE c.postId=p.id AND c.deletedAt IS NULL AND c.createdAt>=?) recentReplies,(SELECT COUNT(DISTINCT r.userId) FROM reactions r WHERE r.postId=p.id AND r.userId<>p.authorId) reactors,EXISTS(SELECT 1 FROM conversation_follows cf WHERE cf.userId=? AND cf.postId=p.id) threadFollowed FROM posts p",
+      );
+      const candidates = await all<
+        Post & { repliers: number; recentReplies: number; reactors: number; threadFollowed: number }
+      >(
+        rankedSql + " ORDER BY activitySort DESC,p.id DESC LIMIT 200",
+        ...args.slice(0, 3),
+        since,
+        since,
+        uid,
+        ...args.slice(3),
+      );
+      const followed = new Set(userFollows.map((f) => f.issueId));
+      const friendIds = new Set(
+        (
+          await all<{ id: string }>(
+            "SELECT CASE WHEN a=? THEN b ELSE a END id FROM friendships WHERE status='accepted' AND (a=? OR b=?)",
+            uid,
+            uid,
+            uid,
+          )
+        ).map((r) => r.id),
+      );
+      const now = Date.now();
+      rows = candidates
+        .filter(
+          (c) =>
+            (c.activitySort ?? c.createdAt) >= since &&
+            (filter !== "trending" || c.repliers + c.reactors > 0),
+        )
+        .map((c) => {
+          const hours = Math.max(0, (now - Date.parse(c.activitySort ?? c.createdAt)) / 3600000);
+          const recency = 1 / (1 + hours / 36);
+          const activity = Math.log2(1 + c.repliers * 2 + c.recentReplies + c.reactors * 0.5);
+          const personal =
+            (followed.has(c.subjectId) || followed.has(c.issueId) || c.threadFollowed ? 1.5 : 0) +
+            (friendIds.has(c.authorId) ? 1 : 0);
+          return {
+            c,
+            score:
+              filter === "trending"
+                ? activity * (0.5 + recency)
+                : recency * 2 + activity + personal,
+          };
+        })
+        .sort((a, b) => b.score - a.score || b.c.createdAt.localeCompare(a.c.createdAt))
+        .slice(0, 20)
+        .map(({ c }) => {
+          const post: Partial<typeof c> = { ...c };
+          delete post.repliers;
+          delete post.recentReplies;
+          delete post.reactors;
+          delete post.threadFollowed;
+          return post as Post;
+        });
+    } else {
+      sql += activeSort ? " ORDER BY activitySort DESC,p.id DESC LIMIT 21" : " ORDER BY p.createdAt DESC,p.id DESC LIMIT 21";
+      rows = await all<Post>(sql, ...args);
+      if (postId && !rows.length) fail(404, "This conversation is unavailable.");
+      nextCursor =
+        rows.length > 20 ? (activeSort ? rows[19].activitySort : rows[19].createdAt) + "|" + rows[19].id : null;
+    }
     const people = await all<Person>(
       `SELECT p.*,CASE WHEN f.status='accepted' THEN 'friends' WHEN f.requester=? THEN 'outgoing' WHEN f.status='pending' THEN 'incoming' ELSE 'none' END relationship,EXISTS(SELECT 1 FROM mutes WHERE ownerId=? AND targetId=p.id) muted,EXISTS(SELECT 1 FROM blocks WHERE ownerId=? AND targetId=p.id) blocked FROM profiles p JOIN pilot_memberships m ON m.userId=p.id LEFT JOIN friendships f ON (f.a=? AND f.b=p.id) OR (f.b=? AND f.a=p.id) WHERE p.id<>? AND m.communityId=? AND NOT EXISTS(SELECT 1 FROM blocks b WHERE b.ownerId=p.id AND b.targetId=?) ORDER BY p.name`,
       uid,
@@ -524,31 +745,16 @@ export function socialService(
     const visibleUsers = people
       .filter((p) => !p.blocked && !p.muted)
       .map((p) => p.id);
-    const eventRows = await all<{
-      recordJson: string;
-      status: CommunityEvent["status"];
-    }>(
-      "SELECT recordJson,status FROM community_events WHERE communityId=? AND (status<>'draft' OR ? IN ('owner','curator')) ORDER BY startsAt,id LIMIT 1000",
-      communityId,
-      me.role ?? "member",
-    );
-    const events: CommunityEvent[] = eventRows.map((r) => ({
-      ...JSON.parse(r.recordJson),
-      status: r.status,
-    }));
     const eventPrefs = await one<{
       city: string;
       interestsJson: string;
       complete: number;
     }>("SELECT * FROM event_preferences WHERE userId=?", uid);
-    const [ranks, follows, saves, prefs, question, updates, plans] =
+    const follows = userFollows;
+    const [ranks, saves, prefs, question, updates, plans] =
       await Promise.all([
         all<Snapshot["rankings"][number]>(
           "SELECT * FROM rankings WHERE userId=? ORDER BY priority,itemId",
-          uid,
-        ),
-        all<Snapshot["follows"][number]>(
-          "SELECT * FROM follows WHERE userId=?",
           uid,
         ),
         all<{ targetId: string }>(
@@ -577,7 +783,7 @@ export function socialService(
       ]);
     const visibleSaves: string[] = [];
     for (const s of saves) {
-      if ((communityId === defaultCommunityId && catalogItem(s.targetId)) || events.some((e) => e.id === s.targetId))
+      if ((communityId === defaultCommunityId && catalogItem(s.targetId)) || entityIn(communityId, s.targetId) || events.some((e) => e.id === s.targetId))
         visibleSaves.push(s.targetId);
       else {
         try {
@@ -610,7 +816,7 @@ export function socialService(
         )
           notifications.push(n);
       } else if (n.kind === "issue") {
-        if (topicFor(n.targetId)?.communityId !== communityId && !(communityId === defaultCommunityId && issues.some(i => i.id === n.targetId))) continue;
+        if (!entityIn(communityId, n.targetId)) continue;
         if (
           await one(
             "SELECT 1 FROM follows WHERE userId=? AND issueId=? AND notify=1",
@@ -715,7 +921,7 @@ export function socialService(
         ? {
             invitationCommunities: pilotOwner() ? [...pilotCommunities] : [communityFor(communityId)!],
             invitationCodes: await all<NonNullable<Snapshot["admin"]>["invitationCodes"][number]>(
-              "SELECT id,communityId,createdAt,expiresAt,CASE WHEN unlimited=1 THEN NULL ELSE maxUses END maxUses,useCount,revokedAt FROM invitation_codes WHERE organizationId IS NULL AND (communityId=? OR ?=1) ORDER BY createdAt DESC,id DESC LIMIT 100", communityId, +pilotOwner(),
+              "SELECT id,communityId,createdAt,expiresAt,CASE WHEN unlimited=1 THEN NULL ELSE maxUses END maxUses,useCount,revokedAt,label FROM invitation_codes WHERE organizationId IS NULL AND (communityId=? OR ?=1) ORDER BY createdAt DESC,id DESC LIMIT 100", communityId, +pilotOwner(),
             ),
             invitations: await all<
               NonNullable<Snapshot["admin"]>["invitations"][number]
@@ -732,21 +938,33 @@ export function socialService(
             ),
           }
         : undefined;
+    const memberOf = (await all<{ communityId: string }>("SELECT communityId FROM pilot_memberships WHERE userId=?", uid)).map((m) => m.communityId);
+    const emailCampus = communityForEmail(identity.email);
+    const campus = communityFor(communityId)!.campus;
+    // A saved discovery city only applies where that city has listings; otherwise
+    // each campus starts from its own city rather than another campus's.
+    const savedCity = eventPrefs?.city ?? "";
+    const discoveryCity =
+      !campus || (savedCity && events.some((e) => e.city.toLowerCase() === savedCity.toLowerCase()))
+        ? savedCity || campus?.city || communityFor(communityId)!.locationLabel.split(",")[0]
+        : campus.city;
     return {
+      eligibleCommunity: emailCampus && !memberOf.includes(emailCampus.id) ? emailCampus : null,
+      commons: params.get("commons") ? await commonsSummary(v, catalog) : undefined,
       nationalJoined,
       organizations: await Promise.all(pilotOrganizations.filter(o => o.communityId === communityId).map(async o => ({ ...o, role: (await one<{ role: string }>("SELECT role FROM organization_memberships WHERE userId=? AND organizationId=?", uid, o.id))?.role ?? null }))),
       organizationMembers: orgMembership ? await all("SELECT p.id,p.name,m.role FROM organization_memberships m JOIN profiles p ON p.id=m.userId WHERE m.organizationId=? AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=p.id) OR (b.targetId=? AND b.ownerId=p.id)) ORDER BY p.name", org!.id, uid, uid) : undefined,
       organizationCodes: orgMembership?.role === "organizer" ? await all("SELECT id,expiresAt,useCount,CASE WHEN unlimited=1 THEN NULL ELSE maxUses END maxUses,revokedAt FROM invitation_codes WHERE organizationId=? AND communityId=? ORDER BY createdAt DESC LIMIT 100", org!.id, communityId) : undefined,
       community: communityFor(communityId)!,
-      communities: (await all<{ communityId: string }>("SELECT communityId FROM pilot_memberships WHERE userId=?", uid)).flatMap(m => communityFor(m.communityId) ? [communityFor(m.communityId)!] : []),
+      communities: memberOf.flatMap(m => communityFor(m) ? [communityFor(m)!] : []),
       events,
       eventPreferences: eventPrefs
         ? {
-            city: eventPrefs.city,
+            city: discoveryCity,
             interests: JSON.parse(eventPrefs.interestsJson),
             complete: !!eventPrefs.complete,
           }
-        : { ...emptySnapshot.eventPreferences, city: communityFor(communityId)!.locationLabel.split(",")[0] },
+        : { ...emptySnapshot.eventPreferences, city: discoveryCity },
       eventSuggestions: await all<
         NonNullable<Snapshot["eventSuggestions"]>[number]
       >(
@@ -761,11 +979,11 @@ export function socialService(
       nextCursor,
       people,
       rankings: ranks.filter((r) => communityId === defaultCommunityId && catalogItem(r.itemId)),
-      priorities: await all<Snapshot["priorities"][number]>(
-        "SELECT issueId,priority,note FROM issue_priorities WHERE userId=? AND ?='ithaca' ORDER BY priority,issueId",
-        uid, communityId,
-      ),
-      follows: follows.filter(f => topicFor(f.issueId)?.communityId === communityId || (communityId === defaultCommunityId && issues.some(i => i.id === f.issueId))),
+      priorities: (await all<Snapshot["priorities"][number]>(
+        "SELECT issueId,priority,note FROM issue_priorities WHERE userId=? ORDER BY priority,issueId",
+        uid,
+      )).filter((p) => entityIn(communityId, p.issueId)?.kind === "issue"),
+      follows: follows.filter((f) => !!entityIn(communityId, f.issueId) || (communityId === defaultCommunityId && !!issueFor(f.issueId))),
       plans: plans.filter(
         (p) =>
           (p.userId === uid || visibleUsers.includes(p.userId)) &&
@@ -945,14 +1163,19 @@ export function socialService(
     };
     if (data.action === "account.create") {
       const existing = await one<Person>("SELECT * FROM profiles WHERE id=?", uid);
+      // The trusted sign-in email, never a submitted field, selects a campus.
+      // Association is community membership, not student-status verification.
+      const campus = communityForEmail(identity!.email);
       if (!existing) {
         if (await one("SELECT 1 FROM profiles WHERE username=? AND id<>?", data.username, uid)) fail(409, "That username is taken. Choose another one.");
-        add("INSERT INTO profiles(id,name,username,communityLabel,activeCommunityId,createdAt) VALUES(?,?,?,'',?,?) ON CONFLICT(id) DO NOTHING", uid, data.name, data.username, openCommunityId, now);
+        add("INSERT INTO profiles(id,name,username,communityLabel,activeCommunityId,createdAt) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING", uid, data.name, data.username, campus?.locationLabel ?? "", campus?.id ?? openCommunityId, now);
         add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) VALUES(?,?,?)", uid, openCommunityId, pilotOwner() ? "owner" : "member");
+        if (campus)
+          add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) SELECT ?,?,'member' WHERE NOT EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", uid, campus.id, uid, campus.id);
         add("INSERT OR IGNORE INTO preferences(userId,replies,reactions,issues,events) VALUES(?,0,0,0,0)", uid);
       }
       // A fresh retry must not overwrite a profile or move an existing member.
-      result = { ok: true, alreadyCreated: !!existing };
+      result = { ok: true, alreadyCreated: !!existing, communityId: existing ? undefined : (campus?.id ?? openCommunityId) };
     } else if (data.action === "community.manage") {
       if (!pilotOwner()) fail(403, "Only the configured pilot owner can manage another community.");
       if (!communityFor(data.communityId) || !await one("SELECT 1 FROM profiles WHERE id=?", uid)) fail(400, "Create your profile and choose a configured community.");
@@ -961,7 +1184,7 @@ export function socialService(
       for (const org of pilotOrganizations.filter(o => o.communityId === data.communityId))
         add("INSERT INTO organization_memberships(userId,organizationId,role) VALUES(?,?,'organizer') ON CONFLICT(userId,organizationId) DO UPDATE SET role='organizer'", uid, org.id);
       result = { ok: true, communityId: data.communityId };
-    } else if (data.action === "invite.redeem" || (data.action === "join" && /^POLIS/i.test(normalizeCode(data.invite)))) {
+    } else if (data.action === "invite.redeem" || (data.action === "join" && !!data.invite && !/^[0-9a-f-]{72}$/i.test(data.invite.trim()))) {
       const preview = await previewInvitation(data.invite);
       if (!data.confirmedCommunityId || data.confirmedCommunityId !== preview.community.id)
         fail(400, "Confirm the community associated with this code.");
@@ -1061,7 +1284,14 @@ export function socialService(
       );
     } else {
       const m = await member();
-      if (communityId !== defaultCommunityId && (["invite", "question.save", "answer"].includes(data.action) || data.action.startsWith("priority.") || data.action.startsWith("ranking")))
+      // Daily questions, legacy email invites and scored rankings use the
+      // original Ithaca sample catalog; priorities work wherever issues exist.
+      if (
+        communityId !== defaultCommunityId &&
+        (["invite", "question.save", "answer"].includes(data.action) ||
+          data.action.startsWith("ranking") ||
+          (!hasCatalog(communityId) && data.action.startsWith("priority.")))
+      )
         fail(400, "This community does not have a local issue catalog yet.");
       guard(
         "EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)",
@@ -1100,6 +1330,18 @@ export function socialService(
           if (await one("SELECT 1 FROM conversation_follows WHERE userId=? AND postId=?", uid, data.postId))
             add("INSERT OR IGNORE INTO metrics(id,userId,event,objectId,createdAt,communityId) VALUES(?,?,'conversation_return',NULL,?,?)", "return_" + await digest(uid + communityId + now.slice(0, 10)), uid, now.slice(0, 10), communityId);
           break;
+        case "community.join": {
+          const target = communityFor(data.communityId);
+          if (!target?.campus) fail(404, "This community is unavailable.");
+          // Admission comes from the trusted email domain, never from location
+          // or submitted text. Owners use community.manage; others use codes.
+          if (communityForEmail(identity!.email)?.id !== target!.id)
+            fail(403, "Use your " + target!.campus!.university + " email or an invitation code to join.");
+          add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) SELECT ?,?,'member' WHERE NOT EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", uid, target!.id, uid, target!.id);
+          add("UPDATE profiles SET activeCommunityId=? WHERE id=?", target!.id, uid);
+          result = { ok: true, communityId: target!.id };
+          break;
+        }
         case "community.joinNational":
         case "community.joinOpen": {
           add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) VALUES(?,?,?)", uid, openCommunityId, pilotOwner() ? "owner" : "member");
@@ -1140,7 +1382,7 @@ export function socialService(
           if (e.issueId) validSubject(e.issueId);
           if (Date.parse(e.checkedAt) > Date.now() + 60000)
             fail(400, "Source check time cannot be in the future.");
-          if (e.id === "community" || topicFor(e.id) || catalogItem(e.id) || issues.some((i) => i.id === e.id))
+          if (e.id === "community" || topicFor(e.id) || entityFor(e.id) || catalogItem(e.id) || issues.some((i) => i.id === e.id))
             fail(400, "This event ID is reserved.");
           const existing = await eventFor(e.id);
           if (!existing && await one("SELECT 1 FROM community_events WHERE id=?", e.id)) fail(409, "Choose a different event ID.");
@@ -1327,7 +1569,7 @@ export function socialService(
             if (data.organizationChannel === "announcements") await organizer(data.organizationId);
           }
           const item = catalogItem(data.subjectId);
-          const event = data.subjectId !== "community" && !issueFor(data.subjectId)
+          const event = data.subjectId !== "community" && !issueFor(data.subjectId) && !entityFor(data.subjectId)
             ? await guardedEvent(data.subjectId)
             : null;
           if (!event) validSubject(data.subjectId);
@@ -1346,13 +1588,10 @@ export function socialService(
           if (data.kind === "update" && !data.sourceUrl) fail(400, "Add a source link for this update.");
           if (data.position && data.kind !== "opinion" && data.kind !== "debate")
             fail(400, "Positions belong to opinion posts.");
-          if (
-            data.position &&
-            item?.kind !== "Policies" &&
-            !issues.some((i) => i.id === data.subjectId) && !topicFor(data.subjectId)
-          )
-            fail(400, "Choose an issue or policy for a position.");
-          if (!data.text && !data.position)
+          if (data.position && !positionable(data.subjectId))
+            fail(400, "Choose an issue, proposal or question for a position.");
+          // A titled question or debate can open with its headline alone.
+          if (!data.text && !data.position && !(data.title && ["question", "debate"].includes(data.kind)))
             fail(400, "Add a view or a question.");
           if (data.priorPostId) {
             const earlier = await guardedOwnPost(data.priorPostId);
@@ -1398,14 +1637,10 @@ export function socialService(
             !attachment.sourceUrl
           )
             fail(400, "Keep the article’s HTTPS link.");
-          if (
-            data.position &&
-            ((p.kind !== "opinion" && p.kind !== "debate") ||
-              (catalogItem(p.subjectId)?.kind !== "Policies" &&
-                !issues.some((i) => i.id === p.subjectId) && !topicFor(p.subjectId)))
-          )
+          if (data.position && ((p.kind !== "opinion" && p.kind !== "debate") || !positionable(p.subjectId)))
             fail(400, "This post does not use a policy position.");
-          if (!data.text && !data.position)
+          const title = data.title ?? p.title ?? "";
+          if (!data.text && !data.position && !(title && ["question", "debate"].includes(p.kind)))
             fail(400, "A post needs a view or text.");
           add(
             "UPDATE posts SET text=?,position=?,attachmentJson=?,editedAt=? WHERE id=? AND authorId=?",
@@ -1463,6 +1698,8 @@ export function socialService(
         }
         case "comment": {
           const p = await guardedPost(data.postId);
+          if (data.position && !replyTakesPosition(p))
+            fail(400, "This conversation does not ask for a perspective.");
           let recipient = p.authorId;
           if (data.parentId) {
             const parent = await one<{
@@ -1495,12 +1732,13 @@ export function socialService(
             );
           }
           add(
-            "INSERT INTO comments(id,postId,authorId,parentId,text,createdAt) VALUES(?,?,?,?,?,?)",
+            "INSERT INTO comments(id,postId,authorId,parentId,text,position,createdAt) VALUES(?,?,?,?,?,?,?)",
             objectId,
             p.id,
             uid,
             data.parentId,
             data.text,
+            data.position,
             now,
           );
           notify(recipient, "reply", p.id, objectId);
@@ -1527,14 +1765,19 @@ export function socialService(
             data.commentId,
           );
           if (!c) fail(404, "This reply is unavailable.");
-          await guardedPost(c!.postId);
+          const parentPost = await guardedPost(c!.postId);
           if (c!.authorId !== uid)
             fail(403, "Only the author can change this reply.");
+          if (data.action === "comment.edit" && data.position && !replyTakesPosition(parentPost))
+            fail(400, "This conversation does not ask for a perspective.");
           if (data.action === "comment.edit")
             add(
-              "UPDATE comments SET text=?,editedAt=? WHERE id=?",
+              data.position === undefined
+                ? "UPDATE comments SET text=?,editedAt=? WHERE id=?"
+                : "UPDATE comments SET text=?,editedAt=?,position=? WHERE id=?",
               data.text,
               now,
+              ...(data.position === undefined ? [] : [data.position]),
               data.commentId,
             );
           else {
@@ -1550,7 +1793,7 @@ export function socialService(
         }
         case "save":
           if (communityId !== defaultCommunityId && catalogItem(data.targetId)) fail(404, "This item is not available in this community.");
-          if (!catalogItem(data.targetId)) {
+          if (!catalogItem(data.targetId) && !entityIn(communityId, data.targetId)) {
             if (await eventFor(data.targetId))
               await guardedEvent(data.targetId);
             else await guardedPost(data.targetId);
@@ -1570,7 +1813,7 @@ export function socialService(
           eventMetric("onboarding_completed");
           break;
         case "priority.save": {
-          if (!issues.some((i) => i.id === data.issueId))
+          if (entityIn(communityId, data.issueId)?.kind !== "issue")
             fail(400, "Choose an available issue.");
           add(
             "INSERT INTO issue_priorities(userId,issueId,priority,note) VALUES(?,?,COALESCE((SELECT MAX(priority)+1 FROM issue_priorities WHERE userId=?),0),?) ON CONFLICT(userId,issueId) DO UPDATE SET note=CASE WHEN ? THEN excluded.note ELSE issue_priorities.note END",
@@ -1593,11 +1836,16 @@ export function socialService(
           const ids = data.issueIds;
           if (new Set(ids).size !== ids.length)
             fail(400, "Choose each issue once.");
+          if (ids.some((id) => entityIn(communityId, id)?.kind !== "issue"))
+            fail(400, "Reorder issues from this community.");
           const placeholders = ids.map(() => "?").join(",");
-          // Reject a stale reorder if another tab added or removed an issue.
+          // Priorities are ordered within a community. Reject a stale reorder if
+          // another tab added or removed one of this community's issues.
+          const communityIssues = issuesIn(communityId).map((i) => i.id);
           guard(
-            `(SELECT COUNT(*) FROM issue_priorities WHERE userId=?)=? AND (SELECT COUNT(*) FROM issue_priorities WHERE userId=? AND issueId IN (${placeholders}))=?`,
+            `(SELECT COUNT(*) FROM issue_priorities WHERE userId=? AND issueId IN (${communityIssues.map(() => "?").join(",")}))=? AND (SELECT COUNT(*) FROM issue_priorities WHERE userId=? AND issueId IN (${placeholders}))=?`,
             uid,
+            ...communityIssues,
             ids.length,
             uid,
             ...ids,
@@ -1620,14 +1868,16 @@ export function socialService(
             "SELECT issueId,priority,note FROM issue_priorities WHERE userId=? ORDER BY priority,issueId",
             uid,
           );
-          const selected = rows.filter((r) =>
-            data.issueIds.includes(r.issueId),
+          const selected = rows.filter(
+            (r) =>
+              data.issueIds.includes(r.issueId) &&
+              entityIn(communityId, r.issueId)?.kind === "issue",
           );
           if (selected.length !== data.issueIds.length)
             fail(400, "Share only your own issue priorities.");
           const items = selected.map((r, index) => ({
             itemId: r.issueId,
-            title: issues.find((i) => i.id === r.issueId)!.name,
+            title: entityFor(r.issueId)!.name,
             priority: index,
             ...(data.includeNotes ? { note: r.note } : {}),
           }));
@@ -1921,15 +2171,36 @@ export function socialService(
           if (!communityFor(target)) fail(400, "Choose an available university or community.");
           if (target !== communityId && !pilotOwner()) fail(403, "You can only invite people to your own community.");
           if (data.organizationId && organizationFor(data.organizationId)?.communityId !== target) fail(400, "Organization and campus must match.");
-          // Twelve uniformly sampled base32 characters give 60 bits of entropy.
-          const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-          const code = Array.from(crypto.getRandomValues(new Uint8Array(12)), byte => alphabet[byte % 32]).join("");
-          const token = "POLIS-" + code.match(/.{4}/g)!.join("-");
-          add("INSERT INTO invitation_codes(id,tokenHash,createdBy,createdAt,expiresAt,maxUses,communityId,unlimited) VALUES(?,?,?,?,?,?,?,?)",
-            objectId, await digest(token.replace(/-/g, "")), uid, now,
-            new Date(Date.parse(now) + data.expiresDays * 86400000).toISOString(), data.maxUses ?? 1, target, +(data.maxUses === null));
+          let token: string;
+          let label: string | null = null;
+          if (data.code) {
+            // Memorable codes are shareable by design; they rely on usage limits,
+            // expiration and deactivation rather than secrecy.
+            const normalized = normalizeCode(data.code);
+            if (!/^[A-Z0-9]{6,32}$/.test(normalized))
+              fail(400, "Use 6–32 letters or numbers for a custom code. Spaces and hyphens are ignored.");
+            if (await one("SELECT 1 FROM invitation_codes WHERE tokenHash=?", await digest(normalized)))
+              fail(409, "That code is already in use. Choose another.");
+            token = data.code.trim().toUpperCase().replace(/\s+/g, "-");
+            label = token;
+          } else {
+            // Twelve uniformly sampled base32 characters give 60 bits of entropy.
+            const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+            const code = Array.from(crypto.getRandomValues(new Uint8Array(12)), byte => alphabet[byte % 32]).join("");
+            token = "POLIS-" + code.match(/.{4}/g)!.join("-");
+          }
+          add("INSERT INTO invitation_codes(id,tokenHash,createdBy,createdAt,expiresAt,maxUses,communityId,unlimited,label) VALUES(?,?,?,?,?,?,?,?,?)",
+            objectId, await digest(normalizeCode(token)), uid, now,
+            data.expiresDays === null ? NO_EXPIRY : new Date(Date.parse(now) + data.expiresDays * 86400000).toISOString(), data.maxUses ?? 1, target, +(data.maxUses === null), label);
           result = { ok: true, invitationCode: token };
           if (data.organizationId) add("UPDATE invitation_codes SET organizationId=? WHERE id=?", data.organizationId, objectId);
+          break;
+        }
+        case "invite.reactivate": {
+          const code = await one<{ organizationId: string | null }>("SELECT organizationId FROM invitation_codes WHERE id=?", data.codeId);
+          if (code?.organizationId) await organizer(code.organizationId); else owner();
+          if (!(await one("SELECT id FROM invitation_codes WHERE id=? AND (communityId=? OR ?=1)", data.codeId, communityId, +pilotOwner()))) fail(404, "Invitation code unavailable.");
+          add("UPDATE invitation_codes SET revokedAt=NULL WHERE id=? AND (communityId=? OR ?=1)", data.codeId, communityId, +pilotOwner());
           break;
         }
         case "invite.revoke": {

@@ -56,6 +56,9 @@ export const invitationCodes = sqliteTable("invitation_codes", {
   communityId: text().notNull().default("ithaca"),
   unlimited: integer().notNull().default(0),
   organizationId: text(),
+  // Owner-chosen memorable codes are meant to be shared, so their text can be
+  // listed for administrators. Generated secret codes keep this empty.
+  label: text(),
 });
 export const invitationRedemptions = sqliteTable("invitation_redemptions", {
   codeId: text().notNull().references(() => invitationCodes.id),
@@ -121,6 +124,9 @@ export const comments = sqliteTable(
       .references(() => profiles.id),
     parentId: text(),
     text: text().notNull(),
+    // Optional perspective on the conversation's question. Null for replies
+    // that simply respond; never inferred.
+    position: text(),
     createdAt: text().notNull(),
     editedAt: text(),
     deletedAt: text(),

@@ -1,12 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync } from "node:fs";
-import {
-  socialService,
-  type Database,
-  type CommandData,
-} from "../lib/social/service.ts";
+import type { CommandData } from "../lib/social/service.ts";
+import { fixture, denied } from "./fixture.ts";
 
 // Real migration SQL and service code; only the D1 transport is adapted to SQLite.
 test("open signup creates a persistent ordinary account without consuming a community invitation", async () => {
@@ -71,99 +68,6 @@ test("username conflicts roll back signup and existing profiles can explicitly e
   assert.deepEqual(state.communities.map(c => c.id).sort(), ["ithaca", "polis"]);
 });
 
-function fixture() {
-  const raw = new DatabaseSync(":memory:");
-  for (const file of readdirSync("drizzle")
-    .filter((x) => x.endsWith(".sql"))
-    .sort())
-    raw.exec(readFileSync("drizzle/" + file, "utf8"));
-  type Statement = { sql: string; args: SQLInputValue[] };
-  const hooks: { batch: null | ((rows: Statement[]) => Promise<void>) } = {
-    batch: null,
-  };
-  const adapter = {
-    prepare(sql: string) {
-      return {
-        bind(...args: SQLInputValue[]) {
-          return {
-            sql,
-            args,
-            async first() {
-              return raw.prepare(sql).get(...args) ?? null;
-            },
-            async all() {
-              return { results: raw.prepare(sql).all(...args) };
-            },
-          };
-        },
-      };
-    },
-    async batch(rows: Statement[]) {
-      if (hooks.batch) await hooks.batch(rows);
-      raw.exec("BEGIN");
-      try {
-        const results = rows.map((s) => ({
-          success: true,
-          meta: { changes: raw.prepare(s.sql).run(...s.args).changes },
-        }));
-        raw.exec("COMMIT");
-        return results;
-      } catch (e) {
-        raw.exec("ROLLBACK");
-        throw e;
-      }
-    },
-  };
-  const db = adapter as unknown as Database;
-  const service = (id: string | null, email = id + "@example.test") =>
-    socialService(
-      db,
-      id ? { userId: id, email, displayName: id } : null,
-      "owner@example.test",
-    );
-  const act = (
-    id: string,
-    data: CommandData,
-    requestId = crypto.randomUUID(),
-  ) => service(id).execute({ requestId, data });
-  const snap = (id: string | null, params: Record<string, string> = {}) =>
-    service(id).snapshot(new URLSearchParams(params));
-  const count = (table: string) =>
-    Number(raw.prepare("SELECT COUNT(*) n FROM " + table).get()!.n);
-  async function setup() {
-    await act("owner", { action: "join", name: "Owner", username: "owner" });
-    for (const id of ["a", "b", "c"]) {
-      const inv = await act("owner", {
-        action: "invite",
-        email: id + "@example.test",
-      });
-      await act(id, {
-        action: "join",
-        name: "Person " + id,
-        username: "person_" + id,
-        invite: inv.invite,
-      });
-    }
-  }
-  async function friends() {
-    await act("a", { action: "friend", targetId: "b", operation: "request" });
-    await act("b", { action: "friend", targetId: "a", operation: "accept" });
-  }
-  async function post(
-    audience: "friends" | "community" | "only_me" = "friends",
-  ) {
-    return (
-      await act("a", {
-        action: "post",
-        kind: "opinion",
-        subjectId: "homes",
-        text: "Test contribution",
-        audience,
-      })
-    ).postId as string;
-  }
-  return { raw, hooks, service, act, snap, count, setup, friends, post };
-}
 
 test("organization codes require campus membership, preserve private threads and revoke access atomically", async () => {
   const f = fixture(); await f.setup();
@@ -275,8 +179,6 @@ test("three identities per campus complete Commons replies, follows, updates and
   await f.act("uf_a", { action: "community.select", communityId: "uf" });
   assert.equal((await f.snap("uf_a", { post: postIds.uf })).posts[0].communityId, "uf");
 });
-const denied = (p: Promise<unknown>, status: number) =>
-  assert.rejects(p, (e: { status?: number }) => e.status === status);
 
 test("activation metrics count shared contributions and both friendship participants, without private text", async () => {
   const f = fixture();

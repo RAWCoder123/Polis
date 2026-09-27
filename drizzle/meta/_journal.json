@@ -71,6 +71,13 @@
       "when": 1790471733740,
       "tag": "0009_loud_warpath",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790476581850,
+      "tag": "0010_foamy_blockbuster",
+      "breakpoints": true
     }
   ]
 }
