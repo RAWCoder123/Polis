@@ -284,10 +284,11 @@ export const cornellSampleEvents: CommunityEvent[] = [
   }),
 ];
 
-// What a curator can import into each community. Organizer-checked Ithaca
-// listings stay separate from samples so their provenance remains visible.
+// Sample listings a curator may import to exercise a campus. The separate,
+// organizer-checked Ithaca bundle remains its own import.
+const samples: Record<string, CommunityEvent[]> = { ithaca: cornellSampleEvents, uf: ufSampleEvents };
+export const sampleEventsFor = (communityId: string) => samples[communityId] ?? [];
+// Everything importable into a community, checked listings first.
 export function curatedEventsFor(communityId: string): CommunityEvent[] {
-  if (communityId === "ithaca") return [...officialEvents, ...cornellSampleEvents];
-  if (communityId === "uf") return ufSampleEvents;
-  return [];
+  return [...(communityId === "ithaca" ? officialEvents : []), ...sampleEventsFor(communityId)];
 }

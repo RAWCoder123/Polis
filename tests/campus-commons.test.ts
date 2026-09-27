@@ -207,6 +207,9 @@ test("Commons tabs separate campus and local subjects, and ranked feeds reward p
   assert.deepEqual(await ids("followed", "cu2"), []);
   await f.act("cu2", { action: "follow", issueId: "cu-olin-library", enabled: true, notify: false });
   assert.deepEqual(await ids("followed", "cu2"), [campus.postId]);
+  // Your own threads appear once you follow them.
+  await f.act("cu", { action: "conversation.follow", postId: local.postId!, enabled: true });
+  assert.deepEqual(await ids("followed"), [local.postId]);
   const followed = (await f.snap("cu2")).follows.map((x) => x.issueId);
   assert.deepEqual(followed, ["cu-olin-library"]);
   await f.act("cu2", { action: "save", targetId: "q-cu-north-bus", enabled: true });

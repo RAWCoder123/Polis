@@ -622,7 +622,9 @@ export function socialService(
       } else if (filter === "followed") {
         // Commons "Following": followed threads, followed topics, places or
         // offices, and accepted friends.
-        sql += ` AND p.authorId<>? AND (EXISTS(SELECT 1 FROM conversation_follows cf WHERE cf.userId=? AND cf.postId=p.id) OR EXISTS(SELECT 1 FROM follows f WHERE f.userId=? AND (f.issueId=p.issueId OR f.issueId=p.subjectId)) OR EXISTS(SELECT 1 FROM friendships f WHERE f.status='accepted' AND ((f.a=? AND f.b=p.authorId) OR (f.b=? AND f.a=p.authorId))))`;
+        // Followed threads always appear, including your own; topics and
+        // friends add other people's posts.
+        sql += ` AND (EXISTS(SELECT 1 FROM conversation_follows cf WHERE cf.userId=? AND cf.postId=p.id) OR (p.authorId<>? AND (EXISTS(SELECT 1 FROM follows f WHERE f.userId=? AND (f.issueId=p.issueId OR f.issueId=p.subjectId)) OR EXISTS(SELECT 1 FROM friendships f WHERE f.status='accepted' AND ((f.a=? AND f.b=p.authorId) OR (f.b=? AND f.a=p.authorId))))))`;
         args.push(uid, uid, uid, uid, uid);
       }
       if (["campus", "city", "followed", "for_you", "trending"].includes(filter))

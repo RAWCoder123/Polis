@@ -82,7 +82,8 @@ try {
       const s = await state(a); assert.equal(s.community.id, campus); assert.equal(s.me.role, "member");
     }
     const [a, b, c] = people;
-    await a.page.goto(origin + "/#home");
+    await a.page.goto(origin + "/#commons");
+    await expect(a.page.getByRole("button", { name: "Question Ask your community" })).toBeVisible();
     const optin = a.page.getByRole("button", { name: "Enable in-app reply notifications" });
     if (await optin.isVisible()) await optin.click();
     await command(b, { action: "preferences", replies: true, reactions: true, issues: false, events: false });
@@ -92,9 +93,10 @@ try {
     const text = "Local QA " + stamp + ": how could getting to campus be easier?";
     await dialog.getByRole("textbox", { name: "Your question", exact: true }).fill(text);
     await dialog.getByRole("combobox", { name: "Who can see this?" }).selectOption("community");
-    await dialog.getByRole("button", { name: "Publish to Community", exact: true }).click();
+    await dialog.getByRole("button", { name: "Post to The Commons", exact: true }).click();
     await expect(a.page).toHaveURL(/#post\//);
-    const postId = a.page.url().split("#post/")[1];
+    // Conversation links carry their community (Codex WIP): #post/<id>?community=<campus>.
+    const postId = a.page.url().split("#post/")[1].split("?")[0];
     await b.page.goto(origin + "/#post/" + postId); await b.page.reload();
     await expect(b.page.getByText(text, { exact: true })).toBeVisible();
     await b.page.getByRole("textbox", { name: "Join the conversation" }).fill("Local QA reply: clearer route information would help.");
@@ -104,7 +106,7 @@ try {
     const notice = (await state(a)).notifications.find(n => n.targetId === postId);
     assert.ok(notice?.commentId);
     await a.page.locator(".notification-row").filter({ hasText: "replied to your conversation" }).first().click();
-    await expect(a.page).toHaveURL(origin + "/#post/" + postId + "/" + notice.commentId);
+    await expect(a.page).toHaveURL(new RegExp("#post/" + postId + "/" + notice.commentId + "(\\?community=" + campus + ")?$"));
     await expect(a.page.locator("#comment-" + notice.commentId)).toBeVisible();
     await a.page.getByRole("button", { name: "Follow thread", exact: true }).click();
     await a.page.reload();
@@ -124,22 +126,22 @@ try {
     await command(owner, { action: "issue.update", issueId: topic, title: "Local QA curator source " + stamp, sourceUrl: campus === "uf" ? "https://taps.ufl.edu/fall2026transit/" : "https://tcatbus.com/tcats-2026-fall-service/", sample: true });
     await a.page.reload(); await expect(a.page.getByRole("link", { name: "Local QA curator source " + stamp })).toBeVisible();
     await shot(a, campus + "-mobile-topic");
-    await a.page.locator(".commons-related-events .post-subject").filter({ hasText: event.title }).click();
+    await a.page.locator(".entity-events .entity-row").filter({ hasText: event.title }).click();
     await expect(a.page.getByRole("heading", { name: event.title, exact: true })).toBeVisible();
     await a.page.getByRole("button", { name: "Explore the related issue" }).click();
     await a.page.route("https://tile.openstreetmap.org/**", route => route.abort());
     await a.page.getByRole("button", { name: "Explore the local map and event list" }).click();
     await expect(a.page.getByRole("textbox", { name: "Discovery city" })).toHaveValue(event.city);
     await expect(a.page.getByText("Map tiles could not load. All events remain available in the list.", { exact: true })).toBeVisible();
-    await a.page.locator('.leaflet-marker-icon[title^="Synthetic venue"]').first().click();
+    await a.page.locator('.leaflet-marker-icon[title^="Synthetic venue"]').first().dispatchEvent("click"); // nearby sample listings can overlap this pin
     await expect(a.page).toHaveURL(new RegExp("selected=" + eventId));
     await a.page.getByRole("button", { name: "Use my location", exact: true }).click();
     await expect(a.page.getByText("Location was not shared. You can still browse by city.", { exact: true })).toBeVisible();
     await shot(a, campus + "-mobile-map-fallback");
     await a.page.getByRole("button", { name: "List", exact: true }).click();
     await expect(a.page.getByRole("region", { name: "Event venues map" })).toHaveCount(0);
-    await a.page.goto(origin + "/#home");
-    await a.page.getByRole("tab", { name: "Followed threads" }).click();
+    await a.page.goto(origin + "/#commons");
+    await a.page.locator(".commons-tabs").getByRole("button", { name: "Following", exact: true }).click();
     await expect(a.page.getByText(text, { exact: true })).toBeVisible();
     await a.page.setViewportSize({ width: 320, height: 740 }); await shot(a, campus + "-small-home");
     await a.page.setViewportSize({ width: 390, height: 844 });
@@ -159,7 +161,7 @@ try {
     await dialog.getByRole("combobox", { name: "Who can see this?" }).selectOption("community");
     await dialog.getByRole("button", { name: "Publish to organization members" }).click();
     await expect(a.page).toHaveURL(/#post\//);
-    const privateId = a.page.url().split("#post/")[1];
+    const privateId = a.page.url().split("#post/")[1].split("?")[0];
     await b.page.goto(origin + "/#post/" + privateId); await b.page.reload();
     await expect(b.page.getByText("Local QA private organization announcement " + stamp, { exact: true })).toBeVisible();
     await b.page.getByRole("textbox", { name: "Join the conversation" }).fill("Local QA member reply in the organization.");

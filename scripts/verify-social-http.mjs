@@ -72,8 +72,11 @@ for (const [user, name] of [
     });
   }
 }
-for (const user of ["a", "b", "c"])
+for (const user of ["a", "b", "c"]) {
   await act(user, { action: "community.select", communityId: "ithaca" });
+  // New accounts start with in-app notifications off; testers opt in explicitly.
+  await act(user, { action: "preferences", replies: true, reactions: true, issues: true, events: false });
+}
 a = await snapshot("a");
 b = await snapshot("b");
 c = await snapshot("c");
