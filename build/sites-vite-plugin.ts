@@ -53,6 +53,10 @@ export function sites({ mockAuth = true } = {}): Plugin {
         ...(testAccounts
           ? {
               ...Object.fromEntries(["ithaca_a", "ithaca_b", "ithaca_c", "uf_a", "uf_b", "uf_c"].map(key => [key, { id: "local_" + key, email: key + "@sites.test", name: "Test " + key }])),
+              // Synthetic local parts at campus domains, used only to exercise
+              // email-domain association on loopback. Never contacted.
+              campus_cu: { id: "local_campus_cu", email: "polis-fixture-cu@cornell.edu", name: "Test Cornell student" },
+              campus_uf: { id: "local_campus_uf", email: "polis-fixture-uf@ufl.edu", name: "Test UF student" },
               beta_b: {
                 id: "local_beta_b",
                 email: "beta_b@sites.test",

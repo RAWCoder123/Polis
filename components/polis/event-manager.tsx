@@ -6,6 +6,7 @@ import { eventCategories, eventRecord, eventTime } from "@/lib/social/events";
 import { issues } from "@/lib/social/catalog";
 import { topicsFor } from "@/lib/social/commons";
 import { officialEvents } from "@/lib/social/official-events";
+import { sampleEventsFor } from "@/lib/social/campus-events";
 import type { Run, Navigate } from "./social-post";
 import { Modal } from "./social-forms";
 
@@ -103,9 +104,22 @@ export function EventManager({
         >
           Import {officialEvents.length} checked pilot listings
         </button>}
+        {sampleEventsFor(data.community?.id ?? "").length > 0 && <button
+          className="btn secondary"
+          disabled={pending}
+          onClick={() =>
+            void action(async () => {
+              for (const event of sampleEventsFor(data.community?.id ?? ""))
+                await run({ action: "event.save", event, createOnly: true });
+            })
+          }
+        >
+          Import {sampleEventsFor(data.community?.id ?? "").length} sample listings for testing
+        </button>}
       </div>
       <p className="catalog-notice">
-        {data.community?.id === "ithaca" ? "Import adds only missing IDs. It never overwrites curator edits, resurrects canceled listings, or deletes activity." : "This campus has no imported event bundle. Add checked local sources; do not reuse another campus’s listings."}
+        {data.community?.id === "ithaca" ? "Import adds only missing IDs. It never overwrites curator edits, resurrects canceled listings, or deletes activity." : "This campus has no checked event bundle. Add checked local sources; do not reuse another campus’s listings."}{" "}
+        Sample listings are marked Sample everywhere they appear and link only to general references; archive them before inviting a real cohort.
       </p>
       {message && (
         <p role="status" className="notice">

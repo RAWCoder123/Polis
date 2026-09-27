@@ -44,7 +44,7 @@ export function InvitationEntry({ data, run, onJoined, expectedCommunityId }: { 
         try { await validate(); } catch (e) { setError(e instanceof Error ? e.message : "Please try again."); }
         finally { pending.current = false; setBusy(false); }
       }}>
-        <label className="social-field">Invite code<input required maxLength={200} value={code} onChange={e => setCode(e.target.value)} placeholder="POLIS-XXXX-XXXX-XXXX" autoCapitalize="characters" autoCorrect="off" spellCheck={false} autoComplete="off" /></label>
+        <label className="social-field">Invite code<input required maxLength={200} value={code} onChange={e => setCode(e.target.value)} placeholder="e.g. CORNELL26 or POLIS-XXXX-XXXX-XXXX" autoCapitalize="characters" autoCorrect="off" spellCheck={false} autoComplete="off" /></label>
         <button className="btn primary full" disabled={busy}>{busy ? "Checking…" : "Check code"}</button>
       </form>
     </> : <>

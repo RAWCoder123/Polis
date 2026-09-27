@@ -9,7 +9,7 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
-import { issues } from "@/lib/social/catalog";
+import { issuesIn } from "@/lib/social/civic";
 import { audiences, type Audience, type Snapshot } from "@/lib/social/types";
 import type { CommandData } from "@/lib/social/service";
 import { AudienceField, Modal } from "./social-forms";
@@ -35,6 +35,8 @@ export function IssuePriorities({
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const rows = data.priorities;
+  // Each campus ranks its own issues, including its sourced Commons topics.
+  const issues = issuesIn(data.community?.id ?? "");
   async function submit(command: CommandData) {
     if (busy) return;
     setBusy(true);
@@ -92,7 +94,7 @@ export function IssuePriorities({
       </div>
       {adding && (
         <div className="priority-choices" aria-label="Available sample issues">
-          <p className="metadata">Sample issue catalog · Ithaca & Cornell</p>
+          <p className="metadata">Local issues and sourced topics · {data.community?.name}</p>
           {available.map((i) => (
             <button
               key={i.id}
@@ -105,7 +107,7 @@ export function IssuePriorities({
             >
               <span>
                 <strong>{i.name}</strong>
-                {i.description}
+                {i.summary}
               </span>
               <Plus size={17} />
             </button>
@@ -331,7 +333,7 @@ export function WelcomeSteps({
         <span className="social-section-label">WELCOME TO POLIS</span>
         <h2>A few ways to make this yours.</h2>
         <p>
-          Your invitation connects you to Ithaca & Cornell. These steps are
+          You’re part of {data.community?.name ?? "your community"}. These steps are
           optional.
         </p>
       </div>

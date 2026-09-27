@@ -20,6 +20,8 @@ import { items, itemById, kinds, type CivicItem } from "@/lib/polis-data";
 import { issues, issueFor, subjectTitle } from "@/lib/social/catalog";
 import { topicFor } from "@/lib/social/commons";
 import {
+  positions,
+  type Position,
   audiences,
   type Snapshot,
   type Person,
@@ -32,6 +34,8 @@ import { IssuePriorities } from "./issue-priorities";
 import { EventPlanEditor } from "./event-plan";
 import { ReplyComposer, type ComposeOptions, Modal } from "./social-forms";
 import { PostCard, type Run, type Navigate } from "./social-post";
+import { PerspectiveBar } from "./civic-cards";
+import { replyTakesPosition } from "@/lib/social/civic";
 export function Quiet({
   title,
   children,
@@ -564,7 +568,7 @@ export function RankingList({
         </div>
       )}
       <div className="social-tabs">
-        {["Issues", ...kinds].map((k) => (
+        {["Issues", ...(data.community?.id === "ithaca" ? kinds : [])].map((k) => (
           <button
             key={k}
             className={kind === k ? "active" : ""}
@@ -1148,15 +1152,35 @@ export function Conversation({
   busy: boolean;
 }) {
   const [replyTo, setReplyTo] = useState<string | null>(null),
-    [edit, setEdit] = useState<string | null>(null);
+    [edit, setEdit] = useState<string | null>(null),
+    [perspective, setPerspective] = useState<Position | "">("");
   const p = data.posts[0];
   if (!p || !data.me) return null;
-  const rows = data.comments ?? [];
+  const allRows = data.comments ?? [];
+  const takesPosition = replyTakesPosition(p.communityId, p);
+  // Each person's most recent stated perspective counts once, including the author's.
+  const latest = new Map<string, string>();
+  if (p.position) latest.set(p.authorId, p.position);
+  for (const c of allRows) if (c.position) latest.set(c.authorId, c.position);
+  const perspectiveCounts = [...latest.values()].reduce<{ position: string; count: number }[]>((acc, pos) => {
+    const hit = acc.find((a) => a.position === pos);
+    if (hit) hit.count++;
+    else acc.push({ position: pos, count: 1 });
+    return acc;
+  }, []);
+  // Filtering keeps a reply's thread readable by retaining its parent.
+  const rows = perspective
+    ? allRows.filter(
+        (c) =>
+          c.position === perspective ||
+          allRows.some((child) => child.parentId === c.id && child.position === perspective),
+      )
+    : allRows;
   return (
     <>
-      <button className="text-button" onClick={() => navigate("home")}>
+      <button className="text-button" onClick={() => (history.length > 1 ? history.back() : navigate("commons"))}>
         <ArrowLeft size={15} />
-        Back to Home
+        Back
       </button>
       <PostCard
         post={p}
@@ -1183,7 +1207,20 @@ export function Conversation({
       )}
       <h2 className="discussion-heading">
         {p.replyCount} {p.replyCount === 1 ? "reply" : "replies"}
+        {p.participantCount > 1 ? " · " + p.participantCount + " people" : ""}
       </h2>
+      {perspectiveCounts.length > 0 && <PerspectiveBar counts={perspectiveCounts} />}
+      {takesPosition && perspectiveCounts.length > 0 && (
+        <div className="perspective-filter" role="group" aria-label="Show replies by perspective">
+          {([["", "All replies"], ...Object.entries(positions)] as [Position | "", string][])
+            .filter(([value]) => !value || perspectiveCounts.some((c) => c.position === value))
+            .map(([value, label]) => (
+              <button key={value || "all"} aria-pressed={perspective === value} onClick={() => setPerspective(value)}>
+                {label}
+              </button>
+            ))}
+        </div>
+      )}
       {rows.map((c) => (
         <div
           className={"comment-row " + (c.parentId ? "nested" : "")}
@@ -1209,10 +1246,13 @@ export function Conversation({
               {c.editedAt ? " · Edited" : ""}
               {c.parentId
                 ? " · replying to " +
-                  (rows.find((p) => p.id === c.parentId)?.name ??
+                  (allRows.find((p) => p.id === c.parentId)?.name ??
                     "an earlier reply")
                 : ""}
             </small>
+            {c.position && edit !== c.id && (
+              <span className={"reply-position pos-" + c.position}>{positions[c.position]}</span>
+            )}
             {edit === c.id ? (
               <ReplyComposer
                 disabled={busy}
@@ -1220,6 +1260,7 @@ export function Conversation({
                 postId={p.id}
                 editing={c}
                 run={run}
+                takesPosition={takesPosition}
                 onCancel={() => setEdit(null)}
               />
             ) : (
@@ -1261,13 +1302,16 @@ export function Conversation({
                 postId={p.id}
                 parentId={c.id}
                 run={run}
+                takesPosition={takesPosition}
                 onCancel={() => setReplyTo(null)}
               />
             )}
           </div>
         </div>
       ))}
-      <div id="discussion-reply"><ReplyComposer userId={data.me!.id} postId={p.id} run={run} disabled={busy} /></div>
+      <div id="discussion-reply">
+        <ReplyComposer userId={data.me!.id} postId={p.id} run={run} disabled={busy} takesPosition={takesPosition} />
+      </div>
     </>
   );
 }

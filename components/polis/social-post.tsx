@@ -1,5 +1,4 @@
 "use client";
-import { useState } from "react";
 import { toast } from "sonner";
 import {
   MessageCircle,
@@ -7,10 +6,14 @@ import {
   BookmarkCheck,
   ArrowUpRight,
   ThumbsUp,
+  ThumbsDown,
   Lightbulb,
   HelpCircle,
   MoreHorizontal,
   ArrowRight,
+  CalendarDays,
+  FileText,
+  Users,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -28,18 +31,23 @@ import {
 } from "@/lib/social/types";
 import { itemById } from "@/lib/polis-data";
 import { subjectTitle } from "@/lib/social/catalog";
-import { topicFor, discussionLabels, organizationFor } from "@/lib/social/commons";
+import { discussionLabels, organizationFor } from "@/lib/social/commons";
 import { communityFor } from "@/lib/social/communities";
+import { entityFor } from "@/lib/social/civic";
 import type { CommandData } from "@/lib/social/service";
+import { EntityChip } from "./civic-cards";
 export type Run = (
   data: CommandData,
   requestId?: string,
 ) => Promise<CommandResult>;
 export type Navigate = (route: string) => void;
+// Stored kinds keep their original names: "thoughtful" reads as Interesting and
+// "curious" as Needs context. One reaction per person; switching replaces it.
 const reactionChoices = [
   { kind: "agree", label: "Agree", Icon: ThumbsUp },
-  { kind: "thoughtful", label: "Thought-provoking", Icon: Lightbulb },
-  { kind: "curious", label: "Want to understand more", Icon: HelpCircle },
+  { kind: "disagree", label: "Disagree", Icon: ThumbsDown },
+  { kind: "thoughtful", label: "Interesting", Icon: Lightbulb },
+  { kind: "curious", label: "Needs context", Icon: HelpCircle },
 ] as const;
 
 export function PostCard({
@@ -65,23 +73,12 @@ export function PostCard({
   onReport: (id: string) => void;
   busy: boolean;
 }) {
-  const [showCounts, setShowCounts] = useState(false);
   const route = "post/" + post.id + "?community=" + post.communityId;
   const attachment = JSON.parse(post.attachmentJson || "{}");
-  const subjectKind = itemById[post.subjectId]?.kind;
-  const subjectLabel =
-    post.subjectId === "community" ? "COMMUNITY CONVERSATION" : post.kind === "event_plan"
-      ? "SHARED PLAN"
-      : subjectKind === "Events" || attachment.eventId
-        ? "RELATED EVENT"
-        : subjectKind === "News"
-          ? "RELATED ARTICLE"
-          : subjectKind === "Policies"
-            ? "RELATED PROPOSAL"
-            : subjectKind === "Politicians"
-              ? "RELATED PERSON"
-              : "RELATED ISSUE";
-  const react = async (kind: "agree" | "thoughtful" | "curious") => {
+  const entity = entityFor(post.subjectId);
+  const topic = entity && entity.kind !== "issue" && post.issueId ? entityFor(post.issueId) : undefined;
+  const legacyItem = itemById[post.subjectId];
+  const react = async (kind: (typeof reactionChoices)[number]["kind"]) => {
     try {
       await run({
         action: "reaction",
@@ -91,7 +88,11 @@ export function PostCard({
     } catch {}
   };
   return (
-    <article className={"social-post " + (compact ? "forum-row" : "") + (unread ? " has-unread" : "")} id={"post-" + post.id}>
+    <article
+      className={"social-post " + (compact ? "forum-row" : "") + (unread ? " has-unread" : "")}
+      id={"post-" + post.id}
+      data-position={post.position ?? ""}
+    >
       <header>
         <button
           className="avatar-link"
@@ -120,7 +121,7 @@ export function PostCard({
               hour: "numeric",
               minute: "2-digit",
             })}{" "}
-            · {post.organizationId && post.audience === "community" ? "Organization members" : audiences[post.audience]}
+            · {post.organizationId && post.audience === "community" ? "Organization members" : post.audience === "community" ? "The Commons" : audiences[post.audience]}
             {" · "}{communityFor(post.communityId)?.name ?? "Community"}
             {post.organizationId && " · " + organizationFor(post.organizationId)?.name + " (private)"}
             {post.editedAt ? " · Edited" : ""}
@@ -200,7 +201,12 @@ export function PostCard({
           </DropdownMenuContent>
         </DropdownMenu>
       </header>
-      <h2 className="forum-title"><button onClick={() => navigate(route)}>{post.title || post.text.split("\n")[0].slice(0, 140) || subjectTitle(post.subjectId)}</button></h2>
+      {/* Untitled posts lead with their text rather than repeating it as a heading. */}
+      {(post.title || !post.text) && (
+        <h2 className="forum-title">
+          <button onClick={() => navigate(route)}>{post.title || subjectTitle(post.subjectId)}</button>
+        </h2>
+      )}
       {unread && <button className="thread-unread text-button" onClick={() => navigate(route)}>Unread reply · Return to the conversation</button>}
       {post.position && (
         <span className="post-position">{positions[post.position]}</span>
@@ -284,50 +290,61 @@ export function PostCard({
           </small>
         </button>
       )}
-      <button
-        className="post-subject"
-        onClick={() =>
-          navigate(
-            topicFor(post.subjectId) ? "topic/" + post.subjectId : post.subjectId === "community" ? "post/" + post.id : (attachment.eventId
-              ? "event/"
-              : itemById[post.subjectId]
-                ? "item/"
-                : "issue/") + post.subjectId,
-          )
-        }
-      >
-        <span>
-          {subjectLabel}
-          {post.issueId ? " · " + post.issueId.toUpperCase() : ""}
-          <strong>
-            {attachment.eventTitle || subjectTitle(post.subjectId)}
-          </strong>
-        </span>
-        <ArrowUpRight size={19} />
-      </button>
+      {post.subjectId !== "community" && (
+        <div className="post-about">
+          <span>About</span>
+          {entity ? (
+            <>
+              <EntityChip entity={entity} navigate={navigate} />
+              {topic && <EntityChip entity={topic} navigate={navigate} />}
+            </>
+          ) : attachment.eventId ? (
+            <button className="entity-chip tone-event" onClick={() => navigate("event/" + attachment.eventId)}>
+              <CalendarDays size={13} aria-hidden="true" />
+              <span>{attachment.eventTitle}</span>
+            </button>
+          ) : (
+            <button
+              className="entity-chip tone-paper"
+              onClick={() => navigate((legacyItem ? "item/" : "issue/") + post.subjectId)}
+            >
+              <FileText size={13} aria-hidden="true" />
+              <span>
+                {subjectTitle(post.subjectId)}
+                {legacyItem ? " · Sample" : ""}
+              </span>
+            </button>
+          )}
+        </div>
+      )}
       <footer>
-        {reactionChoices.map(({ kind, label, Icon }) => (
-          <button
-            key={kind}
-            className={"reaction " + (post.myReaction === kind ? "chosen" : "")}
-            aria-pressed={post.myReaction === kind}
-            disabled={busy}
-            onClick={() => void react(kind)}
-          >
-            <Icon size={16} />
-            {label}
-            <span>
-              {post.reactions.find((r) => r.kind === kind)?.count || ""}
-            </span>
-          </button>
-        ))}
+        <span className="reaction-set" role="group" aria-label="Reactions from people who can see this post">
+          {reactionChoices.map(({ kind, label, Icon }) => {
+            const count = post.reactions.find((r) => r.kind === kind)?.count ?? 0;
+            return (
+              <button
+                key={kind}
+                className={"reaction " + (post.myReaction === kind ? "chosen" : "")}
+                aria-pressed={post.myReaction === kind}
+                aria-label={label + (count ? ", " + count : "")}
+                title={label}
+                disabled={busy}
+                onClick={() => void react(kind)}
+              >
+                <Icon size={15} aria-hidden="true" />
+                <span className="reaction-label">{label}</span>
+                {count > 0 && <span className="reaction-count">{count}</span>}
+              </button>
+            );
+          })}
+        </span>
         <button
           className="reaction"
           onClick={() => navigate(route + "&reply=1")}
-          aria-label={"Open conversation, " + post.replyCount + " replies"}
+          aria-label={"Reply. " + post.replyCount + (post.replyCount === 1 ? " reply" : " replies") + " so far"}
         >
-          <MessageCircle size={17} />
-          {post.replyCount || "Reply"}
+          <MessageCircle size={16} />
+          {post.replyCount ? post.replyCount + (post.replyCount === 1 ? " reply" : " replies") : "Reply"}
         </button>
         <button
           className="reaction save-post"
@@ -345,27 +362,7 @@ export function PostCard({
           {post.saved ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
         </button>
       </footer>
-      <div className="commons-thread-meta"><button className="text-button" aria-pressed={!!post.following} disabled={busy} onClick={() => void run({ action: "conversation.follow", postId: post.id, enabled: !post.following }).catch(() => {})}>{post.following ? "Following thread · Undo" : "Follow thread"}</button><span>{post.replyCount} visible {post.replyCount === 1 ? "reply" : "replies"} · Latest activity {new Date(post.latestActivity ?? post.createdAt).toLocaleDateString()}</span></div>
-      <button
-        className="count-disclosure"
-        onClick={() => setShowCounts(!showCounts)}
-        aria-expanded={showCounts}
-      >
-        Reaction counts
-      </button>
-      {showCounts && (
-        <p className="metadata">
-          {reactionChoices
-            .map(
-              ({ kind, label }) =>
-                label +
-                ": " +
-                (post.reactions.find((r) => r.kind === kind)?.count ?? 0),
-            )
-            .join(" · ")}{" "}
-          · Responses from people who can see this post.
-        </p>
-      )}
+      <div className="commons-thread-meta"><button className="text-button" aria-pressed={!!post.following} disabled={busy} onClick={() => void run({ action: "conversation.follow", postId: post.id, enabled: !post.following }).catch(() => {})}>{post.following ? "Following thread · Undo" : "Follow thread"}</button><span><Users size={13} aria-hidden="true" /> {post.participantCount} {post.participantCount === 1 ? "person" : "people"} · Latest activity {new Date(post.latestActivity ?? post.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span></div>
     </article>
   );
 }

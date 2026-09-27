@@ -3,7 +3,9 @@
 const cookieName = "polis_pilot_invitation";
 export function pendingInvitation(request: Request): string {
   const value = request.headers.get("cookie")?.split(";").map(s => s.trim()).find(s => s.startsWith(cookieName + "="))?.slice(cookieName.length + 1) ?? "";
-  return /^POLIS[A-Z2-9]{12,16}$/.test(value) ? value : "";
+  // Matches the service's code format: generated POLIS codes and 6–32 character
+  // owner-chosen codes, already normalized when the cookie was set.
+  return /^[A-Z0-9]{6,32}$/.test(value) ? value : "";
 }
 export function invitationCookie(request: Request, code: string | null): string {
   const normalized = (code ?? "").replace(/[\s-]/g, "").toUpperCase();
