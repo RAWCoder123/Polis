@@ -168,11 +168,14 @@ test("structured questions count each person's latest perspective once, includin
   const topic = state.commons!.topics.find((t) => t.subjectId === "q-cu-north-bus")!;
   assert.deepEqual([topic.posts, topic.replies, topic.participants], [1, 2, 2]);
 
+  // Replies written in the same millisecond may tie on time, so match by text.
   const replies = (await f.snap("cu", { post: response.postId! })).comments!;
-  assert.deepEqual(replies.map((c) => c.position), ["reservations", "support"]);
-  const own = replies[0].id;
-  await f.act("cu2", { action: "comment.edit", commentId: own, text: "Edited", position: null });
-  assert.equal((await f.snap("cu", { post: response.postId! })).comments![0].position, null);
+  const worried = replies.find((c) => c.text === "Costs worry me.")!;
+  assert.equal(worried.position, "reservations");
+  assert.equal(replies.find((c) => c.text === "Actually the pilot seems fair.")!.position, "support");
+  await f.act("cu2", { action: "comment.edit", commentId: worried.id, text: "Edited", position: null });
+  const edited = (await f.snap("cu", { post: response.postId! })).comments!.find((c) => c.id === worried.id)!;
+  assert.equal(edited.position, null);
 
   // Open-ended questions and plain observations do not collect stances.
   const open = await f.act("cu", { action: "post", kind: "debate", subjectId: "q-ith-commons-evenings", text: "More music?", audience: "community" });
@@ -291,8 +294,8 @@ test("the civic catalog is internally consistent, campus-scoped and honest about
       assert.ok(kinds.has(k as never), communityId + " lacks " + k);
   }
   assert.deepEqual(entitiesFor("emory"), []);
-  assert.ok(searchEntities("uf", "housing").some((e) => e.id === "q-uf-midtown-housing"));
-  assert.ok(!searchEntities("uf", "housing").some((e) => e.communityId !== "uf"));
+  assert.ok(searchEntities(entitiesFor("uf"), "housing").some((e) => e.id === "q-uf-midtown-housing"));
+  assert.ok(!searchEntities(entitiesFor("uf"), "housing").some((e) => e.communityId !== "uf"));
 });
 
 test("curated campus listings validate and link only to their own campus issues", () => {

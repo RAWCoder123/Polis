@@ -324,3 +324,32 @@
 .home-pulse strong { font-size: 14px; font-weight: 600; }
 .home-pulse small { font-size: 12px; color: #596a83; line-height: 1.45; }
 @media (max-width: 767px) { .home-pulse { grid-template-columns: 1fr; gap: 8px; } .social-shell .home-pulse button { padding: 11px 12px; } }
+
+/* Find or start a community. */
+.find-community { max-width: 760px; }
+.find-community h1 { font-family: Georgia, serif; font-size: 36px; line-height: 1.15; letter-spacing: -1px; margin: 10px 0 12px; font-weight: 500; color: #17233b; }
+.find-lead { font-size: 15.5px; line-height: 1.7; color: #4f607b; margin-bottom: 20px; }
+.find-search { display: flex; align-items: center; gap: 10px; border: 1px solid #d6dff0; border-radius: 12px; padding: 8px 8px 8px 14px; background: #fff; box-shadow: 0 1px 2px #17233b0d; }
+.find-search:focus-within { border-color: #3659e3; box-shadow: 0 0 0 3px #3659e326; }
+.find-search svg { color: #69758c; flex-shrink: 0; }
+.find-search input { flex: 1; min-width: 0; border: 0; outline: none; font-size: 15.5px; background: transparent; color: #17233b; min-height: 36px; }
+.find-actions { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 10px 2px 4px; }
+.find-actions .text-button { min-height: 40px; }
+.find-status { margin: 6px 2px; }
+.find-results { margin: 18px 0; }
+.find-results h2, .find-campus h2 { font-size: 13px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: #69758c; margin-bottom: 6px; display: flex; align-items: center; gap: 7px; }
+.find-row { display: flex; align-items: center; gap: 13px; padding: 12px 0; border-bottom: 1px solid #edf0f6; }
+.find-row > span:nth-child(2) { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.find-row strong { font-size: 15.5px; font-weight: 600; color: #17233b; }
+.find-row small { font-size: 12.5px; color: #596a83; display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.find-campus { margin: 24px 0; padding: 18px 20px; border: 1px solid #d9e2fb; border-radius: 14px; background: #f7f9ff; }
+.find-campus p { font-size: 14px; line-height: 1.65; color: #344562; }
+.find-campus h2 { color: #2d4fcf; text-transform: none; letter-spacing: 0; font-size: 16px; }
+.find-inline { display: flex; gap: 8px; }
+.find-inline input { flex: 1; min-width: 0; }
+.find-choices { display: grid; gap: 6px; margin: 4px 0 14px; }
+.social-shell .find-choices label { display: flex; gap: 8px; align-items: center; border: 1px solid #dce4ef; border-radius: 9px; padding: 9px 12px; font-size: 13.5px; background: #fff; cursor: pointer; }
+.find-choices label.chosen { border-color: #aebdf0; background: #eef2ff; }
+.find-choices input { accent-color: #3659e3; }
+.find-privacy { margin-top: 26px; }
+@media (max-width: 767px) { .find-community h1 { font-size: 28px; } .find-row { flex-wrap: wrap; } .find-row .btn { margin-left: 57px; } }

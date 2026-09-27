@@ -83,6 +83,11 @@ export type CommandResult = {
   alreadyJoined?: boolean;
   organizationId?: string;
   plan?: PlanConfirmation;
+  // community.create: false when an existing nearby or campus community was joined.
+  created?: boolean;
+  // places.import: places added or refreshed; recent when skipped as up to date.
+  imported?: number;
+  recent?: boolean;
 };
 export const audiences: Record<Audience, string> = {
   only_me: "Only me",
@@ -196,6 +201,45 @@ export type Campus = {
   monogram: string;
   // Reserved for a later approved campus SSO/SAML integration. Unused today.
   sso?: { protocol: "saml" | "oidc"; metadataUrl: string };
+  // ISO 3166-1 alpha-2 when known.
+  country?: string;
+};
+// A city or town community. Any place can have one; joining is open, and
+// membership never asserts residence.
+export type Locality = {
+  city: string;
+  region: string;
+  country: string;
+  center: [number, number];
+  zoom: number;
+  timezone: string;
+};
+// A public place imported from OpenStreetMap for a community's map. Names and
+// coordinates come from the source; Polis adds no claims about them.
+export type CommunityPlace = {
+  id: string;
+  communityId: string;
+  kind: EntityKind;
+  name: string;
+  subtitle: string;
+  latitude: number;
+  longitude: number;
+  source: "openstreetmap";
+  sourceRef: string;
+  website: string | null;
+};
+export type CommunitySearchResult = {
+  community: PilotCommunity;
+  members: number;
+  miles: number | null;
+};
+export type PlaceSuggestion = {
+  label: string;
+  city: string;
+  region: string;
+  country: string;
+  latitude: number;
+  longitude: number;
 };
 export type EntityKind =
   | "official"
@@ -279,6 +323,10 @@ export type CommonsSummary = {
   }[];
 };
 export type Snapshot = {
+  // Public places for a community created anywhere (curated campuses have their own catalog).
+  places?: CommunityPlace[];
+  // A registrable campus email domain that has no community yet, e.g. "umich.edu".
+  unclaimedCampusDomain?: string | null;
   // A campus the signed-in email domain is associated with but not joined yet.
   eligibleCommunity?: PilotCommunity | null;
   commons?: CommonsSummary;

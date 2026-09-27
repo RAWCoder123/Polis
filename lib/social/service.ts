@@ -2,14 +2,25 @@ import { z } from "zod";
 import { itemById } from "../polis-data.ts";
 import { eventActions, eventExpired } from "./events.ts";
 import { issues, issueFor, eventStart } from "./catalog.ts";
-import { communityFor, communityForEmail, defaultCommunityId, openCommunityId, pilotCommunities } from "./communities.ts";
+import {
+  campusDomainOf,
+  communityFor,
+  communityForEmail,
+  communityFromRow,
+  defaultCommunityId,
+  localeOf,
+  openCommunityId,
+  pilotCommunities,
+  type PilotCommunity,
+  type PlaceCommunityRow,
+} from "./communities.ts";
+import { civicPlacesNear, reversePlace, searchPlaces, type Fetcher } from "./geo.ts";
+import { distanceMiles } from "./events.ts";
 import { topicFor, pilotOrganizations, organizationFor } from "./commons.ts";
 import {
-  entitiesFor,
+  catalogFor,
   entityFor,
-  entityIn,
-  hasCatalog,
-  issuesIn,
+  inCatalog,
   replyTakesPosition as replyTakesPositionIn,
   subjectTakesPosition,
   topicFor as entityTopic,
@@ -21,7 +32,10 @@ import {
   type Post,
   type Question,
   type CommunityEvent,
+  type CivicEntity,
   type CommonsSummary,
+  type CommunityPlace,
+  type CommunitySearchResult,
   type InvitationPreview,
 } from "./types.ts";
 export type Identity = { userId: string; email: string; displayName: string };
@@ -73,6 +87,28 @@ const action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("community.manage"), communityId: id }),
   // Campus association from the trusted sign-in email domain.
   z.object({ action: z.literal("community.join"), communityId: id }),
+  // Find or start a community for any city or town, or for the member's own
+  // university email domain. Coordinates come from a place lookup or the
+  // member's rounded device location.
+  z.object({
+    action: z.literal("community.create"),
+    kind: z.enum(["city", "campus"]),
+    city: z.string().trim().min(2).max(80),
+    region: z.string().trim().max(80).default(""),
+    country: z.string().trim().regex(/^([A-Z]{2})?$/).default(""),
+    latitude: z.number().min(-85).max(85),
+    longitude: z.number().min(-180).max(180),
+    timezone: z.string().max(64).refine((tz) => {
+      try {
+        new Intl.DateTimeFormat("en", { timeZone: tz });
+        return true;
+      } catch {
+        return false;
+      }
+    }, "Choose a valid time zone."),
+    university: z.string().trim().min(3).max(120).optional(),
+  }),
+  z.object({ action: z.literal("places.import") }),
   z.object({ action: z.literal("conversation.follow"), postId: id, enabled: z.boolean() }),
   z.object({ action: z.literal("conversation.visit"), postId: id }),
   z.object({ action: z.literal("organization.member"), organizationId: id, userId: id, role: z.enum(["member", "organizer", "remove"]) }),
@@ -279,13 +315,30 @@ export const digest = async (s: string) =>
   )
     .map((v) => v.toString(16).padStart(2, "0"))
     .join("");
+// Network lookups (place search, public places) are injected so the service
+// stays testable; without a fetcher those features report unavailable.
+export type ServiceOptions = { fetch?: Fetcher; contact?: string };
+let lastPlaceLookup = 0;
+// OpenStreetMap's Nominatim asks for at most one request per second.
+async function placeLookupSlot() {
+  const wait = Math.max(0, lastPlaceLookup + 1100 - Date.now());
+  lastPlaceLookup = Date.now() + wait;
+  if (wait) await new Promise((r) => setTimeout(r, wait));
+}
 export function socialService(
   db: Database,
   identity: Identity | null,
   ownerEmail = "",
+  options: ServiceOptions = {},
 ) {
   const uid = identity?.userId ?? "";
   let communityId = defaultCommunityId;
+  let currentCommunity: PilotCommunity | null = null;
+  let currentPlaces: CommunityPlace[] = [];
+  // The active community's civic catalog: curated for configured campuses,
+  // generated plus imported public places everywhere else.
+  let catalog: CivicEntity[] = [];
+  const findEntity = (id: string) => inCatalog(catalog, id);
   const prep = (sql: string, ...args: unknown[]) =>
     db.prepare(sql).bind(...args);
   const all = async <T = Record<string, unknown>>(
@@ -296,10 +349,41 @@ export function socialService(
     sql: string,
     ...args: unknown[]
   ) => prep(sql, ...args).first<T>();
+  const communityCache = new Map<string, PilotCommunity | null>();
+  // Configured communities first, then communities members created.
+  const communityRecord = async (id: string) => {
+    const configured = communityFor(id);
+    if (configured) return configured;
+    if (!communityCache.has(id)) {
+      const row = await one<PlaceCommunityRow>("SELECT * FROM place_communities WHERE id=? AND status='active'", id);
+      communityCache.set(id, row ? communityFromRow(row) : null);
+    }
+    return communityCache.get(id) ?? null;
+  };
+  // Exact configured domains, then a campus community founded under the
+  // member's plain institutional domain.
+  const campusForEmail = async (email: string) => {
+    const configured = communityForEmail(email);
+    if (configured) return configured;
+    const domain = campusDomainOf(email);
+    if (!domain) return undefined;
+    const row = await one<PlaceCommunityRow>("SELECT * FROM place_communities WHERE domain=? AND status='active'", domain);
+    return row ? communityFromRow(row) : undefined;
+  };
   const resolveCommunity = async (requested?: string | null) => {
     const profile = uid ? await one<{ activeCommunityId: string }>("SELECT activeCommunityId FROM profiles WHERE id=?", uid) : null;
     communityId = requested ?? profile?.activeCommunityId ?? defaultCommunityId;
-    if (!communityFor(communityId)) fail(404, "This community is unavailable.");
+    currentCommunity = await communityRecord(communityId);
+    if (!currentCommunity) fail(404, "This community is unavailable.");
+    // Communities without a curated catalog show imported public places.
+    const curated = catalogFor(currentCommunity, []).some((e) => e.communityId === communityId && !e.id.startsWith(communityId + "."));
+    currentPlaces = !curated && localeOf(currentCommunity)
+      ? await all<CommunityPlace>(
+          "SELECT communityId,id,kind,name,subtitle,latitude,longitude,source,sourceRef,website FROM community_places WHERE communityId=? ORDER BY name LIMIT 200",
+          communityId,
+        )
+      : [];
+    catalog = catalogFor(currentCommunity, currentPlaces);
   };
   const pilotOwner = () => !!identity && !!ownerEmail && identity.email.toLowerCase() === ownerEmail.toLowerCase();
   const normalizeCode = (value: string) => value.replace(/[\s-]/g, "").toUpperCase();
@@ -311,7 +395,7 @@ export function socialService(
     const code = await one<{ communityId: string; organizationId: string | null; expiresAt: string; useCount: number; maxUses: number; unlimited: number; revokedAt: string | null }>(
       "SELECT communityId,organizationId,expiresAt,useCount,maxUses,unlimited,revokedAt FROM invitation_codes WHERE tokenHash=?", await digest(normalizeCode(value as string)),
     );
-    const community = code && communityFor(code.communityId);
+    const community = code && await communityRecord(code.communityId);
     const organization = code?.organizationId ? organizationFor(code.organizationId) : undefined;
     if (code?.organizationId && (!organization || organization.communityId !== code.communityId)) fail(403, "This organization invitation is unavailable.");
     const alreadyJoined = !!code && !!uid && !!await one(organization ? "SELECT 1 FROM organization_memberships WHERE userId=? AND organizationId=?" : "SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?", uid, organization?.id ?? code.communityId);
@@ -374,19 +458,17 @@ export function socialService(
   const validSubject = (subject: string) => {
     if (subject === "community") return { id: "" };
     // Sourced topics and civic entities belong to exactly one community.
-    const entity = entityFor(subject);
-    if (entity) {
-      if (entity.communityId !== communityId) fail(400, "Choose a subject in your current community.");
-      return { id: entityTopic(entity) };
-    }
+    const entity = findEntity(subject);
+    if (entity) return { id: entityTopic(entity) };
+    if (entityFor(subject)) fail(400, "Choose a subject in your current community.");
     if (communityId !== defaultCommunityId) fail(400, "This subject is not available in this community. Share a community observation instead.");
     const issue = issueFor(subject);
     if (!issue) fail(400, "Choose an available subject.");
     return issue!;
   };
   const replyTakesPosition = (p: { kind: string; subjectId: string }) =>
-    replyTakesPositionIn(communityId, p);
-  const positionable = (subject: string) => subjectTakesPosition(communityId, subject);
+    replyTakesPositionIn(catalog, communityId, p);
+  const positionable = (subject: string) => subjectTakesPosition(catalog, communityId, subject);
   async function decorate(rows: Post[]): Promise<Post[]> {
     return Promise.all(
       rows.map(async (p) => {
@@ -442,7 +524,7 @@ export function socialService(
   // What people in this community are discussing, counted as distinct people.
   async function commonsSummary(
     v: { sql: string; args: unknown[] },
-    catalog: ReturnType<typeof entitiesFor>,
+    catalog: CivicEntity[],
   ): Promise<CommonsSummary> {
     const since = new Date(Date.now() - 14 * 86400000).toISOString();
     const notMuted = "NOT EXISTS(SELECT 1 FROM mutes WHERE ownerId=? AND targetId=p.authorId)";
@@ -519,7 +601,8 @@ export function socialService(
       return {
         ...emptySnapshot,
         status: "onboarding",
-        eligibleCommunity: communityForEmail(identity.email) ?? null,
+        eligibleCommunity: (await campusForEmail(identity.email)) ?? null,
+        unclaimedCampusDomain: (await campusForEmail(identity.email)) ? null : campusDomainOf(identity.email),
         me: {
           id: uid,
           name: identity.displayName,
@@ -554,16 +637,13 @@ export function socialService(
       ...JSON.parse(r.recordJson),
       status: r.status,
     }));
-    const catalog = entitiesFor(communityId);
     // Campus and Local tabs follow the subject: campus entities and general
     // community posts are Campus; city entities, legacy items and events are Local.
     const scopeSubjects = (scope: "campus" | "city") => [
       ...catalog.filter((e) => e.scope === (scope === "campus" ? "campus" : "local")).map((e) => e.id),
-      ...(scope === "campus"
-        ? ["community"]
-        : communityId === defaultCommunityId
-          ? Object.keys(itemById)
-          : []),
+      // General posts are Campus in a university community and Local elsewhere.
+      ...((scope === "campus") === !!currentCommunity!.campus ? ["community"] : []),
+      ...(scope === "city" && communityId === defaultCommunityId ? Object.keys(itemById) : []),
       ...events
         .filter((e) => (e.category === "campus_life") === (scope === "campus"))
         .map((e) => e.id),
@@ -591,6 +671,17 @@ export function socialService(
         sql += " AND p.coverage=?"; args.push(params.get("coverage"));
       }
       if (params.get("subject")) { sql += " AND p.subjectId=?"; args.push(params.get("subject")); }
+      // Entity pages: an issue includes everything filed under it.
+      const entityParam = params.get("entity");
+      if (entityParam) {
+        if (findEntity(entityParam)?.kind === "issue") {
+          sql += " AND (p.issueId=? OR p.subjectId=?)";
+          args.push(entityParam, entityParam);
+        } else {
+          sql += " AND p.subjectId=?";
+          args.push(entityParam);
+        }
+      }
       if (org) {
         sql += " AND p.organizationId=?"; args.push(org.id);
         const channel = params.get("channel");
@@ -785,7 +876,7 @@ export function socialService(
       ]);
     const visibleSaves: string[] = [];
     for (const s of saves) {
-      if ((communityId === defaultCommunityId && catalogItem(s.targetId)) || entityIn(communityId, s.targetId) || events.some((e) => e.id === s.targetId))
+      if ((communityId === defaultCommunityId && catalogItem(s.targetId)) || findEntity(s.targetId) || events.some((e) => e.id === s.targetId))
         visibleSaves.push(s.targetId);
       else {
         try {
@@ -818,7 +909,7 @@ export function socialService(
         )
           notifications.push(n);
       } else if (n.kind === "issue") {
-        if (!entityIn(communityId, n.targetId)) continue;
+        if (!findEntity(n.targetId)) continue;
         if (
           await one(
             "SELECT 1 FROM follows WHERE userId=? AND issueId=? AND notify=1",
@@ -921,7 +1012,9 @@ export function socialService(
     const admin =
       me.role === "owner"
         ? {
-            invitationCommunities: pilotOwner() ? [...pilotCommunities] : [communityFor(communityId)!],
+            invitationCommunities: pilotOwner()
+              ? [...pilotCommunities, ...(currentCommunity!.dynamic ? [currentCommunity!] : [])]
+              : [currentCommunity!],
             invitationCodes: await all<NonNullable<Snapshot["admin"]>["invitationCodes"][number]>(
               "SELECT id,communityId,createdAt,expiresAt,CASE WHEN unlimited=1 THEN NULL ELSE maxUses END maxUses,useCount,revokedAt,label FROM invitation_codes WHERE organizationId IS NULL AND (communityId=? OR ?=1) ORDER BY createdAt DESC,id DESC LIMIT 100", communityId, +pilotOwner(),
             ),
@@ -941,24 +1034,29 @@ export function socialService(
           }
         : undefined;
     const memberOf = (await all<{ communityId: string }>("SELECT communityId FROM pilot_memberships WHERE userId=?", uid)).map((m) => m.communityId);
-    const emailCampus = communityForEmail(identity.email);
-    const campus = communityFor(communityId)!.campus;
+    const emailCampus = await campusForEmail(identity.email);
+    const locale = localeOf(currentCommunity);
     // A saved discovery city only applies where that city has listings; otherwise
-    // each campus starts from its own city rather than another campus's.
+    // each community starts from its own city rather than another's.
     const savedCity = eventPrefs?.city ?? "";
     const discoveryCity =
-      !campus || (savedCity && events.some((e) => e.city.toLowerCase() === savedCity.toLowerCase()))
-        ? savedCity || campus?.city || communityFor(communityId)!.locationLabel.split(",")[0]
-        : campus.city;
+      !locale || (savedCity && events.some((e) => e.city.toLowerCase() === savedCity.toLowerCase()))
+        ? savedCity || locale?.city || currentCommunity!.locationLabel.split(",")[0]
+        : locale.city;
+    const memberCommunities = (await Promise.all(memberOf.map(communityRecord))).filter(
+      (c): c is PilotCommunity => !!c,
+    );
     return {
       eligibleCommunity: emailCampus && !memberOf.includes(emailCampus.id) ? emailCampus : null,
+      unclaimedCampusDomain: emailCampus ? null : campusDomainOf(identity.email),
+      places: currentPlaces,
       commons: params.get("commons") ? await commonsSummary(v, catalog) : undefined,
       nationalJoined,
       organizations: await Promise.all(pilotOrganizations.filter(o => o.communityId === communityId).map(async o => ({ ...o, role: (await one<{ role: string }>("SELECT role FROM organization_memberships WHERE userId=? AND organizationId=?", uid, o.id))?.role ?? null }))),
       organizationMembers: orgMembership ? await all("SELECT p.id,p.name,m.role FROM organization_memberships m JOIN profiles p ON p.id=m.userId WHERE m.organizationId=? AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=p.id) OR (b.targetId=? AND b.ownerId=p.id)) ORDER BY p.name", org!.id, uid, uid) : undefined,
       organizationCodes: orgMembership?.role === "organizer" ? await all("SELECT id,expiresAt,useCount,CASE WHEN unlimited=1 THEN NULL ELSE maxUses END maxUses,revokedAt FROM invitation_codes WHERE organizationId=? AND communityId=? ORDER BY createdAt DESC LIMIT 100", org!.id, communityId) : undefined,
-      community: communityFor(communityId)!,
-      communities: memberOf.flatMap(m => communityFor(m) ? [communityFor(m)!] : []),
+      community: currentCommunity!,
+      communities: memberCommunities,
       events,
       eventPreferences: eventPrefs
         ? {
@@ -984,8 +1082,8 @@ export function socialService(
       priorities: (await all<Snapshot["priorities"][number]>(
         "SELECT issueId,priority,note FROM issue_priorities WHERE userId=? ORDER BY priority,issueId",
         uid,
-      )).filter((p) => entityIn(communityId, p.issueId)?.kind === "issue"),
-      follows: follows.filter((f) => !!entityIn(communityId, f.issueId) || (communityId === defaultCommunityId && !!issueFor(f.issueId))),
+      )).filter((p) => findEntity(p.issueId)?.kind === "issue"),
+      follows: follows.filter((f) => !!findEntity(f.issueId) || (communityId === defaultCommunityId && !!issueFor(f.issueId))),
       plans: plans.filter(
         (p) =>
           (p.userId === uid || visibleUsers.includes(p.userId)) &&
@@ -1167,7 +1265,7 @@ export function socialService(
       const existing = await one<Person>("SELECT * FROM profiles WHERE id=?", uid);
       // The trusted sign-in email, never a submitted field, selects a campus.
       // Association is community membership, not student-status verification.
-      const campus = communityForEmail(identity!.email);
+      const campus = await campusForEmail(identity!.email);
       if (!existing) {
         if (await one("SELECT 1 FROM profiles WHERE username=? AND id<>?", data.username, uid)) fail(409, "That username is taken. Choose another one.");
         add("INSERT INTO profiles(id,name,username,communityLabel,activeCommunityId,createdAt) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING", uid, data.name, data.username, campus?.locationLabel ?? "", campus?.id ?? openCommunityId, now);
@@ -1178,9 +1276,74 @@ export function socialService(
       }
       // A fresh retry must not overwrite a profile or move an existing member.
       result = { ok: true, alreadyCreated: !!existing, communityId: existing ? undefined : (campus?.id ?? openCommunityId) };
+    } else if (data.action === "community.create") {
+      if (!(await one("SELECT 1 FROM profiles WHERE id=?", uid))) fail(400, "Create your profile first.");
+      const recent = await one<{ n: number }>(
+        "SELECT COUNT(*) n FROM place_communities WHERE createdBy=? AND createdAt>?",
+        uid,
+        new Date(Date.parse(now) - 86400000).toISOString(),
+      );
+      let target: PilotCommunity | null = null;
+      if (data.kind === "campus") {
+        // Only the member's own plain institutional domain can found a campus.
+        const domain = campusDomainOf(identity!.email);
+        if (!domain) fail(403, "Sign in with your university email (for example name@school.edu) to start its campus community.");
+        const existing = await campusForEmail(identity!.email);
+        if (existing) target = existing;
+        else if (!data.university) fail(400, "Enter your university's name.");
+      } else {
+        // One community per town: reuse a nearby community with the same name.
+        const rows = await all<PlaceCommunityRow>(
+          "SELECT * FROM place_communities WHERE kind='city' AND status='active' AND lower(city)=lower(?) AND country=? LIMIT 20",
+          data.city,
+          data.country,
+        );
+        const near = rows.find((r) => distanceMiles([r.latitude, r.longitude], [data.latitude, data.longitude]) < 25);
+        if (near) target = communityFromRow(near);
+      }
+      let created = false;
+      if (!target) {
+        if ((recent?.n ?? 0) >= 3) fail(429, "You can start up to three communities a day. Join an existing one or try tomorrow.");
+        const slug = (data.kind === "campus" ? data.university! : data.city + " " + data.region)
+          .toLowerCase()
+          .normalize("NFKD")
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 40) || "community";
+        const newId = "c-" + slug + "-" + key.slice(0, 6);
+        const label = [data.city, data.region].filter(Boolean).join(", ");
+        const name = data.kind === "campus" ? data.university! : label;
+        add(
+          "INSERT INTO place_communities(id,kind,name,locationLabel,city,region,country,latitude,longitude,timezone,domain,university,createdBy,createdAt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          newId,
+          data.kind,
+          name,
+          label + (data.country ? ", " + data.country : ""),
+          data.city,
+          data.region,
+          data.country,
+          Math.round(data.latitude * 10000) / 10000,
+          Math.round(data.longitude * 10000) / 10000,
+          data.timezone,
+          data.kind === "campus" ? campusDomainOf(identity!.email) : null,
+          data.kind === "campus" ? data.university! : null,
+          uid,
+          now,
+        );
+        // The founder can curate listings; moderation stays with the pilot owner.
+        add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) VALUES(?,?,?)", uid, newId, pilotOwner() ? "owner" : "curator");
+        add("UPDATE profiles SET activeCommunityId=? WHERE id=?", newId, uid);
+        result = { ok: true, communityId: newId, created: true };
+        created = true;
+      }
+      if (!created) {
+        add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) SELECT ?,?,'member' WHERE NOT EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", uid, target!.id, uid, target!.id);
+        add("UPDATE profiles SET activeCommunityId=? WHERE id=?", target!.id, uid);
+        result = { ok: true, communityId: target!.id, created: false };
+      }
     } else if (data.action === "community.manage") {
       if (!pilotOwner()) fail(403, "Only the configured pilot owner can manage another community.");
-      if (!communityFor(data.communityId) || !await one("SELECT 1 FROM profiles WHERE id=?", uid)) fail(400, "Create your profile and choose a configured community.");
+      if (!(await communityRecord(data.communityId)) || !await one("SELECT 1 FROM profiles WHERE id=?", uid)) fail(400, "Create your profile and choose an available community.");
       add("INSERT INTO community_memberships(userId,communityId,role) VALUES(?,?,'owner') ON CONFLICT(userId,communityId) DO UPDATE SET role='owner'", uid, data.communityId);
       add("UPDATE profiles SET activeCommunityId=? WHERE id=?", data.communityId, uid);
       for (const org of pilotOrganizations.filter(o => o.communityId === data.communityId))
@@ -1292,7 +1455,7 @@ export function socialService(
         communityId !== defaultCommunityId &&
         (["invite", "question.save", "answer"].includes(data.action) ||
           data.action.startsWith("ranking") ||
-          (!hasCatalog(communityId) && data.action.startsWith("priority.")))
+          (!catalog.length && data.action.startsWith("priority.")))
       )
         fail(400, "This community does not have a local issue catalog yet.");
       guard(
@@ -1333,15 +1496,50 @@ export function socialService(
             add("INSERT OR IGNORE INTO metrics(id,userId,event,objectId,createdAt,communityId) VALUES(?,?,'conversation_return',NULL,?,?)", "return_" + await digest(uid + communityId + now.slice(0, 10)), uid, now.slice(0, 10), communityId);
           break;
         case "community.join": {
-          const target = communityFor(data.communityId);
-          if (!target?.campus) fail(404, "This community is unavailable.");
-          // Admission comes from the trusted email domain, never from location
-          // or submitted text. Owners use community.manage; others use codes.
-          if (communityForEmail(identity!.email)?.id !== target!.id)
+          const target = await communityRecord(data.communityId);
+          if (!target?.campus && !target?.locality) fail(404, "This community is unavailable.");
+          // City and town communities are open to anyone and never assert
+          // residence. Campus admission comes from the trusted email domain,
+          // never from location or submitted text; otherwise use a code.
+          if (target!.campus && (await campusForEmail(identity!.email))?.id !== target!.id)
             fail(403, "Use your " + target!.campus!.university + " email or an invitation code to join.");
           add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) SELECT ?,?,'member' WHERE NOT EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", uid, target!.id, uid, target!.id);
           add("UPDATE profiles SET activeCommunityId=? WHERE id=?", target!.id, uid);
           result = { ok: true, communityId: target!.id };
+          break;
+        }
+        case "places.import": {
+          if (!localeOf(currentCommunity) || catalog.some((e) => !e.id.startsWith(communityId + ".") && !e.id.startsWith("osm-")))
+            fail(400, "This community's map is curated.");
+          const row = await one<{ last: string | null }>("SELECT MAX(importedAt) last FROM community_places WHERE communityId=?", communityId);
+          if (row?.last && Date.parse(now) - Date.parse(row.last) < 7 * 86400000) {
+            result = { ok: true, imported: 0, recent: true };
+            break;
+          }
+          if (!options.fetch) fail(503, "Public place data is not available here.");
+          let places: CommunityPlace[] = [];
+          try {
+            places = await civicPlacesNear(communityId, localeOf(currentCommunity)!.center, options.fetch!, options.contact ?? "polis");
+          } catch (e) {
+            fail(503, e instanceof Error ? e.message : "Public place data is unavailable right now.");
+          }
+          for (const p of places)
+            add(
+              "INSERT INTO community_places(communityId,id,kind,name,subtitle,latitude,longitude,source,sourceRef,website,importedAt) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(communityId,id) DO UPDATE SET kind=excluded.kind,name=excluded.name,subtitle=excluded.subtitle,latitude=excluded.latitude,longitude=excluded.longitude,website=excluded.website,importedAt=excluded.importedAt",
+              communityId,
+              p.id,
+              p.kind,
+              p.name,
+              p.subtitle,
+              p.latitude,
+              p.longitude,
+              p.source,
+              p.sourceRef,
+              p.website,
+              now,
+            );
+          add("UPDATE place_communities SET placesImportedAt=? WHERE id=?", now, communityId);
+          result = { ok: true, imported: places.length };
           break;
         }
         case "community.joinNational":
@@ -1352,7 +1550,7 @@ export function socialService(
           break;
         }
         case "community.select": {
-          if (!communityFor(data.communityId)) fail(404, "This community is unavailable.");
+          if (!(await communityRecord(data.communityId))) fail(404, "This community is unavailable.");
           guard("EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", uid, data.communityId);
           if (!(await one("SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?", uid, data.communityId))) fail(403, "Join this community with an invitation code first.");
           add("UPDATE profiles SET activeCommunityId=? WHERE id=?", data.communityId, uid);
@@ -1571,7 +1769,7 @@ export function socialService(
             if (data.organizationChannel === "announcements") await organizer(data.organizationId);
           }
           const item = catalogItem(data.subjectId);
-          const event = data.subjectId !== "community" && !issueFor(data.subjectId) && !entityFor(data.subjectId)
+          const event = data.subjectId !== "community" && !issueFor(data.subjectId) && !findEntity(data.subjectId) && !entityFor(data.subjectId)
             ? await guardedEvent(data.subjectId)
             : null;
           if (!event) validSubject(data.subjectId);
@@ -1795,7 +1993,7 @@ export function socialService(
         }
         case "save":
           if (communityId !== defaultCommunityId && catalogItem(data.targetId)) fail(404, "This item is not available in this community.");
-          if (!catalogItem(data.targetId) && !entityIn(communityId, data.targetId)) {
+          if (!catalogItem(data.targetId) && !findEntity(data.targetId)) {
             if (await eventFor(data.targetId))
               await guardedEvent(data.targetId);
             else await guardedPost(data.targetId);
@@ -1815,7 +2013,7 @@ export function socialService(
           eventMetric("onboarding_completed");
           break;
         case "priority.save": {
-          if (entityIn(communityId, data.issueId)?.kind !== "issue")
+          if (findEntity(data.issueId)?.kind !== "issue")
             fail(400, "Choose an available issue.");
           add(
             "INSERT INTO issue_priorities(userId,issueId,priority,note) VALUES(?,?,COALESCE((SELECT MAX(priority)+1 FROM issue_priorities WHERE userId=?),0),?) ON CONFLICT(userId,issueId) DO UPDATE SET note=CASE WHEN ? THEN excluded.note ELSE issue_priorities.note END",
@@ -1838,12 +2036,12 @@ export function socialService(
           const ids = data.issueIds;
           if (new Set(ids).size !== ids.length)
             fail(400, "Choose each issue once.");
-          if (ids.some((id) => entityIn(communityId, id)?.kind !== "issue"))
+          if (ids.some((id) => findEntity(id)?.kind !== "issue"))
             fail(400, "Reorder issues from this community.");
           const placeholders = ids.map(() => "?").join(",");
           // Priorities are ordered within a community. Reject a stale reorder if
           // another tab added or removed one of this community's issues.
-          const communityIssues = issuesIn(communityId).map((i) => i.id);
+          const communityIssues = catalog.filter((e) => e.kind === "issue").map((i) => i.id);
           guard(
             `(SELECT COUNT(*) FROM issue_priorities WHERE userId=? AND issueId IN (${communityIssues.map(() => "?").join(",")}))=? AND (SELECT COUNT(*) FROM issue_priorities WHERE userId=? AND issueId IN (${placeholders}))=?`,
             uid,
@@ -1873,13 +2071,13 @@ export function socialService(
           const selected = rows.filter(
             (r) =>
               data.issueIds.includes(r.issueId) &&
-              entityIn(communityId, r.issueId)?.kind === "issue",
+              findEntity(r.issueId)?.kind === "issue",
           );
           if (selected.length !== data.issueIds.length)
             fail(400, "Share only your own issue priorities.");
           const items = selected.map((r, index) => ({
             itemId: r.issueId,
-            title: entityFor(r.issueId)!.name,
+            title: findEntity(r.issueId)!.name,
             priority: index,
             ...(data.includeNotes ? { note: r.note } : {}),
           }));
@@ -2170,7 +2368,7 @@ export function socialService(
         case "invite.code": {
           if (data.organizationId) await organizer(data.organizationId); else owner();
           const target = data.communityId ?? communityId;
-          if (!communityFor(target)) fail(400, "Choose an available university or community.");
+          if (!(await communityRecord(target))) fail(400, "Choose an available university or community.");
           if (target !== communityId && !pilotOwner()) fail(403, "You can only invite people to your own community.");
           if (data.organizationId && organizationFor(data.organizationId)?.communityId !== target) fail(400, "Organization and campus must match.");
           let token: string;
@@ -2477,5 +2675,62 @@ export function socialService(
       throw error;
     }
   }
-  return { snapshot, execute, previewInvitation };
+  // Communities anyone signed in can find: configured campuses and communities
+  // members started, by name or near a point, with member counts.
+  async function searchCommunities(query: string, near: [number, number] | null): Promise<CommunitySearchResult[]> {
+    if (!identity) fail(401, "Sign in to continue.");
+    const q = query.trim().toLowerCase().slice(0, 80);
+    const configured = pilotCommunities.filter(
+      (c) => c.campus && (!q || (c.name + " " + c.locationLabel + " " + c.campus.university).toLowerCase().includes(q)),
+    );
+    const rows = q
+      ? await all<PlaceCommunityRow>(
+          "SELECT * FROM place_communities WHERE status='active' AND (instr(lower(name),?)>0 OR instr(lower(city),?)>0 OR instr(lower(COALESCE(university,'')),?)>0 OR domain=?) LIMIT 40",
+          q,
+          q,
+          q,
+          q,
+        )
+      : near
+        ? await all<PlaceCommunityRow>(
+            "SELECT * FROM place_communities WHERE status='active' AND latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ? LIMIT 200",
+            near[0] - 1,
+            near[0] + 1,
+            near[1] - 1.5,
+            near[1] + 1.5,
+          )
+        : await all<PlaceCommunityRow>("SELECT * FROM place_communities WHERE status='active' ORDER BY createdAt DESC LIMIT 20");
+    const list = [...configured, ...rows.map(communityFromRow)];
+    if (!list.length) return [];
+    const counts = await all<{ communityId: string; n: number }>(
+      `SELECT communityId,COUNT(*) n FROM pilot_memberships WHERE communityId IN (${list.map(() => "?").join(",")}) GROUP BY communityId`,
+      ...list.map((c) => c.id),
+    );
+    return list
+      .map((community) => {
+        const center = localeOf(community)?.center;
+        return {
+          community,
+          members: counts.find((c) => c.communityId === community.id)?.n ?? 0,
+          miles: near && center ? Math.round(distanceMiles(near, center) * 10) / 10 : null,
+        };
+      })
+      .filter((r) => q || !near || (r.miles ?? 0) < 60)
+      .sort((a, b) => (a.miles ?? 1e9) - (b.miles ?? 1e9) || b.members - a.members)
+      .slice(0, 12);
+  }
+  async function lookupPlaces(query: string) {
+    if (!identity) fail(401, "Sign in to continue.");
+    if (!options.fetch) fail(503, "Place search is not available here.");
+    await placeLookupSlot();
+    return searchPlaces(query, options.fetch!, options.contact ?? "polis");
+  }
+  async function lookupReverse(latitude: number, longitude: number) {
+    if (!identity) fail(401, "Sign in to continue.");
+    if (!options.fetch) fail(503, "Place search is not available here.");
+    if (!(Math.abs(latitude) <= 85 && Math.abs(longitude) <= 180)) fail(400, "Invalid location.");
+    await placeLookupSlot();
+    return reversePlace(latitude, longitude, options.fetch!, options.contact ?? "polis");
+  }
+  return { snapshot, execute, previewInvitation, searchCommunities, lookupPlaces, lookupReverse };
 }

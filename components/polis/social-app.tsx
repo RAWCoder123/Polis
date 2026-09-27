@@ -4,7 +4,9 @@ import { AccountSetup, SignInChoice } from "./account-entry";
 import { CommonsView, WhatChanged, TrendingTopics, commonsParams, commonsTab } from "./commons";
 import { OrganizationSpace } from "./organization-space";
 import { topicsFor } from "@/lib/social/commons";
-import { entityFor, entityIn, issuesIn } from "@/lib/social/civic";
+import { catalogOf, inCatalog } from "@/lib/social/civic";
+import { localeOf } from "@/lib/social/communities";
+import { FindCommunity } from "./find-community";
 import { CivicMap, mapLayers, type MapLayer } from "./civic-map";
 import { EntityPage } from "./entity-page";
 import { HomeDashboard } from "./home-dashboard";
@@ -132,9 +134,8 @@ export default function SocialApp() {
   if (view === "explore" && !id) params.set("commons", "1");
   if (view === "entity") {
     params.set("commons", "1");
-    // Issue pages include conversations about everything filed under the issue.
-    if (entityFor(id ?? "")?.kind === "issue") params.set("issue", id ?? "");
-    else params.set("subject", id ?? "");
+    // The server decides from its catalog: issues include everything filed under them.
+    params.set("entity", id ?? "");
   }
   if (view === "search") {
     params.set("commons", "1");
@@ -153,6 +154,8 @@ export default function SocialApp() {
   const { data, loading, error, busy, run, refresh, loadMore, loadComments } =
     useSocial(params.toString());
   const me = data.me;
+  const catalog = catalogOf(data);
+  const locale = localeOf(data.community);
   const threadVisit = useRef("");
   useEffect(() => {
     if (view !== "post" || !data.posts.some(p => p.id === id) || data.status !== "ready") return;
@@ -265,6 +268,7 @@ export default function SocialApp() {
       coverage: view === "commons" && tab === "national" ? "national" : "local",
       ...(view === "commons" ? { audience: "community" as const } : {}),
       ...(data.community?.id !== "ithaca" ? { subjectId: "community", communityOnly: true } : {}),
+      catalog,
       ...o,
       subjectLabel: data.events.find((e) => e.id === o.subjectId)?.title,
     });
@@ -344,6 +348,8 @@ export default function SocialApp() {
       key={post.id}
       post={post}
       compact={view === "commons" || view === "search"}
+      catalog={catalog}
+      communityName={data.community?.name}
       unread={data.notifications.some(n => n.targetId === post.id && !!n.commentId && !n.readAt)}
       me={me!}
       run={run}
@@ -539,10 +545,11 @@ export default function SocialApp() {
           {data.status === "ready" ? (
             <>
               <label className="top-community"><span className="sr-only">Current community</span>
-                <select aria-label="Current community" value={me?.activeCommunityId ?? data.community?.id ?? "ithaca"} disabled={busy} onChange={e => { if (e.target.value === "join") { navigate("join"); return; } if (e.target.value === "join-open") { void run({ action: "community.joinOpen" }).then(() => navigate("home")).catch(() => {}); return; } if (e.target.value.startsWith("campus:")) { void run({ action: "community.join", communityId: e.target.value.slice(7) }).then(() => navigate("home")).catch(() => {}); return; } void run({ action: "community.select", communityId: e.target.value }).then(() => navigate("home")).catch(() => {}); }}>
+                <select aria-label="Current community" value={me?.activeCommunityId ?? data.community?.id ?? "ithaca"} disabled={busy} onChange={e => { if (e.target.value === "join") { navigate("join"); return; } if (e.target.value === "find") { navigate("communities"); return; } if (e.target.value === "join-open") { void run({ action: "community.joinOpen" }).then(() => navigate("home")).catch(() => {}); return; } if (e.target.value.startsWith("campus:")) { void run({ action: "community.join", communityId: e.target.value.slice(7) }).then(() => navigate("home")).catch(() => {}); return; } void run({ action: "community.select", communityId: e.target.value }).then(() => navigate("home")).catch(() => {}); }}>
                   {data.communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   {data.eligibleCommunity && <option value={"campus:" + data.eligibleCommunity.id}>Join {data.eligibleCommunity.name} with your university email</option>}
                   {!data.communities.some(c => c.id === "polis") && <option value="join-open">Polis commons · Open to everyone</option>}
+                  <option value="find">Find or start a community…</option>
                   <option value="join">Join with a community code…</option>
                 </select>
               </label>
@@ -627,10 +634,10 @@ export default function SocialApp() {
             ) : data.status === "signed_out" ? (
               <SignInChoice returnTo={currentLocation.pathname + currentLocation.search + currentLocation.hash} />
             ) : data.status === "onboarding" ? (
-              currentLocation.searchParams.has("invite") ? <Onboarding name={me!.name} run={run} /> : <AccountSetup name={me!.name} run={run} campus={data.eligibleCommunity} onCreated={() => navigate("home")} />
+              currentLocation.searchParams.has("invite") ? <Onboarding name={me!.name} run={run} /> : <AccountSetup name={me!.name} run={run} campus={data.eligibleCommunity} onCreated={() => navigate(data.eligibleCommunity ? "home" : "communities")} />
             ) : view === "organization" ? (
               <OrganizationSpace key={data.community?.id + ":" + id} id={id} channel={commentId} data={data} run={run} navigate={navigate} compose={compose}>{posts}</OrganizationSpace>
-            ) : data.community?.id !== "ithaca" && (["item"].includes(view) || (view === "issue" && !entityIn(data.community?.id ?? "", id)) || (view === "rankings" && !issuesIn(data.community?.id ?? "").length) || (view === "explore" && id && id !== "events")) ? (
+            ) : data.community?.id !== "ithaca" && (["item"].includes(view) || (view === "issue" && !inCatalog(catalog, id)) || (view === "rankings" && !catalog.some((e) => e.kind === "issue")) || (view === "explore" && id && id !== "events")) ? (
               <Quiet title="Local coverage is coming.">The original sample catalog belongs to Cornell / Ithaca. Offices, places and issues for this community are on the map. <button className="text-button" onClick={() => navigate("explore")}>Open the map</button></Quiet>
             ) : (
               <>
@@ -659,7 +666,7 @@ export default function SocialApp() {
                   <section className="civic-map-page">
                     <header className="commons-header">
                       <p className="social-section-label">MAP · {(data.community?.name ?? "").toUpperCase()}</p>
-                      <h1>{data.community?.campus ? "Around " + data.community.campus.shortName + " and " + data.community.campus.city + "." : "Your community, on the map."}</h1>
+                      <h1>{data.community?.campus ? "Around " + data.community.campus.shortName + " and " + data.community.campus.city + "." : locale ? "Around " + locale.city + "." : "Your community, on the map."}</h1>
                       <p>Offices, public buildings, campus places, proposals and upcoming events. Choose any marker to see why it matters and discuss it in The Commons.</p>
                     </header>
                     <div className="map-layer-chips" role="group" aria-label="Map layers">
@@ -680,7 +687,26 @@ export default function SocialApp() {
                       <span />
                       <button onClick={() => navigate("explore/events")}>Event list</button>
                     </div>
-                    {data.community?.campus ? (
+                    {locale && !data.places?.length && catalog.every((e) => e.id.startsWith((data.community?.id ?? "") + ".")) && (
+                      <div className="notice places-empty">
+                        <p>
+                          <strong>No public places on this map yet.</strong> Add civic places such as the town hall, libraries,
+                          courthouses and parks from OpenStreetMap.
+                        </p>
+                        <button
+                          className="btn secondary small-btn"
+                          disabled={busy}
+                          onClick={() =>
+                            void run({ action: "places.import" })
+                              .then((r) => toast.success(r.recent ? "Places were updated recently." : (r.imported ?? 0) + " public places added."))
+                              .catch(() => {})
+                          }
+                        >
+                          Add public places
+                        </button>
+                      </div>
+                    )}
+                    {locale ? (
                       <CivicMap
                         data={data}
                         run={run}
@@ -692,7 +718,7 @@ export default function SocialApp() {
                         onSelect={selectMapPin}
                       />
                     ) : (
-                      <Quiet title="Your map appears with a campus community.">Join Cornell / Ithaca or UF / Gainesville to see offices, places and events near you.</Quiet>
+                      <Quiet title="Your map appears with a local community.">Find or start the commons for your town or campus to see public places, offices and events near you. <button className="text-button" onClick={() => navigate("communities")}>Find your community</button></Quiet>
                     )}
                   </section>
                 )}
@@ -707,6 +733,7 @@ export default function SocialApp() {
                   </SearchView>
                 )}
                 {view === "guidelines" && <CommunityGuidelines navigate={navigate} />}
+                {view === "communities" && <FindCommunity data={data} run={run} navigate={navigate} busy={busy} />}
                 {view === "explore" &&
                   id === "events" && !commentId && (
                     <CommunityEvents
@@ -841,12 +868,12 @@ export default function SocialApp() {
                     )}
                   </>
                 )}
-                {view === "issue" && entityIn(data.community?.id ?? "", id) && (
+                {view === "issue" && inCatalog(catalog, id) && (
                   <EntityPage key={id} id={id} data={data} run={run} navigate={navigate} compose={compose}>
                     {feed}
                   </EntityPage>
                 )}
-                {view === "issue" && !entityIn(data.community?.id ?? "", id) && (
+                {view === "issue" && !inCatalog(catalog, id) && (
                   <IssueDetail
                     id={id}
                     data={data}
@@ -934,6 +961,7 @@ export default function SocialApp() {
                   "entity",
                   "search",
                   "guidelines",
+                  "communities",
                   "explore",
                   "rankings",
                   "friends",
@@ -1006,7 +1034,7 @@ export default function SocialApp() {
                   ? "Following your curiosity"
                   : "Follow the things you care about."}
               </h2>
-              {(data.status === "ready" ? issuesIn(data.community?.id ?? "") : issues).slice(0, 5).map((issue, i) => (
+              {(data.status === "ready" ? catalog.filter((e) => e.kind === "issue") : issues).slice(0, 5).map((issue, i) => (
                 <div className="issue-rail-row" key={issue.id}>
                   <span className={"issue-square tone-" + (i % 3)}>{i + 1}</span>
                   <button onClick={() => navigate((data.status === "ready" ? "entity/" : "issue/") + issue.id)}>
@@ -1040,7 +1068,7 @@ export default function SocialApp() {
                   )}
                 </div>
               ))}
-              {data.status === "ready" && !topicsFor(data.community?.id ?? "").length && !issuesIn(data.community?.id ?? "").length && <p>Local topics are still being curated. Start a community conversation in the meantime.</p>}
+              {data.status === "ready" && !topicsFor(data.community?.id ?? "").length && !catalog.some((e) => e.kind === "issue") && <p>Local topics are still being curated. Start a community conversation in the meantime.</p>}
             </section>
             {data.status === "ready" && (
               <AroundEvents data={data} run={run} navigate={navigate} />
@@ -1068,7 +1096,7 @@ export default function SocialApp() {
       {composer && me && (
         <Composer
           onRanking={() => setShare(true)}
-          options={{ ...composer, communityOnly: data.community?.id !== "ithaca", communityId: data.community?.id, communityName: data.community?.name }}
+          options={{ ...composer, communityOnly: data.community?.id !== "ithaca", communityId: data.community?.id, communityName: data.community?.name, catalog }}
           userId={me.id}
           run={run}
           navigate={navigate}

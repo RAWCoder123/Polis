@@ -33,7 +33,8 @@ import { itemById } from "@/lib/polis-data";
 import { subjectTitle } from "@/lib/social/catalog";
 import { discussionLabels, organizationFor } from "@/lib/social/commons";
 import { communityFor } from "@/lib/social/communities";
-import { entityFor } from "@/lib/social/civic";
+import { entityFor, inCatalog } from "@/lib/social/civic";
+import type { CivicEntity } from "@/lib/social/types";
 import type { CommandData } from "@/lib/social/service";
 import { EntityChip } from "./civic-cards";
 export type Run = (
@@ -59,10 +60,15 @@ export function PostCard({
   onReport,
   busy,
   expanded = false,
+  catalog = [],
+  communityName,
   compact = false,
   unread = false,
 }: {
   expanded?: boolean;
+  // The viewer's current community catalog and name, for chips and labels.
+  catalog?: CivicEntity[];
+  communityName?: string;
   compact?: boolean;
   unread?: boolean;
   post: Post;
@@ -75,8 +81,9 @@ export function PostCard({
 }) {
   const route = "post/" + post.id + "?community=" + post.communityId;
   const attachment = JSON.parse(post.attachmentJson || "{}");
-  const entity = entityFor(post.subjectId);
-  const topic = entity && entity.kind !== "issue" && post.issueId ? entityFor(post.issueId) : undefined;
+  const lookup = (id: string) => inCatalog(catalog, id) ?? entityFor(id);
+  const entity = lookup(post.subjectId);
+  const topic = entity && entity.kind !== "issue" && post.issueId ? lookup(post.issueId) : undefined;
   const legacyItem = itemById[post.subjectId];
   const react = async (kind: (typeof reactionChoices)[number]["kind"]) => {
     try {
@@ -122,7 +129,7 @@ export function PostCard({
               minute: "2-digit",
             })}{" "}
             · {post.organizationId && post.audience === "community" ? "Organization members" : post.audience === "community" ? "The Commons" : audiences[post.audience]}
-            {" · "}{communityFor(post.communityId)?.name ?? "Community"}
+            {" · "}{communityFor(post.communityId)?.name ?? communityName ?? "Community"}
             {post.organizationId && " · " + organizationFor(post.organizationId)?.name + " (private)"}
             {post.editedAt ? " · Edited" : ""}
           </span>

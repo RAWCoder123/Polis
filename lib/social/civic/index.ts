@@ -1,4 +1,6 @@
-import type { CivicEntity, CommunityEvent, EntityKind } from "../types.ts";
+import type { CivicEntity, CommunityEvent, CommunityPlace, EntityKind, Snapshot } from "../types.ts";
+import type { PilotCommunity } from "../communities.ts";
+import { genericCatalog } from "./generic.ts";
 import { distanceMiles, eventExpired } from "../events.ts";
 import { itemById } from "../../polis-data.ts";
 import { issues as legacyIssues } from "../catalog.ts";
@@ -64,8 +66,8 @@ export const takesPosition = (e: CivicEntity) =>
 
 // Shared by the composer and the service. The original Ithaca sample policies
 // and issues keep accepting positions in the Cornell community.
-export function subjectTakesPosition(communityId: string, subjectId: string) {
-  const e = entityIn(communityId, subjectId);
+export function subjectTakesPosition(catalog: CivicEntity[], communityId: string, subjectId: string) {
+  const e = inCatalog(catalog, subjectId);
   if (e) return takesPosition(e);
   return (
     communityId === "ithaca" &&
@@ -75,10 +77,28 @@ export function subjectTakesPosition(communityId: string, subjectId: string) {
 }
 // Replies may state a perspective when the conversation asks a question or
 // concerns a subject where support and opposition are meaningful.
-export function replyTakesPosition(communityId: string, post: { kind: string; subjectId: string }) {
+export function replyTakesPosition(catalog: CivicEntity[], communityId: string, post: { kind: string; subjectId: string }) {
   return ["question", "debate"].includes(post.kind)
-    ? !entityIn(communityId, post.subjectId)?.debate?.openEnded
-    : subjectTakesPosition(communityId, post.subjectId);
+    ? !inCatalog(catalog, post.subjectId)?.debate?.openEnded
+    : subjectTakesPosition(catalog, communityId, post.subjectId);
+}
+// The civic catalog for any community: curated where it exists (Cornell, UF),
+// otherwise a generated scaffold plus imported public places.
+export function catalogFor(community: PilotCommunity | null | undefined, places: CommunityPlace[] = []) {
+  if (!community) return [];
+  const curated = entitiesFor(community.id);
+  return curated.length ? curated : genericCatalog(community, places);
+}
+export const inCatalog = (catalog: CivicEntity[], id: string) => catalog.find((e) => e.id === id);
+// Client convenience: one catalog per snapshot object.
+const snapshotCatalogs = new WeakMap<Snapshot, CivicEntity[]>();
+export function catalogOf(data: Snapshot) {
+  let catalog = snapshotCatalogs.get(data);
+  if (!catalog) {
+    catalog = catalogFor(data.community, data.places ?? []);
+    snapshotCatalogs.set(data, catalog);
+  }
+  return catalog;
 }
 export const entityKinds: Record<EntityKind, { label: string; plural: string }> = {
   official: { label: "Public office", plural: "People & offices" },
@@ -96,12 +116,12 @@ export const entityKinds: Record<EntityKind, { label: string; plural: string }> 
 };
 
 // Case-insensitive match on the words people use to look things up.
-export function searchEntities(communityId: string, query: string) {
+export function searchEntities(catalog: CivicEntity[], query: string) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return [];
-  return entitiesFor(communityId)
+  return catalog
     .map((e) => {
-      const topicNames = e.topics.map((t) => entityFor(t)?.name ?? "").join(" ");
+      const topicNames = e.topics.map((t) => inCatalog(catalog, t)?.name ?? "").join(" ");
       const haystack = [e.name, e.subtitle, e.summary, topicNames, entityKinds[e.kind].label]
         .join(" ")
         .toLowerCase();
@@ -114,14 +134,14 @@ export function searchEntities(communityId: string, query: string) {
     .map((r) => r.entity);
 }
 
-export function relatedEntities(e: CivicEntity) {
+export function relatedEntities(catalog: CivicEntity[], e: CivicEntity) {
   const ids = new Set([...e.related, ...e.topics]);
-  for (const other of entitiesFor(e.communityId))
+  for (const other of catalog)
     if (other.id !== e.id && (other.related.includes(e.id) || other.topics.includes(e.id)))
       ids.add(other.id);
   ids.delete(e.id);
   return [...ids].flatMap((id) => {
-    const r = entityIn(e.communityId, id);
+    const r = inCatalog(catalog, id);
     return r ? [r] : [];
   });
 }

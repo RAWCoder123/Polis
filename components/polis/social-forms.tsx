@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { items, itemById } from "@/lib/polis-data";
 import { subjectTitle } from "@/lib/social/catalog";
-import { entitiesFor, subjectTakesPosition } from "@/lib/social/civic";
+import { subjectTakesPosition } from "@/lib/social/civic";
 import {
   audiences,
   positions,
@@ -187,6 +187,8 @@ export type ComposeOptions = {
   coverage?: "local" | "national";
   // Preselected audience, e.g. The Commons when started from the Commons.
   audience?: Audience;
+  // The current community's civic catalog, for subjects and positions.
+  catalog?: CivicEntity[];
   communityId?: string;
   communityName?: string;
   organizationId?: string;
@@ -289,8 +291,8 @@ export function Composer({
   }, [key, title, body, subject, kind, aud, pos, sourceUrl, post, priorPostId]);
   const canPosition =
     (kind === "opinion" || kind === "debate") &&
-    subjectTakesPosition(options.communityId ?? "ithaca", subject);
-  const catalog = entitiesFor(options.communityId ?? "ithaca");
+    subjectTakesPosition(options.catalog ?? [], options.communityId ?? "ithaca", subject);
+  const catalog = options.catalog ?? [];
   const choices = options.communityOnly ? [] : items.filter((i) =>
     kind === "article"
       ? i.kind === "News"

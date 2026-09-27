@@ -57,6 +57,8 @@ export function sites({ mockAuth = true } = {}): Plugin {
               // email-domain association on loopback. Never contacted.
               campus_cu: { id: "local_campus_cu", email: "polis-fixture-cu@cornell.edu", name: "Test Cornell student" },
               campus_uf: { id: "local_campus_uf", email: "polis-fixture-uf@ufl.edu", name: "Test UF student" },
+              // Reserved example.edu: a campus with no community yet.
+              campus_new: { id: "local_campus_new", email: "polis-fixture@example.edu", name: "Test new-campus student" },
               beta_b: {
                 id: "local_beta_b",
                 email: "beta_b@sites.test",

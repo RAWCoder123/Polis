@@ -14,7 +14,8 @@ import {
 } from "lucide-react";
 import { topicsFor } from "@/lib/social/commons";
 import type { CivicEntity, Snapshot } from "@/lib/social/types";
-import { entitiesFor, entityFor } from "@/lib/social/civic";
+import { catalogOf, inCatalog } from "@/lib/social/civic";
+import { localeOf } from "@/lib/social/communities";
 import { EntityChip, KindLine, PerspectiveBar, entityRoute } from "./civic-cards";
 import type { Navigate, Run } from "./social-post";
 import type { ComposeOptions } from "./social-forms";
@@ -53,7 +54,7 @@ export function commonsParams(tab: CommonsTab, hash: URLSearchParams) {
 // Starter questions ordered by what the viewer follows, then by participation.
 export function rankedQuestions(data: Snapshot, scope?: "campus" | "local") {
   const followed = new Set(data.follows.map((f) => f.issueId));
-  return entitiesFor(data.community?.id ?? "")
+  return catalogOf(data)
     .filter((e) => e.kind === "question" && (!scope || e.scope === scope))
     .map((e) => {
       const stats = data.commons?.questions.find((q) => q.id === e.id);
@@ -74,7 +75,7 @@ export function QuestionCard({
 }) {
   const stats = data.commons?.questions.find((q) => q.id === entity.id);
   const chips = entity.related.flatMap((id) => {
-    const e = entityFor(id);
+    const e = inCatalog(catalogOf(data), id);
     return e && e.kind !== "news" && e.kind !== "question" ? [e] : [];
   });
   return (
@@ -107,7 +108,7 @@ export function QuestionCard({
 
 export function TrendingTopics({ data, navigate }: { data: Snapshot; navigate: Navigate }) {
   const topics = (data.commons?.topics ?? []).flatMap((t) => {
-    const e = entityFor(t.subjectId);
+    const e = inCatalog(catalogOf(data), t.subjectId);
     return e && e.communityId === data.community?.id ? [{ e, t }] : [];
   });
   if (!topics.length) return null;
@@ -251,11 +252,13 @@ export function CommonsView({
   children: React.ReactNode;
 }) {
   const campus = data.community?.campus;
-  const tabs = commonsTabs.filter((t) => !t.campusOnly || campus);
+  const locale = localeOf(data.community);
+  // Campus appears for university communities; Local for any located community.
+  const tabs = commonsTabs.filter((t) => (t.id === "campus" ? !!campus : t.id === "local" ? !!locale : true));
   const current = commonsTabs.find((t) => t.id === tab)!;
   const scope = tab === "campus" ? "campus" : tab === "local" ? "local" : undefined;
   const questions = ["for-you", "campus", "local"].includes(tab) ? rankedQuestions(data, scope).slice(0, 2) : [];
-  const place = campus ? campus.shortName : data.community?.name ?? "your community";
+  const place = locale?.shortName ?? data.community?.name ?? "your community";
   const nationalScope = params.get("scope") === "polis" ? "polis" : "campus";
   // On a busy day conversations come first; when it is quiet, questions lead.
   const busyFeed = data.posts.length >= 3;
@@ -283,7 +286,7 @@ export function CommonsView({
         <h1>What {place} is talking about.</h1>
         <p>
           Questions, debates and sourced updates about real places, issues and decisions
-          {campus ? " on campus and around " + campus.city : ""}. Disagree with ideas, not people.{" "}
+          {campus ? " on campus and around " + campus.city : locale ? " around " + locale.city : ""}. Disagree with ideas, not people.{" "}
           <button className="text-button inline" onClick={() => navigate("guidelines")}>
             <ShieldCheck size={14} /> Commons guidelines
           </button>
@@ -335,7 +338,7 @@ export function CommonsView({
           : tab === "campus"
             ? "About " + (campus?.shortName ?? "campus") + ": buildings, offices, student government and campus life."
             : tab === "local"
-              ? "About " + (campus?.city ?? "the city") + ": housing, transit, local government, places and events."
+              ? "About " + (locale?.city ?? "the city") + ": housing, transit, local government, places and events."
               : tab === "national"
                 ? "National issues. Local and national conversations keep separate threads."
                 : tab === "trending"

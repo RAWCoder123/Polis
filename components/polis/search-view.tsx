@@ -2,7 +2,7 @@
 import "./civic.css";
 import { ArrowUpRight, Search } from "lucide-react";
 import type { CivicEntity, Snapshot } from "@/lib/social/types";
-import { searchEntities } from "@/lib/social/civic";
+import { catalogOf, searchEntities } from "@/lib/social/civic";
 import { discoverEvents, eventTime } from "@/lib/social/events";
 import { EntityRow, EventVisual } from "./civic-cards";
 import type { Navigate } from "./social-post";
@@ -33,7 +33,7 @@ export function SearchView({
   children: React.ReactNode;
 }) {
   const q = query.trim();
-  const entities = searchEntities(data.community?.id ?? "", q);
+  const entities = searchEntities(catalogOf(data), q);
   const events = q
     ? discoverEvents(data.events, { ...data.eventPreferences, interests: [] }, { q, city: "" }).map((r) => r.event)
     : [];

@@ -1,11 +1,11 @@
 "use client";
 import "./civic.css";
-import { ArrowRight, ArrowUpRight, Bell, Bookmark, GraduationCap, LocateFixed, MessageCircle, Users } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Bell, Bookmark, GraduationCap, LocateFixed, MapPin, MessageCircle, Users } from "lucide-react";
 import type { CivicEntity, CommunityEvent, Post, Snapshot } from "@/lib/social/types";
-import { entitiesFor, entityFor } from "@/lib/social/civic";
+import { catalogOf, inCatalog } from "@/lib/social/civic";
 import { discoverEvents, eventDay, eventTime, eventCategories } from "@/lib/social/events";
 import { useDeviceLocation } from "@/lib/social/use-device-location";
-import { communityFor } from "@/lib/social/communities";
+import { localeOf } from "@/lib/social/communities";
 import { subjectTitle } from "@/lib/social/catalog";
 import { CivicMap, mapPins } from "./civic-map";
 import { EntityRow, EntityVisual, EventVisual, entityRoute } from "./civic-cards";
@@ -15,9 +15,9 @@ import type { Navigate, Run } from "./social-post";
 const dayLabel = (e: CommunityEvent) =>
   new Intl.DateTimeFormat("en-US", { timeZone: e.timezone, month: "short", day: "numeric" }).format(new Date(e.startsAt));
 
-function DiscussionRow({ post, navigate }: { post: Post; navigate: Navigate }) {
+function DiscussionRow({ post, data, navigate }: { post: Post; data: Snapshot; navigate: Navigate }) {
   const attachment = JSON.parse(post.attachmentJson || "{}");
-  const subject = entityFor(post.subjectId);
+  const subject = inCatalog(catalogOf(data), post.subjectId);
   const title: string = post.title || post.text.split("\n")[0];
   return (
     <button className="discussion-row" onClick={() => navigate("post/" + post.id + "?community=" + post.communityId)}>
@@ -85,11 +85,12 @@ export function HomeDashboard({
   children?: React.ReactNode;
 }) {
   const community = data.community;
-  const campus = communityFor(community?.id ?? "")?.campus;
+  const campus = community?.campus;
+  const locale = localeOf(community);
   const location = useDeviceLocation();
-  const entities = entitiesFor(community?.id ?? "");
+  const entities = catalogOf(data);
   const now = new Date();
-  const today = eventDay(now.toISOString(), campus?.timezone);
+  const today = eventDay(now.toISOString(), locale?.timezone);
   const upcoming = discoverEvents(data.events, data.eventPreferences).map((r) => r.event);
   const todayEvents = upcoming.filter((e) => eventDay(e.startsAt, e.timezone) === today);
   const meetings = upcoming
@@ -108,13 +109,13 @@ export function HomeDashboard({
   const questions = rankedQuestions(data).slice(0, discussions.length >= 2 ? 1 : 2);
   const pinCount = mapPins(data).length;
   const dateLine = new Intl.DateTimeFormat("en-US", {
-    timeZone: campus?.timezone,
+    timeZone: locale?.timezone,
     weekday: "long",
     month: "long",
     day: "numeric",
   }).format(now);
 
-  if (!campus)
+  if (!locale)
     return (
       <section className="home-dash">
         <header className="home-hero">
@@ -125,15 +126,18 @@ export function HomeDashboard({
             with the community here are visible to other registered members.
           </p>
           <p>
-            Polis is piloting local maps, issues and campus conversations at Cornell and the University of Florida.
-            Join with your university email or a community code to see your campus. Conversations here stay open to every member.
+            Polis works best close to home. Find the commons for your town or campus, or start one: you’ll get a local map
+            of public places, your local offices, starter questions and a place to talk with neighbors.
           </p>
           <div className="form-actions">
-            <button className="btn primary" onClick={() => navigate("commons")}>
+            <button className="btn primary" onClick={() => navigate("communities")}>
+              <MapPin size={16} /> Find your community
+            </button>
+            <button className="btn secondary" onClick={() => navigate("commons")}>
               Open The Commons <ArrowRight size={16} />
             </button>
-            <button className="btn secondary" onClick={() => navigate("join")}>
-              Enter a community code
+            <button className="text-button" onClick={() => navigate("join")}>
+              Have a community code?
             </button>
           </div>
         </header>
@@ -145,9 +149,10 @@ export function HomeDashboard({
     <section className="home-dash">
       <header className="home-hero">
         <p className="social-section-label">
-          <GraduationCap size={14} aria-hidden="true" /> {campus.university.toUpperCase()} · {campus.city.toUpperCase()}, {campus.state} · {dateLine.toUpperCase()}
+          {campus ? <GraduationCap size={14} aria-hidden="true" /> : <MapPin size={14} aria-hidden="true" />}{" "}
+          {[campus?.university, locale.city, locale.region].filter(Boolean).join(" · ").toUpperCase()} · {dateLine.toUpperCase()}
         </p>
-        <h1>What’s happening around {campus.shortName} today.</h1>
+        <h1>What’s happening around {locale.shortName} today.</h1>
         <Pulse data={data} navigate={navigate} />
       </header>
       {children}
@@ -173,7 +178,7 @@ export function HomeDashboard({
               }}
             />
             <p className="map-footnote">
-              {pinCount} places, offices and events around {campus.shortName}.{" "}
+              {pinCount} places, offices and events around {locale.shortName}.{" "}
               {location.status === "granted" ? (
                 "Using your location on this device only."
               ) : (
@@ -182,7 +187,7 @@ export function HomeDashboard({
                 </button>
               )}
               {(location.status === "denied" || location.status === "unavailable") &&
-                " Location is off, so Polis uses the " + campus.shortName + " campus."}
+                " Location is off, so Polis uses the center of " + locale.shortName + "."}
             </p>
           </section>
 
@@ -194,7 +199,7 @@ export function HomeDashboard({
               </button>
             </div>
             {discussions.map((p) => (
-              <DiscussionRow key={p.id} post={p} navigate={navigate} />
+              <DiscussionRow key={p.id} post={p} data={data} navigate={navigate} />
             ))}
             <div className="question-grid">
               {questions.map(({ e }) => (
@@ -205,6 +210,14 @@ export function HomeDashboard({
 
           <section className="home-section">
             <h2>Today and this week</h2>
+            {!todayEvents.length && !meetings.length && !briefs.length && (
+              <p className="metadata today-empty">
+                Nothing is listed for this week yet. Curators add local meetings and events, and anyone can suggest one.{" "}
+                <button className="text-button inline" onClick={() => navigate("explore/events")}>
+                  Suggest or browse events
+                </button>
+              </p>
+            )}
             <ul className="today-list">
               {todayEvents.map((e) => (
                 <li key={e.id}>

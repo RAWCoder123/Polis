@@ -35,7 +35,7 @@ import { EventPlanEditor } from "./event-plan";
 import { ReplyComposer, type ComposeOptions, Modal } from "./social-forms";
 import { PostCard, type Run, type Navigate } from "./social-post";
 import { PerspectiveBar } from "./civic-cards";
-import { replyTakesPosition } from "@/lib/social/civic";
+import { catalogOf, replyTakesPosition } from "@/lib/social/civic";
 export function Quiet({
   title,
   children,
@@ -1157,7 +1157,7 @@ export function Conversation({
   const p = data.posts[0];
   if (!p || !data.me) return null;
   const allRows = data.comments ?? [];
-  const takesPosition = replyTakesPosition(p.communityId, p);
+  const takesPosition = replyTakesPosition(catalogOf(data), p.communityId, p);
   // Each person's most recent stated perspective counts once, including the author's.
   const latest = new Map<string, string>();
   if (p.position) latest.set(p.authorId, p.position);

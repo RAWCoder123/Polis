@@ -9,7 +9,7 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
-import { issuesIn } from "@/lib/social/civic";
+import { catalogOf } from "@/lib/social/civic";
 import { audiences, type Audience, type Snapshot } from "@/lib/social/types";
 import type { CommandData } from "@/lib/social/service";
 import { AudienceField, Modal } from "./social-forms";
@@ -36,7 +36,7 @@ export function IssuePriorities({
     [error, setError] = useState("");
   const rows = data.priorities;
   // Each campus ranks its own issues, including its sourced Commons topics.
-  const issues = issuesIn(data.community?.id ?? "");
+  const issues = catalogOf(data).filter((e) => e.kind === "issue");
   async function submit(command: CommandData) {
     if (busy) return;
     setBusy(true);

@@ -39,7 +39,7 @@ import {
   type Position,
   type Snapshot,
 } from "@/lib/social/types";
-import { entityFor, entityKinds, eventsForEntity } from "@/lib/social/civic";
+import { catalogOf, entityKinds, eventsForEntity, inCatalog } from "@/lib/social/civic";
 import { eventCategories, eventTime } from "@/lib/social/events";
 import type { Navigate, Run } from "./social-post";
 
@@ -327,9 +327,10 @@ export function EntitySummaryCard({
 }) {
   const people = discussionCount(entity, data);
   const upcoming = eventsForEntity(entity, data.events);
-  const topics = entity.topics.flatMap((t) => (entityFor(t) ? [entityFor(t)!] : []));
+  const catalog = catalogOf(data);
+  const topics = entity.topics.flatMap((t) => (inCatalog(catalog, t) ? [inCatalog(catalog, t)!] : []));
   const news = entity.related.flatMap((id) => {
-    const r = entityFor(id);
+    const r = inCatalog(catalog, id);
     return r?.kind === "news" ? [r] : [];
   });
   return (
@@ -399,7 +400,7 @@ export function EventSummaryCard({
   discuss: (event: CommunityEvent) => void;
   onClose?: () => void;
 }) {
-  const issue = event.issueId ? entityFor(event.issueId) : undefined;
+  const issue = event.issueId ? inCatalog(catalogOf(data), event.issueId) : undefined;
   const saved = data.saved.includes(event.id);
   return (
     <article className="entity-summary" aria-label={event.title}>

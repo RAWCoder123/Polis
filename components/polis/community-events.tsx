@@ -30,7 +30,7 @@ import { communityEventCalendar } from "@/lib/social/calendar";
 import type { Run, Navigate } from "./social-post";
 import { Modal } from "./social-forms";
 import VenueMap from "./venue-map";
-import { cityCenters } from "@/lib/social/communities";
+import { cityCenters, localeOf } from "@/lib/social/communities";
 import { topicFor } from "@/lib/social/commons";
 
 type Props = { data: Snapshot; run: Run; navigate: Navigate };
@@ -352,10 +352,15 @@ export function CommunityEvents({
     else next.delete(key);
     navigate(base + (next.size ? "?" + next : ""));
   }
+  // The community's own center for its city, then known city centers.
+  const cityCenter = (name: string): [number, number] | undefined => {
+    const locale = localeOf(data.community);
+    return locale && locale.city.toLowerCase() === name.toLowerCase() ? locale.center : cityCenters[name.toLowerCase()];
+  };
   // City centers are not device locations. Precise device coordinates never leave this component.
   const nearbyOrigin =
     origin ??
-    cityCenters[city.toLowerCase()];
+    cityCenter(city);
   const visible = discoverEvents(
     data.events.filter(
       (e) =>
@@ -557,7 +562,7 @@ export function CommunityEvents({
         {mode === "map" && (
           <VenueMap
             key={city}
-            center={cityCenters[city.toLowerCase()]}
+            center={cityCenter(city) ?? localeOf(data.community)?.center}
             events={mapEvents}
             selected={selected}
             onSelect={(id) => update("selected", id)}

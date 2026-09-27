@@ -6,9 +6,9 @@ import { createPortal } from "react-dom";
 import type { LayerGroup, Map as LeafletMap, Marker } from "leaflet";
 import { CalendarDays, LocateFixed, MapPin } from "lucide-react";
 import type { CivicEntity, CommunityEvent, EntityKind, Snapshot } from "@/lib/social/types";
-import { entitiesFor } from "@/lib/social/civic";
+import { catalogOf } from "@/lib/social/civic";
 import { distanceMiles, eventExpired, eventCategories } from "@/lib/social/events";
-import { communityFor } from "@/lib/social/communities";
+import { localeOf } from "@/lib/social/communities";
 import { useDeviceLocation } from "@/lib/social/use-device-location";
 import {
   categoryIcons,
@@ -55,8 +55,7 @@ export type MapPinData = {
 // Campus places, offices and upcoming listings in one set. Occurrences at the
 // same venue share a pin so repeated markets do not stack on top of each other.
 export function mapPins(data: Snapshot, now = new Date()): MapPinData[] {
-  const communityId = data.community?.id ?? "";
-  const pins: MapPinData[] = entitiesFor(communityId).flatMap((e) =>
+  const pins: MapPinData[] = catalogOf(data).flatMap((e) =>
     e.location
       ? [{
           id: e.id,
@@ -153,7 +152,7 @@ export function CivicMap({
   onSelect: (id: string) => void;
   variant?: "full" | "preview";
 }) {
-  const campus = communityFor(data.community?.id ?? "")?.campus;
+  const locale = localeOf(data.community);
   const element = useRef<HTMLDivElement>(null);
   const map = useRef<LeafletMap | null>(null);
   const group = useRef<LayerGroup | null>(null);
@@ -170,13 +169,16 @@ export function CivicMap({
     selectRef.current = onSelect;
   }, [onSelect]);
   const allPins = useMemo(() => mapPins(data), [data]);
-  const pins = useMemo(
-    () => allPins.filter((p) => layer === "all" || p.layer === layer),
-    [allPins, layer],
-  );
+  // The preview keeps the most civic places so a busy town stays readable.
+  const pins = useMemo(() => {
+    const visible = allPins.filter((p) => layer === "all" || p.layer === layer);
+    if (variant !== "preview" || visible.length <= 30) return visible;
+    const order: MapLayer[] = ["people", "government", "events", "campus", "issues", "community"];
+    return [...visible].sort((a, b) => order.indexOf(a.layer) - order.indexOf(b.layer)).slice(0, 30);
+  }, [allPins, layer, variant]);
   const pinKey = pins.map((p) => p.id).join("|");
-  const near = location.coords && campus && distanceMiles(location.coords, campus.center) < 25 ? location.coords : undefined;
-  const origin: [number, number] | undefined = near ?? campus?.center;
+  const near = location.coords && locale && distanceMiles(location.coords, locale.center) < 25 ? location.coords : undefined;
+  const origin: [number, number] | undefined = near ?? locale?.center;
 
   useEffect(() => {
     let canceled = false;
@@ -190,7 +192,7 @@ export function CivicMap({
           fadeAnimation: false,
           zoomControl: variant === "full",
           attributionControl: true,
-        }).setView(campus?.center ?? [42.4475, -76.4885], campus?.zoom ?? 14);
+        }).setView(locale?.center ?? [39.5, -98.35], locale?.zoom ?? 4);
         L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
           attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -316,7 +318,7 @@ export function CivicMap({
           ref={element}
           className="civic-map-canvas"
           role="region"
-          aria-label={"Map of " + (campus?.university ?? "your community") + ". Use Tab to reach places and Enter to open one."}
+          aria-label={"Map of " + (locale?.label ?? "your community") + ". Use Tab to reach places and Enter to open one."}
         />
         {hosts.map(([id, host]) => {
           const pin = pins.find((p) => p.id === id);
@@ -344,10 +346,10 @@ export function CivicMap({
                 : near
                   ? "Sorted by distance from you. Your location stays on this device."
                   : location.status === "granted"
-                    ? "You seem to be away from campus, so distances use " + (campus?.shortName ?? "the campus") + "."
+                    ? "You seem to be away from " + (locale?.shortName ?? "here") + ", so distances use its center."
                     : location.status === "denied" || location.status === "unavailable"
-                      ? "Location is off. Distances use the center of " + (campus?.shortName ?? "campus") + "."
-                      : "Distances use the center of " + (campus?.shortName ?? "campus") + ". Location is optional."}
+                      ? "Location is off. Distances use the center of " + (locale?.shortName ?? "your community") + "."
+                      : "Distances use the center of " + (locale?.shortName ?? "your community") + ". Location is optional."}
             </p>
           </div>
           {card && <div className="civic-map-card">{card}</div>}

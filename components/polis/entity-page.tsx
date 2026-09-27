@@ -15,7 +15,7 @@ import {
 import { toast } from "sonner";
 import { itemById } from "@/lib/polis-data";
 import { issues as legacyIssues } from "@/lib/social/catalog";
-import { entityFor, entityIn, entityKinds, eventsForEntity, relatedEntities } from "@/lib/social/civic";
+import { catalogOf, entityKinds, eventsForEntity, inCatalog, relatedEntities } from "@/lib/social/civic";
 import { eventTime } from "@/lib/social/events";
 import { positions, type CivicEntity, type Position, type Snapshot } from "@/lib/social/types";
 import { ItemIcon } from "./common";
@@ -60,7 +60,9 @@ export function EntityPage({
   compose: (o: ComposeOptions) => void;
   children: React.ReactNode;
 }) {
-  const entity = entityIn(data.community?.id ?? "", id);
+  const catalog = catalogOf(data);
+  const entityFor = (x: string) => inCatalog(catalog, x);
+  const entity = entityFor(id);
   const [perspective, setPerspective] = useState<Position | "">("");
   if (!entity)
     return (
@@ -72,7 +74,7 @@ export function EntityPage({
         .
       </Quiet>
     );
-  const related = relatedEntities(entity);
+  const related = relatedEntities(catalog, entity);
   const upcoming = eventsForEntity(entity, data.events).slice(0, 4);
   const saved = data.saved.includes(entity.id);
   const stats = data.commons?.questions.find((q) => q.id === entity.id);

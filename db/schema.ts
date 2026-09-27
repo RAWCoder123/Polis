@@ -341,3 +341,51 @@ export const writeGuards = sqliteTable(
   { id: text().primaryKey(), allowed: integer().notNull() },
   (t) => [check("write_allowed", sql`${t.allowed}=1`)],
 );
+// Communities members create for any city or town, or for a university whose
+// students sign in with its plain institutional domain. Configured campuses
+// stay in code; these rows extend the same community model.
+export const placeCommunities = sqliteTable(
+  "place_communities",
+  {
+    id: text().primaryKey(),
+    kind: text().notNull(),
+    name: text().notNull(),
+    locationLabel: text().notNull(),
+    city: text().notNull(),
+    region: text().notNull().default(""),
+    country: text().notNull().default(""),
+    latitude: real().notNull(),
+    longitude: real().notNull(),
+    timezone: text().notNull(),
+    domain: text(),
+    university: text(),
+    createdBy: text()
+      .notNull()
+      .references(() => profiles.id),
+    createdAt: text().notNull(),
+    placesImportedAt: text(),
+    status: text().notNull().default("active"),
+  },
+  (t) => [
+    uniqueIndex("place_community_domain").on(t.domain),
+    index("place_community_city").on(t.country, t.region, t.city),
+  ],
+);
+// Public places imported from OpenStreetMap for a community map.
+export const communityPlaces = sqliteTable(
+  "community_places",
+  {
+    communityId: text().notNull(),
+    id: text().notNull(),
+    kind: text().notNull(),
+    name: text().notNull(),
+    subtitle: text().notNull(),
+    latitude: real().notNull(),
+    longitude: real().notNull(),
+    source: text().notNull(),
+    sourceRef: text().notNull(),
+    website: text(),
+    importedAt: text().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.communityId, t.id] })],
+);

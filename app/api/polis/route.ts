@@ -33,7 +33,10 @@ async function handle(request: Request, write: boolean) {
         503,
       );
     const user = await getChatGPTUser();
-    const service = socialService(env.DB, user, env.POLIS_OWNER_EMAIL ?? "");
+    const service = socialService(env.DB, user, env.POLIS_OWNER_EMAIL ?? "", {
+      fetch: (input, init) => fetch(input, init),
+      contact: new URL(request.url).origin,
+    });
     if (write) {
       const raw = await request.text();
       if (raw.length > 32000)
@@ -55,6 +58,21 @@ async function handle(request: Request, write: boolean) {
         return respond(result);
       }
       return respond(await service.execute(input));
+    }
+    const search = new URL(request.url).searchParams;
+    if (search.has("communities")) {
+      const near = (search.get("near") ?? "").split(",").map(Number);
+      return respond({
+        communities: await service.searchCommunities(
+          search.get("communities") ?? "",
+          near.length === 2 && near.every(Number.isFinite) ? [near[0], near[1]] : null,
+        ),
+      });
+    }
+    if (search.has("places")) return respond({ places: await service.lookupPlaces(search.get("places") ?? "") });
+    if (search.has("reverse")) {
+      const [lat, lng] = (search.get("reverse") ?? "").split(",").map(Number);
+      return respond({ place: await service.lookupReverse(lat, lng) });
     }
     if (new URL(request.url).searchParams.get("invitation") === "1") {
       const invite = pendingInvitation(request);
