@@ -314,3 +314,13 @@
   .commons .commons-formats button svg { grid-row: auto; }
   .commons .commons-formats button span { font-size: 11.5px; }
 }
+
+/* Home pulse: calm, factual signals for a returning member. */
+.home-pulse { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.social-shell .home-pulse button { display: flex; gap: 11px; align-items: flex-start; text-align: left; border: 1px solid #e3e9f2; background: #fbfcfe; border-radius: 12px; padding: 13px 14px; color: #17233b; font-size: 14px; }
+.home-pulse button:hover { border-color: #b9c7ef; background: #f6f8ff; }
+.home-pulse svg { color: #3659e3; margin-top: 2px; flex-shrink: 0; }
+.home-pulse span { display: grid; gap: 3px; min-width: 0; }
+.home-pulse strong { font-size: 14px; font-weight: 600; }
+.home-pulse small { font-size: 12px; color: #596a83; line-height: 1.45; }
+@media (max-width: 767px) { .home-pulse { grid-template-columns: 1fr; gap: 8px; } .social-shell .home-pulse button { padding: 11px 12px; } }

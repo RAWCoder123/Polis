@@ -13,6 +13,7 @@ Polis retains the recovered Sites stack: React 19, Next.js 16 App Router convent
 | HTTP boundary | `app/api/polis/route.ts`, `app/chatgpt-auth.ts` | Trusted identity, same-origin JSON writes, errors, no-store responses |
 | Domain service | `lib/social/service.ts` | Membership, ownership, audience and relationships; transactional commands and receipts |
 | Storage | `db/schema.ts`, `drizzle/`, `db/index.ts` | D1 schema, versioned migrations, Drizzle helper |
+| Campus & civic | `lib/social/communities.ts`, `lib/social/civic/`, `lib/social/campus-events.ts`, `civic-map.tsx`, `civic-cards.tsx`, `entity-page.tsx`, `home-dashboard.tsx`, `commons.tsx` | Campus configuration and email-domain association, per-community civic catalog, typed map, entity cards/pages, Commons tabs and summaries |
 | Samples/demo | `lib/polis-data.ts`, `lib/social/catalog.ts`, `lib/polis-state.ts`, `app/demo/page.tsx` | Labeled civic samples; isolated fictional localStorage demo |
 | Build/hosting | `vite.config.ts`, `build/sites-vite-plugin.ts`, `scripts/`, `.openai/hosting.json` | Worker/client build and Sites integration |
 
