@@ -56,6 +56,7 @@ const action = z.discriminatedUnion("action", [
     username: z.string().regex(/^[a-z0-9_]{3,24}$/),
   }),
   z.object({ action: z.literal("community.joinOpen") }),
+  z.object({ action: z.literal("community.joinNational") }),
   z.object({ action: z.literal("community.manage"), communityId: id }),
   z.object({ action: z.literal("conversation.follow"), postId: id, enabled: z.boolean() }),
   z.object({ action: z.literal("conversation.visit"), postId: id }),
@@ -84,6 +85,8 @@ const action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("mute"), targetId: id, enabled: z.boolean() }),
   z.object({
     action: z.literal("post"),
+    title: z.string().trim().max(160).default(""),
+    coverage: z.enum(["local", "national"]).default("local"),
     organizationId: id.nullable().default(null),
     organizationChannel: z.enum(["announcements", "discussion", "plans"]).default("discussion"),
     kind: z.enum([
@@ -104,6 +107,7 @@ const action = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("post.edit"),
+    title: z.string().trim().max(160).optional(),
     sourceUrl: z.union([source, z.literal("")]).optional(),
     postId: id,
     text,
@@ -414,9 +418,23 @@ export function socialService(
         },
       };
     }
+    const nationalJoined = !!await one("SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?", uid, openCommunityId);
+    if (params.get("scope") === "polis" && params.get("coverage") === "national") {
+      if (!nationalJoined) {
+        const fallback = new URLSearchParams(params); fallback.delete("scope");
+        const shell = await snapshot(fallback);
+        return { ...shell, nationalJoined: false, posts: [], nextCursor: null };
+      }
+      if (communityId !== openCommunityId) {
+        const wider = new URLSearchParams(params); wider.set("community", openCommunityId);
+        return snapshot(wider);
+      }
+    }
     const v = visibility();
-    let sql = `SELECT p.*,u.name,u.username FROM posts p JOIN profiles u ON u.id=p.authorId WHERE ${v.sql}`;
-    const args: unknown[] = [...v.args];
+    const activeSort = params.get("sort") === "active";
+    const activitySql = `MAX(COALESCE(p.editedAt,p.createdAt),COALESCE((SELECT MAX(c.createdAt) FROM comments c WHERE c.postId=p.id AND c.deletedAt IS NULL AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?)) AND NOT EXISTS(SELECT 1 FROM mutes m WHERE m.ownerId=? AND m.targetId=c.authorId)),p.createdAt))`;
+    let sql = `SELECT p.*,u.name,u.username,${activitySql} activitySort FROM posts p JOIN profiles u ON u.id=p.authorId WHERE ${v.sql}`;
+    const args: unknown[] = [uid, uid, uid, ...v.args];
     const postId = params.get("post");
     const filter = params.get("filter") ?? "friends";
     const organizationId = params.get("organization");
@@ -427,6 +445,10 @@ export function socialService(
       sql += " AND p.id=?";
       args.push(postId);
     } else {
+      if (["local", "national"].includes(params.get("coverage") ?? "")) {
+        sql += " AND p.coverage=?"; args.push(params.get("coverage"));
+      }
+      if (params.get("subject")) { sql += " AND p.subjectId=?"; args.push(params.get("subject")); }
       if (org) {
         sql += " AND p.organizationId=?"; args.push(org.id);
         const channel = params.get("channel");
@@ -469,7 +491,7 @@ export function socialService(
       }
       if (params.get("q")) {
         sql +=
-          " AND (instr(lower(p.text),lower(?))>0 OR instr(lower(u.name),lower(?))>0)";
+          " AND (instr(lower(p.title || ' ' || p.text),lower(?))>0 OR instr(lower(u.name),lower(?))>0)";
         args.push(
           params.get("q")?.slice(0, 100),
           params.get("q")?.slice(0, 100),
@@ -479,15 +501,15 @@ export function socialService(
       if (cursor) {
         const parts = cursor.split("|");
         if (parts.length !== 2) fail(400, "Invalid page cursor.");
-        sql += " AND (p.createdAt<? OR (p.createdAt=? AND p.id<?))";
+        sql += activeSort ? " AND (activitySort<? OR (activitySort=? AND p.id<?))" : " AND (p.createdAt<? OR (p.createdAt=? AND p.id<?))";
         args.push(parts[0], parts[0], parts[1]);
       }
     }
-    sql += " ORDER BY p.createdAt DESC,p.id DESC LIMIT 21";
+    sql += activeSort ? " ORDER BY activitySort DESC,p.id DESC LIMIT 21" : " ORDER BY p.createdAt DESC,p.id DESC LIMIT 21";
     const rows = await all<Post>(sql, ...args);
     if (postId && !rows.length) fail(404, "This conversation is unavailable.");
     const nextCursor =
-      rows.length > 20 ? rows[19].createdAt + "|" + rows[19].id : null;
+      rows.length > 20 ? (activeSort ? rows[19].activitySort : rows[19].createdAt) + "|" + rows[19].id : null;
     const people = await all<Person>(
       `SELECT p.*,CASE WHEN f.status='accepted' THEN 'friends' WHEN f.requester=? THEN 'outgoing' WHEN f.status='pending' THEN 'incoming' ELSE 'none' END relationship,EXISTS(SELECT 1 FROM mutes WHERE ownerId=? AND targetId=p.id) muted,EXISTS(SELECT 1 FROM blocks WHERE ownerId=? AND targetId=p.id) blocked FROM profiles p JOIN pilot_memberships m ON m.userId=p.id LEFT JOIN friendships f ON (f.a=? AND f.b=p.id) OR (f.b=? AND f.a=p.id) WHERE p.id<>? AND m.communityId=? AND NOT EXISTS(SELECT 1 FROM blocks b WHERE b.ownerId=p.id AND b.targetId=?) ORDER BY p.name`,
       uid,
@@ -608,7 +630,11 @@ export function socialService(
         )
           notifications.push(n);
       } else {
+        const previousCommunity = communityId;
         try {
+          const destination = await one<{ communityId: string }>("SELECT p.communityId FROM posts p JOIN pilot_memberships m ON m.communityId=p.communityId AND m.userId=? WHERE p.id=?", uid, n.targetId);
+          if (!destination) continue;
+          communityId = destination.communityId;
           await post(n.targetId);
           if (
             n.commentId &&
@@ -618,8 +644,8 @@ export function socialService(
             ))
           )
             continue;
-          notifications.push(n);
-        } catch {}
+          notifications.push({ ...n, communityId });
+        } catch {} finally { communityId = previousCommunity; }
       }
     }
     const counts = question
@@ -707,6 +733,7 @@ export function socialService(
           }
         : undefined;
     return {
+      nationalJoined,
       organizations: await Promise.all(pilotOrganizations.filter(o => o.communityId === communityId).map(async o => ({ ...o, role: (await one<{ role: string }>("SELECT role FROM organization_memberships WHERE userId=? AND organizationId=?", uid, o.id))?.role ?? null }))),
       organizationMembers: orgMembership ? await all("SELECT p.id,p.name,m.role FROM organization_memberships m JOIN profiles p ON p.id=m.userId WHERE m.organizationId=? AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=p.id) OR (b.targetId=? AND b.ownerId=p.id)) ORDER BY p.name", org!.id, uid, uid) : undefined,
       organizationCodes: orgMembership?.role === "organizer" ? await all("SELECT id,expiresAt,useCount,CASE WHEN unlimited=1 THEN NULL ELSE maxUses END maxUses,revokedAt FROM invitation_codes WHERE organizationId=? AND communityId=? ORDER BY createdAt DESC LIMIT 100", org!.id, communityId) : undefined,
@@ -1073,9 +1100,10 @@ export function socialService(
           if (await one("SELECT 1 FROM conversation_follows WHERE userId=? AND postId=?", uid, data.postId))
             add("INSERT OR IGNORE INTO metrics(id,userId,event,objectId,createdAt,communityId) VALUES(?,?,'conversation_return',NULL,?,?)", "return_" + await digest(uid + communityId + now.slice(0, 10)), uid, now.slice(0, 10), communityId);
           break;
+        case "community.joinNational":
         case "community.joinOpen": {
           add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) VALUES(?,?,?)", uid, openCommunityId, pilotOwner() ? "owner" : "member");
-          add("UPDATE profiles SET activeCommunityId=? WHERE id=?", openCommunityId, uid);
+          if (data.action === "community.joinOpen") add("UPDATE profiles SET activeCommunityId=? WHERE id=?", openCommunityId, uid);
           result = { ok: true, communityId: openCommunityId };
           break;
         }
@@ -1347,6 +1375,7 @@ export function socialService(
             { sourceUrl: data.sourceUrl, ...(data.organizationId ? { organizationChannel: data.organizationChannel } : {}) },
             data.priorPostId,
           );
+          add("UPDATE posts SET title=?,coverage=? WHERE id=?", data.title, data.coverage, objectId);
           if (data.organizationId) {
             add("UPDATE posts SET organizationId=? WHERE id=?", data.organizationId, objectId);
             add("INSERT INTO metrics(id,userId,event,createdAt,communityId) VALUES(?,?,'organization_contribution',?,?)", key + "_org", uid, now, communityId);
@@ -1356,6 +1385,7 @@ export function socialService(
         }
         case "post.edit": {
           const p = await guardedOwnPost(data.postId);
+          if (data.title !== undefined) add("UPDATE posts SET title=? WHERE id=?", data.title, data.postId);
           const attachment = {
             ...JSON.parse(p.attachmentJson || "{}"),
             ...(data.sourceUrl !== undefined

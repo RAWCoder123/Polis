@@ -115,6 +115,9 @@ export type Post = {
   id: string;
   communityId: string;
   organizationId?: string | null;
+  title?: string;
+  coverage?: "local" | "national";
+  activitySort?: string;
   following?: boolean;
   latestActivity?: string;
   authorId: string;
@@ -146,6 +149,7 @@ export type Comment = {
   editedAt: string | null;
 };
 export type Notice = {
+  communityId?: string;
   id: string;
   kind: string;
   name: string;
@@ -168,6 +172,7 @@ export type Question = {
   counts?: { choice: string; count: number }[];
 };
 export type Snapshot = {
+  nationalJoined?: boolean;
   organizations?: { id: string; name: string; description: string; role: string | null }[];
   organizationMembers?: { id: string; name: string; role: string }[];
   organizationCodes?: { id: string; expiresAt: string; useCount: number; maxUses: number | null; revokedAt: string | null }[];

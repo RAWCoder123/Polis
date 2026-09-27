@@ -64,6 +64,13 @@
       "when": 1790365266270,
       "tag": "0008_strange_nocturne",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1790471733740,
+      "tag": "0009_loud_warpath",
+      "breakpoints": true
     }
   ]
 }

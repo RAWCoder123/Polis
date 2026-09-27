@@ -93,6 +93,8 @@ export const posts = sqliteTable(
       .references(() => profiles.id),
     communityId: text().notNull(),
     organizationId: text(),
+    title: text().notNull().default(""),
+    coverage: text().notNull().default("local"),
     kind: text().notNull(),
     subjectId: text().notNull(),
     issueId: text().notNull(),
