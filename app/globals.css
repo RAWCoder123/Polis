@@ -3,6 +3,39 @@
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 
 .account-entry > .btn { margin-top: 22px; }
+.commons-intro { padding-bottom: 24px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+.commons-intro > p { color: var(--muted-foreground); line-height: 1.7; }
+.commons-formats { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin-block: 22px; }
+.commons-formats button { display: grid; gap: 8px; padding: 16px; background: var(--secondary); border: 1px solid var(--border); border-radius: 12px; color: var(--foreground); }
+.commons-formats button:hover { border-color: var(--primary); }
+.commons-formats svg { color: var(--primary); }
+.commons-formats span { font-size: 14px; color: var(--muted-foreground); }
+.commons-topics,.commons-topic-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-block: 16px; }
+.commons-notification-optin { margin-bottom: 14px; min-height: 44px; }
+.commons-changed { margin-bottom: 24px; }
+.commons-changed button { display: flex; width: 100%; align-items: start; gap: 12px; padding: 18px 0; background: none; border: 0; border-bottom: 1px solid var(--border); }
+.commons-changed button > span { flex: 1; }
+.commons-changed strong,.commons-changed small { display: block; }
+.commons-changed strong { font-size: 15px; line-height: 1.6; }
+.commons-changed small { color: var(--muted-foreground); margin-top: 7px; font-size: 13px; }
+.commons-topic-detail h1 { font-family: Georgia,serif; font-size: 34px; margin-block: 16px; }
+.commons-topic-detail > h2 { margin-block: 28px 16px; font-family: Georgia,serif; font-size: 26px; }
+.commons-background { border: 1px solid var(--border); background: var(--secondary); padding: 24px; border-radius: 12px; margin-block: 24px; }
+.commons-background h2 { font-family: Georgia,serif; font-size: 24px; margin: 12px 0; }
+.commons-background p { margin-block: 14px; line-height: 1.8; }
+.commons-background a { color: var(--primary); display: inline-flex; gap: 8px; align-items: center; overflow-wrap: anywhere; }
+.commons-thread-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; font-size: 13px; color: var(--muted-foreground); }
+.commons-thread-meta button { min-height: 44px; }
+.commons-empty { color: var(--muted-foreground); padding-block: 20px; }
+.commons-organization-link { margin: 8px 0 16px; min-height: 44px; }
+.organization-space h1 { font: 32px Georgia,serif; margin: 18px 0; }
+.organization-space > p { margin-bottom: 16px; line-height: 1.7; }
+.organization-space > .btn { margin-block: 16px; }
+.organization-space summary { cursor: pointer; min-height: 44px; padding-block: 12px; }
+.organization-manage { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
+.organization-member,.organization-code-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-block: 10px; border-bottom: 1px solid var(--border); font-size: 14px; }
+.organization-code { margin-block: 20px; }
+@media(max-width:480px) { .commons-formats { gap: 6px; } .commons-formats button { padding: 12px 8px; } .commons-formats span { font-size: 13px; } }
 .social-topbar > .account-session-label { font-family: var(--font-sans); font-size: 14px; color: var(--muted-foreground); }
 .account-entry .metadata { line-height: 1.8; margin-block: 15px; }
 .account-entry .social-section-label { display: flex; align-items: center; gap: 7px; }

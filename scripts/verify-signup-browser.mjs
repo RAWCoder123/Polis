@@ -74,6 +74,7 @@ try {
     await expect(page.getByRole("heading", { name: "Enter invite code" })).toHaveCount(0);
     console.log("PASS signup, optional-code skip, reload, protected community, profile, layout: " + width);
   }
+  await command(actors[0], { action: "preferences", replies: true, reactions: false, issues: false, events: false });
   const post = await command(actors[0], { action: "post", kind: "question", subjectId: "community", audience: "community", text: "Synthetic signup QA: how can neighbors get involved?" });
   await command(actors[1], { action: "comment", postId: post.postId, text: "Synthetic QA reply from a separate account." });
   assert.ok((await state(actors[0])).notifications.some(n => n.targetId === post.postId));

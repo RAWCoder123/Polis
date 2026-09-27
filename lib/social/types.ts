@@ -1,9 +1,11 @@
 import type { PilotCommunity } from "./communities";
-export type InvitationPreview = { community: PilotCommunity; expiresAt: string; alreadyJoined: boolean };
+export type InvitationPreview = { community: PilotCommunity; organization?: { id: string; name: string }; expiresAt: string; alreadyJoined: boolean };
 export type Audience = "only_me" | "friends" | "community";
 export type PostType =
   | "opinion"
   | "question"
+  | "debate"
+  | "update"
   | "article"
   | "ranking"
   | "event_share"
@@ -74,6 +76,7 @@ export type CommandResult = {
   invitationCode?: string;
   communityId?: string;
   alreadyJoined?: boolean;
+  organizationId?: string;
   plan?: PlanConfirmation;
 };
 export const audiences: Record<Audience, string> = {
@@ -110,6 +113,10 @@ export type Rank = {
 };
 export type Post = {
   id: string;
+  communityId: string;
+  organizationId?: string | null;
+  following?: boolean;
+  latestActivity?: string;
   authorId: string;
   name: string;
   username: string;
@@ -161,6 +168,9 @@ export type Question = {
   counts?: { choice: string; count: number }[];
 };
 export type Snapshot = {
+  organizations?: { id: string; name: string; description: string; role: string | null }[];
+  organizationMembers?: { id: string; name: string; role: string }[];
+  organizationCodes?: { id: string; expiresAt: string; useCount: number; maxUses: number | null; revokedAt: string | null }[];
   community: PilotCommunity | null;
   communities: PilotCommunity[];
   events: CommunityEvent[];

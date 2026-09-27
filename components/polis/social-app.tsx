@@ -2,6 +2,9 @@
 import { WelcomeSteps } from "./issue-priorities";
 import { InvitationEntry } from "./invitation-entry";
 import { AccountSetup, SignInChoice } from "./account-entry";
+import { CommonsIntro, CommonsTopicDetail, WhatChanged } from "./commons";
+import { OrganizationSpace } from "./organization-space";
+import { topicFor, topicsFor } from "@/lib/social/commons";
 import {
   AroundEvents,
   CommunityEvents,
@@ -88,7 +91,7 @@ export default function SocialApp() {
   );
   const route = hashLocation.pathname.slice(1);
   const exploreParams = hashLocation.searchParams;
-  const [filter, setFilter] = useState("friends"),
+  const [filter, setFilter] = useState("community"),
     [searchQuery, setQuery] = useState(""),
     [composer, setComposer] = useState<ComposeOptions | null>(null),
     [rankItem, setRankItem] = useState<CivicItem | undefined>(),
@@ -104,14 +107,23 @@ export default function SocialApp() {
   params.set("filter", view === "home" ? filter : "all");
   if (view === "post" || view === "list") params.set("post", id ?? "");
   if (view === "post" && commentId) params.set("comment", commentId);
-  if (view === "issue") params.set("issue", id ?? "");
+  if (view === "issue" || view === "topic") params.set("issue", id ?? "");
   if (view === "event") params.set("event", id ?? "");
   if (view === "profile") params.set("author", id ?? "me");
+  if (view === "organization") { params.set("organization", id ?? ""); params.set("channel", commentId ?? "discussion"); }
   if (view === "saved") params.set("filter", "saved");
   if (query && view === "home") params.set("q", query);
   const { data, loading, error, busy, run, refresh, loadMore, loadComments } =
     useSocial(params.toString());
   const me = data.me;
+  const threadVisit = useRef("");
+  useEffect(() => {
+    if (view !== "post" || !data.posts.some(p => p.id === id) || data.status !== "ready") return;
+    const key = data.community?.id + ":" + id;
+    if (threadVisit.current === key) return;
+    threadVisit.current = key;
+    void run({ action: "conversation.visit", postId: id }).catch(() => {});
+  }, [view, id, data.posts, data.status, data.community?.id, run]);
   useEffect(() => {
     if (view !== "post" || !commentId || loading) return;
     document
@@ -205,7 +217,7 @@ export default function SocialApp() {
     setRankOpen(true);
   }
   const nav = [
-    { id: "home", label: "Home", Icon: House },
+    { id: "home", label: "Commons", Icon: House },
     { id: "explore", label: "Explore", Icon: Compass },
     { id: "rankings", label: "Rankings", Icon: ChartNoAxesColumnIncreasing },
     { id: "friends", label: "Friends", Icon: Users },
@@ -213,7 +225,7 @@ export default function SocialApp() {
   ];
   const title =
     view === "home"
-      ? "A little more connected."
+      ? "Your community’s Commons."
       : view === "explore"
         ? id === "events"
           ? "Find a reason to show up."
@@ -525,17 +537,22 @@ export default function SocialApp() {
                 Loading your community…
               </p>
             ) : view === "join" ? (
-              <InvitationEntry data={data} run={run} onJoined={() => { navigate("home"); toast.success("You’re in. Welcome to your community."); }} />
+              <InvitationEntry key={id} expectedCommunityId={id} data={data} run={run} onJoined={organizationId => { navigate(organizationId ? "organization/" + organizationId : "home"); toast.success("You’re in. Welcome to your community."); }} />
             ) : data.status === "signed_out" ? (
               <SignInChoice returnTo={currentLocation.pathname + currentLocation.search + currentLocation.hash} />
             ) : data.status === "onboarding" ? (
               currentLocation.searchParams.has("invite") ? <Onboarding name={me!.name} run={run} /> : <AccountSetup name={me!.name} run={run} onCreated={() => navigate("home")} />
+            ) : view === "topic" ? (
+              topicFor(id)?.communityId === data.community?.id ? <CommonsTopicDetail topic={topicFor(id)!} data={data} run={run} compose={compose} navigate={navigate}>{posts}</CommonsTopicDetail> : <Quiet title="This topic is unavailable.">Switch to a community you belong to and open its local topics.</Quiet>
+            ) : view === "organization" ? (
+              <OrganizationSpace key={data.community?.id + ":" + id} id={id} channel={commentId} data={data} run={run} navigate={navigate} compose={compose}>{posts}</OrganizationSpace>
             ) : data.community?.id !== "ithaca" && (["rankings", "issue", "item"].includes(view) || (view === "explore" && id && id !== "events")) ? (
               <Quiet title="Local coverage is coming.">This community’s issues and rankings have not been curated yet. Your existing saves remain with your account. <button className="text-button" onClick={() => navigate("home")}>See community conversations</button></Quiet>
             ) : (
               <>
                 {view === "home" && (
                   <>
+                    <CommonsIntro data={data} compose={compose} navigate={navigate} run={run} />
                     {data.community?.id === "polis" && <div className="notice"><strong>Welcome to Polis commons.</strong><p>Start a conversation or find people. Community posts here are visible to other registered members. Have a university or organization code? <button className="text-button" onClick={() => navigate("join")}>Join that community</button> whenever you’re ready.</p></div>}
                     {data.community?.id === "ithaca" && <WelcomeSteps data={data} run={run} navigate={navigate} />}
                     <div className="home-community-events">
@@ -563,8 +580,9 @@ export default function SocialApp() {
                       aria-label="Feed audience"
                     >
                       {[
-                        { id: "friends", label: "Following" },
                         { id: "community", label: "Community" },
+                        { id: "friends", label: "Friends" },
+                        { id: "conversations", label: "Followed threads" },
                       ].map((f) => (
                         <button
                           role="tab"
@@ -585,7 +603,7 @@ export default function SocialApp() {
                         </button>
                       ))}
                     </div>
-                    {filter !== "community" && (
+                    {["friends", "following"].includes(filter) && (
                       <button
                         className="text-button feed-issue-filter"
                         aria-pressed={filter === "following"}
@@ -605,7 +623,7 @@ export default function SocialApp() {
                         ? "Your contributions and accepted friends, newest first."
                         : filter === "following"
                           ? "Visible conversations on the issues you follow."
-                          : "Posts shared with invited " + data.community?.name + " community members."}
+                          : filter === "conversations" ? "Threads you chose to follow, with activity you can access." : "Posts shared with " + data.community?.name + " community members."}
                     </p>
                     {feed}
                   </>
@@ -651,7 +669,7 @@ export default function SocialApp() {
                   </CommunityEventDetail>
                 )}
                 {view === "event-manager" && (
-                  <EventManager data={data} run={run} navigate={navigate} />
+                  <EventManager key={data.community?.id} data={data} run={run} navigate={navigate} />
                 )}
                 {view === "explore" &&
                   id &&
@@ -858,7 +876,7 @@ export default function SocialApp() {
                     >
                       Manage event listings & suggestions
                     </button>
-                    <Admin data={data} run={run} />
+                    <Admin key={data.community?.id} data={data} run={run} />
                   </>
                 )}
                 {view === "saved" && (
@@ -887,16 +905,17 @@ export default function SocialApp() {
             )}
           </section>
           <aside className="social-rail">
+            {data.status === "ready" && <WhatChanged communityId={data.community!.id} navigate={navigate} />}
             <section>
               <h2>
                 {data.follows.length
                   ? "Following your curiosity"
                   : "Follow the things you care about."}
               </h2>
-              {(data.status !== "ready" || data.community?.id === "ithaca" ? issues : []).slice(0, 4).map((issue, i) => (
+              {(data.status === "ready" ? topicsFor(data.community?.id ?? "") : issues).slice(0, 4).map((issue, i) => (
                 <div className="issue-rail-row" key={issue.id}>
                   <span className={"issue-square tone-" + i}>{i + 1}</span>
-                  <button onClick={() => navigate("issue/" + issue.id)}>
+                  <button onClick={() => navigate((topicFor(issue.id) ? "topic/" : "issue/") + issue.id)}>
                     {issue.name}
                   </button>
                   {data.status === "ready" && (
@@ -927,7 +946,7 @@ export default function SocialApp() {
                   )}
                 </div>
               ))}
-              {data.status === "ready" && data.community?.id !== "ithaca" && <p>Local issues are still being curated. Start a community conversation in the meantime.</p>}
+              {data.status === "ready" && !topicsFor(data.community?.id ?? "").length && <p>Local topics are still being curated. Start a community conversation in the meantime.</p>}
             </section>
             {data.status === "ready" && (
               <AroundEvents data={data} run={run} navigate={navigate} />
@@ -955,7 +974,7 @@ export default function SocialApp() {
       {composer && me && (
         <Composer
           onRanking={() => setShare(true)}
-          options={{ ...composer, communityOnly: data.community?.id !== "ithaca" }}
+          options={{ ...composer, communityOnly: data.community?.id !== "ithaca", communityId: data.community?.id, communityName: data.community?.name }}
           userId={me.id}
           run={run}
           navigate={navigate}

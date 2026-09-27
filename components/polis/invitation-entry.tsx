@@ -3,8 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import type { InvitationPreview, Snapshot } from "@/lib/social/types";
 import { readResponse } from "@/lib/social/read-response";
 import type { Run } from "./social-post";
+import { communityFor } from "@/lib/social/communities";
 
-export function InvitationEntry({ data, run, onJoined }: { data: Snapshot; run: Run; onJoined: () => void }) {
+export function InvitationEntry({ data, run, onJoined, expectedCommunityId }: { data: Snapshot; run: Run; onJoined: (organizationId?: string) => void; expectedCommunityId?: string }) {
   const [code, setCode] = useState("");
   const [invitation, setInvitation] = useState<InvitationPreview | null>(null);
   const [name, setName] = useState(data.me?.username ? data.me.name : "");
@@ -18,13 +19,14 @@ export function InvitationEntry({ data, run, onJoined }: { data: Snapshot; run: 
     fetch("/api/polis?invitation=1", { cache: "no-store" }).then(async r => {
       const value = await readResponse<{ invitation: InvitationPreview | null; error?: string }>(r);
       if (!r.ok) throw new Error(value.error ?? "Could not check your invitation.");
+      if (value.invitation && expectedCommunityId && value.invitation.community.id !== expectedCommunityId) throw new Error("The saved code belongs to another campus. Enter the matching invitation.");
       if (active) setInvitation(value.invitation);
     }).catch(e => { if (active) setError(e.message); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [expectedCommunityId]);
   const newProfile = !data.me?.username;
   async function validate() {
-    const response = await fetch("/api/polis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: { action: "invite.preview", code } }) });
+    const response = await fetch("/api/polis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: { action: "invite.preview", code, expectedCommunityId } }) });
     const value = await readResponse<{ invitation: InvitationPreview; error?: string }>(response);
     if (!response.ok) throw new Error(value.error ?? "Could not check your invitation.");
     setInvitation(value.invitation);
@@ -32,6 +34,7 @@ export function InvitationEntry({ data, run, onJoined }: { data: Snapshot; run: 
   }
   return <section className="onboarding-panel invitation-entry">
     <p className="social-section-label">OPTIONAL COMMUNITY INVITATION</p>
+    {expectedCommunityId && <p>{communityFor(expectedCommunityId)?.name}</p>}
     <h2>{invitation ? "Your community is waiting." : "Enter invite code"}</h2>
     {loading ? <p role="status">Checking your invitation…</p> : !invitation ? <>
       <p>Use a code from your university or community organizer. This joins that community; a code isn’t required to create your Polis account.</p>
@@ -48,19 +51,20 @@ export function InvitationEntry({ data, run, onJoined }: { data: Snapshot; run: 
       <div className="invite-result" aria-live="polite">
         <span className="metadata">University / community</span>
         <h3>{invitation.community.name}</h3>
+        {invitation.organization && <><h3>{invitation.organization.name}</h3><p>Organization access requires an existing membership in this campus. This code grants ordinary organization membership only.</p></>}
         <p>{invitation.alreadyJoined ? "You’ve already joined this community. Continuing won’t use another invitation." : "This code grants ordinary pilot membership. It does not verify university enrollment."}</p>
         <p className="metadata">Expires {new Date(invitation.expiresAt).toLocaleString()}. Availability is checked again when you join.</p>
       </div>
       {data.status === "signed_out" ? <>
-        <a className="btn primary full" href="/signin-with-chatgpt?return_to=%2F%23join" target="_top">Confirm community & sign in</a>
+        <a className="btn primary full" href={"/signin-with-chatgpt?return_to=" + encodeURIComponent("/#join" + (expectedCommunityId ? "/" + expectedCommunityId : ""))} target="_top">Confirm community & sign in</a>
         <p className="metadata">Continue with the existing ChatGPT sign-in or signup process. Any required account verification happens there. Your invitation is kept for up to one hour.</p>
       </> : <form onSubmit={async e => {
         e.preventDefault(); if (pending.current) return;
         pending.current = true; setBusy(true); setError("");
         try {
-          await run({ action: "invite.redeem", invite: "", confirmedCommunityId: invitation.community.id, ...(newProfile ? { name, username } : {}) });
+          const result = await run({ action: "invite.redeem", invite: "", confirmedCommunityId: invitation.community.id, ...(newProfile ? { name, username } : {}) });
           await fetch("/api/polis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: { action: "invite.clear" } }) }).catch(() => {});
-          onJoined();
+          onJoined(result.organizationId);
         } catch (e) { setError(e instanceof Error ? e.message : "Could not join. Your invitation is still here."); }
         finally { pending.current = false; setBusy(false); }
       }}>
@@ -68,7 +72,7 @@ export function InvitationEntry({ data, run, onJoined }: { data: Snapshot; run: 
           <label className="social-field">Your name<input required maxLength={50} value={name} onChange={e => setName(e.target.value)} autoComplete="name" /></label>
           <label className="social-field">Username<input required pattern="[a-z0-9_]{3,24}" title="3–24 lowercase letters, numbers, or underscores" maxLength={24} value={username} onChange={e => setUsername(e.target.value.toLowerCase())} autoComplete="username" /></label>
         </>}
-        <button className="btn primary full" disabled={busy}>{busy ? "Joining…" : invitation.alreadyJoined ? "Continue to community" : "Join " + invitation.community.name}</button>
+        <button className="btn primary full" disabled={busy}>{busy ? "Joining…" : invitation.alreadyJoined ? "Continue to community" : "Join " + (invitation.organization?.name ?? invitation.community.name)}</button>
       </form>}
       <button className="text-button" disabled={busy} onClick={async () => {
         setBusy(true); setError("");

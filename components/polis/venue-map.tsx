@@ -3,15 +3,18 @@ import { useEffect, useRef, useState } from "react";
 import type { Map as LeafletMap, LayerGroup } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { CommunityEvent } from "@/lib/social/types";
+import { cityCenters } from "@/lib/social/communities";
 
 export default function VenueMap({
   events,
   selected,
   onSelect,
+  center = cityCenters.ithaca,
 }: {
   events: CommunityEvent[];
   selected: string;
   onSelect: (id: string) => void;
+  center?: [number, number];
 }) {
   const element = useRef<HTMLDivElement>(null),
     map = useRef<LeafletMap | null>(null),
@@ -32,7 +35,7 @@ export default function VenueMap({
           zoomAnimation: false,
           markerZoomAnimation: false,
           fadeAnimation: false,
-        }).setView([42.444, -76.498], 13);
+        }).setView(center, 13);
         L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
           attribution:
@@ -50,7 +53,7 @@ export default function VenueMap({
       map.current?.remove();
       map.current = null;
     };
-  }, []);
+  }, [center]);
   useEffect(() => {
     if (!ready) return;
     let canceled = false;

@@ -52,6 +52,7 @@ export function sites({ mockAuth = true } = {}): Plugin {
         "1": { id: localUserId, email: localEmail, name: localFullName },
         ...(testAccounts
           ? {
+              ...Object.fromEntries(["ithaca_a", "ithaca_b", "ithaca_c", "uf_a", "uf_b", "uf_c"].map(key => [key, { id: "local_" + key, email: key + "@sites.test", name: "Test " + key }])),
               beta_b: {
                 id: "local_beta_b",
                 email: "beta_b@sites.test",

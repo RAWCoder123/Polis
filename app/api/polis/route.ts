@@ -40,8 +40,9 @@ async function handle(request: Request, write: boolean) {
         return respond({ error: "Submission is too large." }, 413);
       const input = JSON.parse(raw);
       if (input?.data?.action === "invite.preview") {
-        if (Object.keys(input.data).some(k => !["action", "code"].includes(k))) return respond({ error: "Invalid invitation request." }, 400);
+        if (Object.keys(input.data).some(k => !["action", "code", "expectedCommunityId"].includes(k))) return respond({ error: "Invalid invitation request." }, 400);
         const invitation = await service.previewInvitation(input.data.code);
+        if (input.data.expectedCommunityId && input.data.expectedCommunityId !== invitation.community.id) return respond({ error: "This code belongs to another campus. Use the matching campus invitation." }, 400);
         return respond({ invitation }, 200, invitationCookie(request, input.data.code));
       }
       if (input?.data?.action === "invite.clear")
