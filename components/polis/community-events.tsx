@@ -41,6 +41,9 @@ const costLabel = (e: CommunityEvent) =>
 function EventImage({ event }: { event: CommunityEvent }) {
   const [failed, setFailed] = useState(false);
   return event.imageUrl && !failed ? (
+    // Organizer images are arbitrary remote URLs; the Worker has no image
+    // optimizer, so a native element with a fallback is intentional.
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       className="event-image"
       src={event.imageUrl}
