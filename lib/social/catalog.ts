@@ -1,4 +1,5 @@
 import { items } from "../polis-data.ts";
+import { topicFor } from "./commons.ts";
 export const communityId = "ithaca";
 export const issues = [
   {
@@ -31,8 +32,9 @@ export const issues = [
   },
 ];
 export const issueFor = (subjectId: string) =>
-  issues.find((i) => i.id === subjectId || i.items.includes(subjectId));
+  issues.find((i) => i.id === subjectId || i.items.includes(subjectId)) ?? (topicFor(subjectId) ? { ...topicFor(subjectId)!, items: [] as string[] } : undefined);
 export const subjectTitle = (id: string) =>
+  topicFor(id)?.name ??
   items.find((i) => i.id === id)?.title ??
   issues.find((i) => i.id === id)?.name ??
   "Local conversation";

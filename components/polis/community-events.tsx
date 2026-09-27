@@ -30,6 +30,8 @@ import { communityEventCalendar } from "@/lib/social/calendar";
 import type { Run, Navigate } from "./social-post";
 import { Modal } from "./social-forms";
 import VenueMap from "./venue-map";
+import { cityCenters } from "@/lib/social/communities";
+import { topicFor } from "@/lib/social/commons";
 
 type Props = { data: Snapshot; run: Run; navigate: Navigate };
 const costLabel = (e: CommunityEvent) =>
@@ -353,9 +355,7 @@ export function CommunityEvents({
   // City centers are not device locations. Precise device coordinates never leave this component.
   const nearbyOrigin =
     origin ??
-    (city.toLowerCase() === "ithaca"
-      ? ([42.444, -76.498] as [number, number])
-      : undefined);
+    cityCenters[city.toLowerCase()];
   const visible = discoverEvents(
     data.events.filter(
       (e) =>
@@ -535,7 +535,7 @@ export function CommunityEvents({
           {origin
             ? "Near your location"
             : nearbyOrigin
-              ? "Distance from central Ithaca"
+              ? "Distance from central " + city
               : "Selected city"}
         </p>
         <div className="event-mode-switch">
@@ -556,6 +556,8 @@ export function CommunityEvents({
       <div className={mode === "map" ? "event-map-results" : ""}>
         {mode === "map" && (
           <VenueMap
+            key={city}
+            center={cityCenters[city.toLowerCase()]}
             events={mapEvents}
             selected={selected}
             onSelect={(id) => update("selected", id)}
@@ -1055,7 +1057,7 @@ export function CommunityEventDetail({
       {event.issueId && (
         <button
           className="text-button"
-          onClick={() => navigate("issue/" + event.issueId)}
+          onClick={() => navigate((topicFor(event.issueId) ? "topic/" : "issue/") + event.issueId)}
         >
           Explore the related issue <ArrowUpRight size={16} />
         </button>

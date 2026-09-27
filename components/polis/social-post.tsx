@@ -28,6 +28,8 @@ import {
 } from "@/lib/social/types";
 import { itemById } from "@/lib/polis-data";
 import { subjectTitle } from "@/lib/social/catalog";
+import { topicFor, discussionLabels, organizationFor } from "@/lib/social/commons";
+import { communityFor } from "@/lib/social/communities";
 import type { CommandData } from "@/lib/social/service";
 export type Run = (
   data: CommandData,
@@ -113,7 +115,9 @@ export function PostCard({
               hour: "numeric",
               minute: "2-digit",
             })}{" "}
-            · {audiences[post.audience]}
+            · {post.organizationId && post.audience === "community" ? "Organization members" : audiences[post.audience]}
+            {" · "}{communityFor(post.communityId)?.name ?? "Community"}
+            {post.organizationId && " · " + organizationFor(post.organizationId)?.name + " (private)"}
             {post.editedAt ? " · Edited" : ""}
           </span>
         </div>
@@ -133,6 +137,8 @@ export function PostCard({
                 {[
                   "opinion",
                   "question",
+                  "debate",
+                  "update",
                   "article",
                   "event_reflection",
                   "event_share",
@@ -142,7 +148,7 @@ export function PostCard({
                       onEdit({ ...post, priorPostId: "republish" })
                     }
                   >
-                    Share as a new post
+                    {post.organizationId ? "Publish a new copy to Commons" : "Share as a new post"}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onClick={() => onReport("delete:" + post.id)}>
@@ -192,6 +198,7 @@ export function PostCard({
       {post.position && (
         <span className="post-position">{positions[post.position]}</span>
       )}
+      {discussionLabels[post.kind] && <span className="post-position">{post.organizationId && attachment.organizationChannel === "announcements" ? "Announcement" : discussionLabels[post.kind]}</span>}
       {post.kind === "ranking" && (
         <span className="post-position">
           {attachment.rankingKind === "issue_priorities"
@@ -274,7 +281,7 @@ export function PostCard({
         className="post-subject"
         onClick={() =>
           navigate(
-            post.subjectId === "community" ? "post/" + post.id : (attachment.eventId
+            topicFor(post.subjectId) ? "topic/" + post.subjectId : post.subjectId === "community" ? "post/" + post.id : (attachment.eventId
               ? "event/"
               : itemById[post.subjectId]
                 ? "item/"
@@ -331,6 +338,7 @@ export function PostCard({
           {post.saved ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
         </button>
       </footer>
+      <div className="commons-thread-meta"><button className="text-button" aria-pressed={!!post.following} disabled={busy} onClick={() => void run({ action: "conversation.follow", postId: post.id, enabled: !post.following }).catch(() => {})}>{post.following ? "Following thread · Undo" : "Follow thread"}</button><span>{post.replyCount} visible {post.replyCount === 1 ? "reply" : "replies"} · Latest activity {new Date(post.latestActivity ?? post.createdAt).toLocaleDateString()}</span></div>
       <button
         className="count-disclosure"
         onClick={() => setShowCounts(!showCounts)}

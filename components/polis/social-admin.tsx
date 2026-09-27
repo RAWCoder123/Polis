@@ -3,6 +3,7 @@ import { InvitationCodes } from "./social-invitations";
 import { useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { issues } from "@/lib/social/catalog";
+import { topicsFor, topicFor } from "@/lib/social/commons";
 import type { Snapshot, Question } from "@/lib/social/types";
 import type { Run, Navigate } from "./social-post";
 import { Quiet } from "./social-views";
@@ -57,7 +58,7 @@ export function Notifications({
                     : n.kind === "friend"
                       ? "friends"
                     : n.kind === "issue"
-                      ? "issue/" + n.targetId
+                      ? (topicFor(n.targetId) ? "topic/" : "issue/") + n.targetId
                       : n.kind === "event"
                         ? "item/" + n.targetId
                         : "post/" +
@@ -163,10 +164,10 @@ export function Admin({ data, run }: { data: Snapshot; run: Run }) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [update, setUpdate] = useState({
-      issueId: "housing",
+      issueId: String(topicsFor(data.community?.id ?? "")[0]?.id ?? "housing"),
       title: "",
-      sourceUrl: "https://www.cityofithaca.org/",
-      sample: true,
+      sourceUrl: "",
+      sample: false,
     });
   if (!data.admin)
     return (
@@ -181,7 +182,8 @@ export function Admin({ data, run }: { data: Snapshot; run: Run }) {
         No recipient emails or invitation emails are needed.
       </p>
       <InvitationCodes data={data} run={run} />
-      <section>
+      {data.admin.invitationCommunities.length > 1 && <section><h2>Pilot communities</h2><p>Prepare Cornell first. Enable UF invitations only after the hosted Cornell checks pass.</p>{data.admin.invitationCommunities.filter(c => ["ithaca", "uf"].includes(c.id)).map(c => <button className="btn secondary" key={c.id} onClick={() => void run({ action: "community.manage", communityId: c.id }).catch(() => {})}>Manage {c.name}</button>)}</section>}
+      {data.community?.id === "ithaca" && <section>
         <h2>Daily questions</h2>
         <div className="question-choices">
           <button
@@ -339,7 +341,7 @@ export function Admin({ data, run }: { data: Snapshot; run: Run }) {
             Save question
           </button>
         </form>
-      </section>
+      </section>}
       <section>
         <h2>Publish an issue update</h2>
         <form
@@ -362,7 +364,7 @@ export function Admin({ data, run }: { data: Snapshot; run: Run }) {
                 setUpdate({ ...update, issueId: e.target.value })
               }
             >
-              {issues.map((i) => (
+              {[...topicsFor(data.community?.id ?? ""), ...(data.community?.id === "ithaca" ? issues : [])].map((i) => (
                 <option key={i.id} value={i.id}>
                   {i.name}
                 </option>

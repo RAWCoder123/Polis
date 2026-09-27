@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { items, itemById } from "@/lib/polis-data";
 import { issues, subjectTitle } from "@/lib/social/catalog";
+import { topicsFor, topicFor } from "@/lib/social/commons";
 import {
   audiences,
   positions,
@@ -53,10 +54,12 @@ export function AudienceField({
   value,
   onChange,
   disabled = false,
+  communityLabel = "Community",
 }: {
   value: Audience;
   onChange: (v: Audience) => void;
   disabled?: boolean;
+  communityLabel?: string;
 }) {
   return (
     <label className="social-field">
@@ -68,7 +71,7 @@ export function AudienceField({
       >
         {Object.entries(audiences).map(([v, label]) => (
           <option key={v} value={v}>
-            {label}
+            {v === "community" ? communityLabel : label}
           </option>
         ))}
       </select>
@@ -180,6 +183,10 @@ export function Onboarding({ name, run }: { name: string; run: Run }) {
   );
 }
 export type ComposeOptions = {
+  communityId?: string;
+  communityName?: string;
+  organizationId?: string;
+  organizationChannel?: "announcements" | "discussion" | "plans";
   communityOnly?: boolean;
   subjectLabel?: string;
   subjectId?: string;
@@ -187,7 +194,7 @@ export type ComposeOptions = {
   prior?: Post;
   copy?: Post;
   kind?:
-    "opinion" | "question" | "article" | "event_reflection" | "event_share";
+    "opinion" | "question" | "debate" | "update" | "article" | "event_reflection" | "event_share";
 };
 export function Composer({
   options,
@@ -207,10 +214,10 @@ export function Composer({
   const post = options.post,
     prior = options.prior,
     copy = options.copy;
-  const key = "polis-draft:" + userId + ":" + (post?.id ?? (options.communityOnly ? "community-new" : "new"));
+  const key = "polis-draft:" + userId + ":" + (options.communityId ?? "ithaca") + ":" + (options.organizationId ?? "commons") + ":" + (options.organizationChannel ?? "") + ":" + (post?.id ?? "new");
   const [draft] = useState<{
     kind?:
-      "opinion" | "question" | "article" | "event_reflection" | "event_share";
+      "opinion" | "question" | "debate" | "update" | "article" | "event_reflection" | "event_share";
     subject?: string;
     body?: string;
     sourceUrl?: string;
@@ -227,7 +234,7 @@ export function Composer({
   });
   const priorPostId = prior?.id ?? draft.priorPostId ?? null;
   const [kind, setKind] = useState<
-      "opinion" | "question" | "article" | "event_reflection" | "event_share"
+      "opinion" | "question" | "debate" | "update" | "article" | "event_reflection" | "event_share"
     >(
       ((post?.kind ?? copy?.kind) as "opinion") ??
         options.kind ??
@@ -266,9 +273,9 @@ export function Composer({
     } catch {}
   }, [key, body, subject, kind, aud, pos, sourceUrl, post, priorPostId]);
   const canPosition =
-    kind === "opinion" &&
+    (kind === "opinion" || kind === "debate") &&
     (itemById[subject]?.kind === "Policies" ||
-      issues.some((i) => i.id === subject));
+      issues.some((i) => i.id === subject) || !!topicFor(subject));
   const choices = options.communityOnly ? [] : items.filter((i) =>
     kind === "article"
       ? i.kind === "News"
@@ -315,6 +322,8 @@ export function Composer({
                 }
               : {
                   action: "post",
+                  organizationId: options.organizationId,
+                  organizationChannel: options.organizationChannel,
                   kind,
                   subjectId: subject,
                   text: body,
@@ -347,6 +356,8 @@ export function Composer({
             >
               <option value="opinion">An opinion</option>
               <option value="question">A question</option>
+              <option value="debate">A debate · No side required</option>
+              <option value="update">A sourced update</option>
               <option value="article">An article with commentary</option>
               {!options.communityOnly && <>
               <option value="event_share">An event with commentary</option>
@@ -366,6 +377,8 @@ export function Composer({
               setPos("");
             }}
           >
+            <option value="community">Community conversation</option>
+            {topicsFor(options.communityId ?? "ithaca").map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             {!options.communityOnly && kind !== "event_reflection" &&
               kind !== "event_share" &&
               issues.map((i) => (
@@ -373,7 +386,7 @@ export function Composer({
                   {i.name} · Sample issue
                 </option>
               ))}
-            {!itemById[subject] && !issues.some((i) => i.id === subject) && (
+            {subject !== "community" && !topicFor(subject) && !itemById[subject] && !issues.some((i) => i.id === subject) && (
               <option value={subject}>
                 {subject === "community" ? "Community observation" : options.subjectLabel || subjectTitle(subject)}
               </option>
@@ -413,28 +426,30 @@ export function Composer({
           />
         </label>
         <label className="social-field">
-          {kind === "article" ? "Article link" : "Source link · optional"}
+          {kind === "update" ? "Source link · required" : kind === "article" ? "Article link" : "Source link · optional"}
           <input
             type="url"
             placeholder="https://…"
             maxLength={2000}
             value={sourceUrl}
             onChange={(e) => setSourceUrl(e.target.value)}
-            required={kind === "article" && itemById[subject]?.kind !== "News"}
+            required={kind === "update" || (kind === "article" && itemById[subject]?.kind !== "News")}
           />
         </label>
         <AudienceField
           value={aud}
           onChange={setAud}
           disabled={!!post || !!priorPostId}
+          communityLabel={options.organizationId || post?.organizationId ? "Organization members" : options.communityName ?? "Community"}
         />
         <p className="metadata">
+          {(options.organizationId || post?.organizationId) && <strong>Private organization conversation. </strong>}
           <Lock size={13} />{" "}
           {aud === "friends"
             ? "Only accepted friends can see and respond."
             : aud === "only_me"
               ? "Only you can see this post."
-              : "Visible to invited members of the Ithaca community."}
+              : options.organizationId || post?.organizationId ? "Visible only inside this organization." : "Visible to members of " + (options.communityName ?? "your current community") + "."}
         </p>
         {error && (
           <p role="alert" className="form-error">
@@ -449,7 +464,7 @@ export function Composer({
             ? "Saving…"
             : post
               ? "Save changes"
-              : "Publish to " + audiences[aud]}
+              : "Publish to " + (aud === "community" && options.organizationId ? "organization members" : audiences[aud])}
           <Send size={16} />
         </button>
       </form>

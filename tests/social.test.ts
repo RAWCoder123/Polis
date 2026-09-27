@@ -38,6 +38,7 @@ test("open accounts converse while invitation-only content and administrative op
   await assert.rejects(f.snap("open_a", { community: "ithaca", post: privatePost }), { status: 403 });
   await assert.rejects(f.act("open_a", { action: "invite.code", expiresDays: 7, maxUses: 5 }), { status: 403 });
   const p = await f.act("open_a", { action: "post", kind: "question", subjectId: "community", text: "What matters in your neighborhood?", audience: "community" });
+  await f.act("open_a", { action: "preferences", replies: true, reactions: false, issues: false, events: false });
   assert.ok((await f.snap("open_b", { filter: "community" })).posts.some(x => x.id === p.postId));
   await f.act("open_b", { action: "comment", postId: p.postId, text: "A space to meet neighbors." });
   assert.equal((await f.snap("open_a", { post: p.postId })).comments!.length, 1);
@@ -163,6 +164,117 @@ function fixture() {
   }
   return { raw, hooks, service, act, snap, count, setup, friends, post };
 }
+
+test("organization codes require campus membership, preserve private threads and revoke access atomically", async () => {
+  const f = fixture(); await f.setup();
+  for (const campus of ["ithaca", "uf"]) {
+    const org = campus === "ithaca" ? "cornell-circle" : "uf-circle";
+    await f.act("owner", { action: "community.manage", communityId: campus });
+    const invitation = await f.act("owner", { action: "invite.code", communityId: campus });
+    for (const suffix of ["a", "b", "c"]) {
+      const user = campus + "_org_" + suffix;
+      await f.act(user, { action: "invite.redeem", invite: invitation.invitationCode, confirmedCommunityId: campus, name: user, username: user });
+    }
+    const [a,b,c] = [campus + "_org_a", campus + "_org_b", campus + "_org_c"];
+    await f.act("owner", { action: "organization.member", organizationId: org, userId: a, role: "organizer" });
+    const code = await f.act(a, { action: "invite.code", organizationId: org, maxUses: 1 });
+    const preview = await f.service(b).previewInvitation(code.invitationCode);
+    assert.equal(preview.organization!.id, org);
+    await assert.rejects(f.act("outsider", { action: "invite.redeem", invite: code.invitationCode, confirmedCommunityId: campus, name: "Outsider", username: "outsider" }), { status: 403 });
+    await f.act(b, { action: "invite.redeem", invite: code.invitationCode, confirmedCommunityId: campus });
+    await f.act(b, { action: "invite.redeem", invite: code.invitationCode, confirmedCommunityId: campus });
+    await assert.rejects(f.act(c, { action: "invite.redeem", invite: code.invitationCode, confirmedCommunityId: campus }), { status: 403 });
+    const s = await f.snap(a, { organization: org });
+    assert.equal(s.organizationCodes![0].useCount, 1);
+    assert.equal((await f.snap(b, { organization: org })).organizations!.find(o => o.id === org)!.role, "member");
+    await assert.rejects(f.act(b, { action: "invite.code", organizationId: org }), { status: 403 });
+    await assert.rejects(f.act(b, { action: "organization.member", organizationId: org, userId: b, role: "organizer" }), { status: 403 });
+    const postData = { action: "post" as const, organizationId: org, organizationChannel: "announcements" as const, audience: "community" as const, subjectId: "community", kind: "question" as const, text: "Organization fixture announcement" };
+    await assert.rejects(f.act(b, postData), { status: 403 });
+    const p = await f.act(a, postData);
+    await f.act(b, { action: "comment", postId: p.postId, text: "Private organization response" });
+    await f.act(b, { action: "save", targetId: p.postId, enabled: true });
+    await f.act(b, { action: "conversation.follow", postId: p.postId, enabled: true });
+    assert.equal((await f.snap(a, { filter: "community" })).posts.some(p2 => p2.id === p.postId), false);
+    await assert.rejects(f.snap(c, { post: p.postId }), { status: 404 });
+    await assert.rejects(f.snap(c, { organization: org }), { status: 404 });
+    const copied = await f.act(a, { action: "post", kind: "question", audience: "community", subjectId: "community", text: postData.text });
+    assert.equal((await f.snap(c, { post: copied.postId })).posts[0].replyCount, 0);
+    await assert.rejects(f.act(a, { ...postData, organizationId: null, priorPostId: p.postId }), { status: 400 });
+    await f.act(b, { action: "report", targetId: p.postId, reason: "Organization test report" });
+    assert.equal((await f.snap("owner")).admin!.reports.length, 1);
+    await f.act(a, { action: "invite.revoke", codeId: s.organizationCodes![0].id });
+    await f.act("owner", { action: "organization.member", organizationId: org, userId: b, role: "remove" });
+    await assert.rejects(f.snap(b, { post: p.postId }), { status: 404 });
+    assert.equal((await f.snap(b, { filter: "saved" })).posts.some(p2 => p2.id === p.postId), false);
+    await assert.rejects(f.act(b, { action: "invite.redeem", invite: code.invitationCode, confirmedCommunityId: campus }), { status: 403 });
+    const racing = await f.act(a, { action: "invite.code", organizationId: org });
+    let injected = false;
+    f.hooks.batch = async rows => {
+      if (!injected && rows.some(r => r.sql.includes("invitation_redemptions"))) {
+        injected = true;
+        f.raw.prepare("UPDATE invitation_codes SET revokedAt=? WHERE organizationId=?").run(new Date().toISOString(), org);
+      }
+    };
+    await assert.rejects(f.act(c, { action: "invite.redeem", invite: racing.invitationCode, confirmedCommunityId: campus }), { status: 409 });
+    f.hooks.batch = null;
+    assert.equal((await f.snap(c)).organizations!.find(o => o.id === org)!.role, null);
+  }
+});
+
+test("three identities per campus complete Commons replies, follows, updates and isolated switching", async () => {
+  const f = fixture(); await f.setup();
+  const postIds: Record<string, string> = {};
+  for (const campus of ["ithaca", "uf"]) {
+    await f.act("owner", { action: "community.manage", communityId: campus });
+    const code = await f.act("owner", { action: "invite.code", communityId: campus, maxUses: 3 });
+    for (const suffix of ["a", "b", "c"]) {
+      const actor = campus + "_" + suffix;
+      await f.act(actor, { action: "invite.redeem", invite: code.invitationCode, confirmedCommunityId: campus, name: actor, username: actor });
+      assert.equal((await f.snap(actor)).preferences.replies, 0);
+      await f.act(actor, { action: "preferences", replies: true, reactions: false, issues: true, events: false });
+    }
+    const [a, b, c] = [campus + "_a", campus + "_b", campus + "_c"];
+    const topic = campus === "uf" ? "uf-transit" : "cornell-transit";
+    const otherTopic = campus === "uf" ? "cornell-transit" : "uf-transit";
+    await assert.rejects(f.act(a, { action: "follow", issueId: otherTopic, enabled: true }), { status: 400 });
+    await assert.rejects(f.act(a, { action: "community.manage", communityId: "uf" }), { status: 403 });
+    const p = await f.act(a, { action: "post", kind: "debate", subjectId: topic, text: "How could our commute improve?", audience: "community", position: "learning" });
+    postIds[campus] = p.postId;
+    await f.act(c, { action: "conversation.follow", postId: p.postId, enabled: true });
+    const reply = await f.act(b, { action: "comment", postId: p.postId, text: "More reliable connections." });
+    assert.ok((await f.snap(a)).notifications.some(n => n.commentId === reply.commentId));
+    assert.ok((await f.snap(c)).notifications.some(n => n.commentId === reply.commentId));
+    assert.equal((await f.snap(a, { post: p.postId, comment: reply.commentId })).comments![0].text, "More reliable connections.");
+    await f.act(c, { action: "conversation.visit", postId: p.postId });
+    await f.act(c, { action: "conversation.visit", postId: p.postId });
+    assert.equal(f.raw.prepare("SELECT COUNT(*) n FROM metrics WHERE event='conversation_return' AND communityId=?").get(campus)!.n, 1);
+    await f.act(c, { action: "follow", issueId: topic, enabled: true, notify: true });
+    await f.act("owner", { action: "issue.update", issueId: topic, title: "A fixture update with an original source", sourceUrl: "https://example.org/fixture", sample: true });
+    assert.equal((await f.snap(c)).updates.filter(u => u.issueId === topic).length, 1);
+    await f.act(a, { action: "friend", targetId: b, operation: "request" });
+    await f.act(b, { action: "friend", targetId: a, operation: "accept" });
+    const privatePost = await f.act(a, { action: "post", kind: "question", subjectId: topic, text: "Private question", audience: "friends" });
+    await assert.rejects(f.snap(c, { post: privatePost.postId }), { status: 404 });
+    await f.act(c, { action: "block", targetId: b, enabled: true });
+    assert.equal((await f.snap(c, { post: p.postId })).posts[0].replyCount, 0);
+    assert.equal((await f.snap(c)).notifications.some(n => n.commentId === reply.commentId), false);
+    await f.act(b, { action: "report", targetId: p.postId, reason: "A fixture moderation report" });
+    assert.equal((await f.snap("owner")).admin!.reports.length, 1);
+  }
+  for (const [viewer, campus] of [["ithaca_a", "uf"], ["uf_a", "ithaca"]]) {
+    await assert.rejects(f.snap(viewer, { post: postIds[campus] }), { status: 404 });
+    await assert.rejects(f.snap(viewer, { community: campus }), { status: 403 });
+  }
+  await f.act("owner", { action: "community.select", communityId: "ithaca" });
+  const cornellCode = await f.act("owner", { action: "invite.code", communityId: "ithaca" });
+  await assert.rejects(f.act("uf_a", { action: "invite.redeem", invite: cornellCode.invitationCode, confirmedCommunityId: "uf" }), { status: 400 });
+  await f.act("uf_a", { action: "invite.redeem", invite: cornellCode.invitationCode, confirmedCommunityId: "ithaca" });
+  assert.equal((await f.snap("uf_a")).community!.id, "ithaca");
+  await assert.rejects(f.snap("uf_a", { post: postIds.uf }), { status: 404 });
+  await f.act("uf_a", { action: "community.select", communityId: "uf" });
+  assert.equal((await f.snap("uf_a", { post: postIds.uf })).posts[0].communityId, "uf");
+});
 const denied = (p: Promise<unknown>, status: number) =>
   assert.rejects(p, (e: { status?: number }) => e.status === status);
 
@@ -1569,6 +1681,7 @@ test("invitation migrations preserve existing memberships and code use counts wi
   assert.equal(raw.prepare("SELECT activeCommunityId FROM profiles WHERE id='old'").get()!.activeCommunityId, "ithaca");
   assert.equal(raw.prepare("SELECT useCount FROM invitation_codes").get()!.useCount, 7);
   assert.equal(raw.prepare("SELECT communityId FROM invitation_codes").get()!.communityId, "ithaca");
+  assert.equal(raw.prepare("SELECT organizationId FROM invitation_codes").get()!.organizationId, null);
   assert.equal(raw.prepare("SELECT COUNT(*) n FROM saves").get()!.n, 1);
   raw.close();
 });

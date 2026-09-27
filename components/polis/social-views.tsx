@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { items, itemById, kinds, type CivicItem } from "@/lib/polis-data";
 import { issues, issueFor, subjectTitle } from "@/lib/social/catalog";
+import { topicFor } from "@/lib/social/commons";
 import {
   audiences,
   type Snapshot,
@@ -1049,7 +1050,7 @@ export function Profile({
             <button
               key={f.issueId}
               className="issue-rail-row"
-              onClick={() => navigate("issue/" + f.issueId)}
+              onClick={() => navigate((topicFor(f.issueId) ? "topic/" : "issue/") + f.issueId)}
             >
               {subjectTitle(f.issueId)}
               <ArrowUpRight size={15} />

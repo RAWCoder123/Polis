@@ -4,6 +4,7 @@ import { ArrowLeft, Plus } from "lucide-react";
 import type { CommunityEvent, Snapshot } from "@/lib/social/types";
 import { eventCategories, eventRecord, eventTime } from "@/lib/social/events";
 import { issues } from "@/lib/social/catalog";
+import { topicsFor } from "@/lib/social/commons";
 import { officialEvents } from "@/lib/social/official-events";
 import type { Run, Navigate } from "./social-post";
 import { Modal } from "./social-forms";
@@ -85,12 +86,12 @@ export function EventManager({
       <div className="dialog-actions">
         <button
           className="btn primary"
-          onClick={() => setEditing(blankEvent())}
+          onClick={() => setEditing({ ...blankEvent(), city: data.community?.locationLabel.split(",")[0] ?? "" })}
         >
           <Plus size={17} />
           Add an occurrence
         </button>
-        <button
+        {data.community?.id === "ithaca" && <button
           className="btn secondary"
           disabled={pending || !officialEvents.length}
           onClick={() =>
@@ -101,11 +102,10 @@ export function EventManager({
           }
         >
           Import {officialEvents.length} checked pilot listings
-        </button>
+        </button>}
       </div>
       <p className="catalog-notice">
-        Import adds only missing IDs. It never overwrites curator edits,
-        resurrects canceled listings, or deletes activity.
+        {data.community?.id === "ithaca" ? "Import adds only missing IDs. It never overwrites curator edits, resurrects canceled listings, or deletes activity." : "This campus has no imported event bundle. Add checked local sources; do not reuse another campus’s listings."}
       </p>
       {message && (
         <p role="status" className="notice">
@@ -114,7 +114,7 @@ export function EventManager({
       )}
       <h2>Listings</h2>
       {!data.events.length && (
-        <p>No listings yet. Add one or import the checked selection.</p>
+        <p>No listings yet. Add a checked local occurrence.</p>
       )}
       {data.events.map((e) => (
         <article className="event-manager-row" key={e.id}>
@@ -260,6 +260,7 @@ export function EventManager({
         <EventEditor
           key={editing.id}
           initial={editing}
+          communityId={data.community?.id ?? ""}
           run={run}
           onClose={() => setEditing(null)}
         />
@@ -269,10 +270,12 @@ export function EventManager({
 }
 function EventEditor({
   initial,
+  communityId,
   run,
   onClose,
 }: {
   initial: CommunityEvent;
+  communityId: string;
   run: Run;
   onClose: () => void;
 }) {
@@ -421,7 +424,7 @@ function EventEditor({
             onChange={(v) => setE((s) => ({ ...s, issueId: v.target.value }))}
           >
             <option value="">No related issue</option>
-            {issues.map((i) => (
+            {[...topicsFor(communityId), ...(communityId === "ithaca" ? issues : [])].map((i) => (
               <option value={i.id} key={i.id}>
                 {i.name}
               </option>

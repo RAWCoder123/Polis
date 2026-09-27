@@ -3,6 +3,7 @@ import { itemById } from "../polis-data.ts";
 import { eventActions, eventExpired } from "./events.ts";
 import { issues, issueFor, eventStart } from "./catalog.ts";
 import { communityFor, defaultCommunityId, openCommunityId, pilotCommunities } from "./communities.ts";
+import { topicFor, pilotOrganizations, organizationFor } from "./commons.ts";
 import {
   emptySnapshot,
   type Snapshot,
@@ -55,6 +56,10 @@ const action = z.discriminatedUnion("action", [
     username: z.string().regex(/^[a-z0-9_]{3,24}$/),
   }),
   z.object({ action: z.literal("community.joinOpen") }),
+  z.object({ action: z.literal("community.manage"), communityId: id }),
+  z.object({ action: z.literal("conversation.follow"), postId: id, enabled: z.boolean() }),
+  z.object({ action: z.literal("conversation.visit"), postId: id }),
+  z.object({ action: z.literal("organization.member"), organizationId: id, userId: id, role: z.enum(["member", "organizer", "remove"]) }),
   z.object({
     action: z.literal("join"),
     name: z.string().trim().min(1).max(50),
@@ -79,9 +84,13 @@ const action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("mute"), targetId: id, enabled: z.boolean() }),
   z.object({
     action: z.literal("post"),
+    organizationId: id.nullable().default(null),
+    organizationChannel: z.enum(["announcements", "discussion", "plans"]).default("discussion"),
     kind: z.enum([
       "opinion",
       "question",
+      "debate",
+      "update",
       "article",
       "event_reflection",
       "event_share",
@@ -176,7 +185,7 @@ const action = z.discriminatedUnion("action", [
     reason: z.string().trim().min(3).max(1000),
   }),
   z.object({ action: z.literal("invite"), email: z.string().email().max(254) }),
-  z.object({ action: z.literal("invite.code"), communityId: id.optional(), maxUses: z.number().int().min(1).max(10000).nullable().default(25), expiresDays: z.union([z.literal(1), z.literal(7), z.literal(30)]).default(7) }),
+  z.object({ action: z.literal("invite.code"), communityId: id.optional(), organizationId: id.optional(), maxUses: z.number().int().min(1).max(10000).nullable().default(25), expiresDays: z.union([z.literal(1), z.literal(7), z.literal(30)]).default(7) }),
   z.object({ action: z.literal("invite.revoke"), codeId: z.string().min(1).max(100) }),
   z.object({
     action: z.literal("question.save"),
@@ -264,14 +273,16 @@ export function socialService(
   const previewInvitation = async (value: unknown): Promise<InvitationPreview> => {
     if (typeof value !== "string" || value.length > 200 || !/^POLIS[A-Z2-9]{12,16}$/.test(normalizeCode(value)))
       fail(403, "This code is invalid, expired, revoked, or fully used. Ask the organizer for a new code.");
-    const code = await one<{ communityId: string; expiresAt: string; useCount: number; maxUses: number; unlimited: number; revokedAt: string | null }>(
-      "SELECT communityId,expiresAt,useCount,maxUses,unlimited,revokedAt FROM invitation_codes WHERE tokenHash=?", await digest(normalizeCode(value as string)),
+    const code = await one<{ communityId: string; organizationId: string | null; expiresAt: string; useCount: number; maxUses: number; unlimited: number; revokedAt: string | null }>(
+      "SELECT communityId,organizationId,expiresAt,useCount,maxUses,unlimited,revokedAt FROM invitation_codes WHERE tokenHash=?", await digest(normalizeCode(value as string)),
     );
     const community = code && communityFor(code.communityId);
-    const alreadyJoined = !!code && !!uid && !!await one("SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?", uid, code.communityId);
+    const organization = code?.organizationId ? organizationFor(code.organizationId) : undefined;
+    if (code?.organizationId && (!organization || organization.communityId !== code.communityId)) fail(403, "This organization invitation is unavailable.");
+    const alreadyJoined = !!code && !!uid && !!await one(organization ? "SELECT 1 FROM organization_memberships WHERE userId=? AND organizationId=?" : "SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?", uid, organization?.id ?? code.communityId);
     if (!code || !community || (!alreadyJoined && (code.revokedAt || Date.parse(code.expiresAt) <= Date.now() || (!code.unlimited && code.useCount >= code.maxUses))))
       fail(403, "This code is invalid, expired, revoked, or fully used. Ask the organizer for a new code.");
-    return { community: community!, expiresAt: code!.expiresAt, alreadyJoined };
+    return { community: community!, ...(organization ? { organization: { id: organization.id, name: organization.name } } : {}), expiresAt: code!.expiresAt, alreadyJoined };
   };
   const eventFor = async (id: string): Promise<CommunityEvent | null> => {
     const row = await one<{
@@ -302,8 +313,8 @@ export function socialService(
       uid,
     ));
   const visibility = (alias = "p") => ({
-    sql: `NOT EXISTS(SELECT 1 FROM community_events ce WHERE ce.id=${alias}.subjectId AND ce.communityId=${alias}.communityId AND ce.status='draft') AND ${alias}.deletedAt IS NULL AND ${alias}.communityId=? AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=${alias}.authorId) OR (b.ownerId=${alias}.authorId AND b.targetId=?)) AND (${alias}.authorId=? OR ${alias}.audience='community' OR (${alias}.audience='friends' AND EXISTS(SELECT 1 FROM friendships f WHERE f.status='accepted' AND ((f.a=? AND f.b=${alias}.authorId) OR (f.b=? AND f.a=${alias}.authorId)))))`,
-    args: [communityId, uid, uid, uid, uid, uid],
+    sql: `(${alias}.organizationId IS NULL OR EXISTS(SELECT 1 FROM organization_memberships om WHERE om.organizationId=${alias}.organizationId AND om.userId=?)) AND NOT EXISTS(SELECT 1 FROM community_events ce WHERE ce.id=${alias}.subjectId AND ce.communityId=${alias}.communityId AND ce.status='draft') AND ${alias}.deletedAt IS NULL AND ${alias}.communityId=? AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=${alias}.authorId) OR (b.ownerId=${alias}.authorId AND b.targetId=?)) AND (${alias}.authorId=? OR ${alias}.audience='community' OR (${alias}.audience='friends' AND EXISTS(SELECT 1 FROM friendships f WHERE f.status='accepted' AND ((f.a=? AND f.b=${alias}.authorId) OR (f.b=? AND f.a=${alias}.authorId)))))`,
+    args: [uid, communityId, uid, uid, uid, uid, uid],
   });
   const post = async (postId: string) => {
     const v = visibility();
@@ -327,6 +338,11 @@ export function socialService(
   };
   const validSubject = (subject: string) => {
     if (subject === "community") return { id: "" };
+    const topic = topicFor(subject);
+    if (topic) {
+      if (topic.communityId !== communityId) fail(400, "Choose a subject in your current community.");
+      return topic;
+    }
     if (communityId !== defaultCommunityId) fail(400, "This subject is not available in this community. Share a community observation instead.");
     const issue = issueFor(subject);
     if (!issue) fail(400, "Choose an available subject.");
@@ -347,8 +363,8 @@ export function socialService(
             p.id,
             uid,
           ),
-          one<{ count: number }>(
-            `SELECT COUNT(*) count FROM comments c WHERE c.postId=? AND c.deletedAt IS NULL AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?))`,
+          one<{ count: number; latest: string | null }>(
+            `SELECT COUNT(*) count,MAX(c.createdAt) latest FROM comments c WHERE c.postId=? AND c.deletedAt IS NULL AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?))`,
             p.id,
             uid,
             uid,
@@ -369,6 +385,8 @@ export function socialService(
           reactions,
           myReaction: myReaction?.kind ?? null,
           replyCount: replies?.count ?? 0,
+          latestActivity: replies?.latest ?? p.editedAt ?? p.createdAt,
+          following: !!await one("SELECT 1 FROM conversation_follows WHERE userId=? AND postId=?", uid, p.id),
           saved: !!saved,
         };
       }),
@@ -401,10 +419,21 @@ export function socialService(
     const args: unknown[] = [...v.args];
     const postId = params.get("post");
     const filter = params.get("filter") ?? "friends";
+    const organizationId = params.get("organization");
+    const org = organizationId ? organizationFor(organizationId) : null;
+    const orgMembership = org && org.communityId === communityId ? await one<{ role: string }>("SELECT role FROM organization_memberships WHERE userId=? AND organizationId=?", uid, org.id) : null;
+    if (organizationId && (!org || !orgMembership)) fail(404, "This organization space is unavailable. Join with its code after joining the campus.");
     if (postId) {
       sql += " AND p.id=?";
       args.push(postId);
     } else {
+      if (org) {
+        sql += " AND p.organizationId=?"; args.push(org.id);
+        const channel = params.get("channel");
+        if (channel && ["announcements", "discussion", "plans"].includes(channel)) {
+          sql += " AND json_extract(p.attachmentJson,'$.organizationChannel')=?"; args.push(channel);
+        }
+      } else if (!["saved", "conversations"].includes(filter)) sql += " AND p.organizationId IS NULL";
       sql +=
         " AND NOT EXISTS(SELECT 1 FROM mutes WHERE ownerId=? AND targetId=p.authorId)";
       args.push(uid);
@@ -417,6 +446,9 @@ export function socialService(
         args.push(uid);
       } else if (filter === "community") {
         sql += ` AND p.audience='community'`;
+      } else if (filter === "conversations") {
+        sql += " AND EXISTS(SELECT 1 FROM conversation_follows f WHERE f.userId=? AND f.postId=p.id)";
+        args.push(uid);
       }
       if (params.get("issue")) {
         sql += " AND p.issueId=?";
@@ -512,7 +544,7 @@ export function socialService(
           new Date().toISOString(),
         ),
         all<Snapshot["updates"][number]>(
-          "SELECT * FROM issue_updates WHERE ?='ithaca' ORDER BY createdAt DESC LIMIT 50", communityId,
+          "SELECT * FROM issue_updates WHERE communityId=? ORDER BY createdAt DESC LIMIT 50", communityId,
         ),
         all<Snapshot["plans"][number]>(
           `SELECT e.*,u.name FROM plans e JOIN profiles u ON u.id=e.userId WHERE e.userId=? OR (e.audience='community' OR (e.audience='friends' AND EXISTS(SELECT 1 FROM friendships f WHERE f.status='accepted' AND ((f.a=? AND f.b=e.userId) OR (f.b=? AND f.a=e.userId)))))`,
@@ -556,7 +588,7 @@ export function socialService(
         )
           notifications.push(n);
       } else if (n.kind === "issue") {
-        if (communityId !== defaultCommunityId) continue;
+        if (topicFor(n.targetId)?.communityId !== communityId && !(communityId === defaultCommunityId && issues.some(i => i.id === n.targetId))) continue;
         if (
           await one(
             "SELECT 1 FROM follows WHERE userId=? AND issueId=? AND notify=1",
@@ -657,7 +689,7 @@ export function socialService(
         ? {
             invitationCommunities: pilotOwner() ? [...pilotCommunities] : [communityFor(communityId)!],
             invitationCodes: await all<NonNullable<Snapshot["admin"]>["invitationCodes"][number]>(
-              "SELECT id,communityId,createdAt,expiresAt,CASE WHEN unlimited=1 THEN NULL ELSE maxUses END maxUses,useCount,revokedAt FROM invitation_codes WHERE communityId=? OR ?=1 ORDER BY createdAt DESC,id DESC LIMIT 100", communityId, +pilotOwner(),
+              "SELECT id,communityId,createdAt,expiresAt,CASE WHEN unlimited=1 THEN NULL ELSE maxUses END maxUses,useCount,revokedAt FROM invitation_codes WHERE organizationId IS NULL AND (communityId=? OR ?=1) ORDER BY createdAt DESC,id DESC LIMIT 100", communityId, +pilotOwner(),
             ),
             invitations: await all<
               NonNullable<Snapshot["admin"]>["invitations"][number]
@@ -675,6 +707,9 @@ export function socialService(
           }
         : undefined;
     return {
+      organizations: await Promise.all(pilotOrganizations.filter(o => o.communityId === communityId).map(async o => ({ ...o, role: (await one<{ role: string }>("SELECT role FROM organization_memberships WHERE userId=? AND organizationId=?", uid, o.id))?.role ?? null }))),
+      organizationMembers: orgMembership ? await all("SELECT p.id,p.name,m.role FROM organization_memberships m JOIN profiles p ON p.id=m.userId WHERE m.organizationId=? AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=p.id) OR (b.targetId=? AND b.ownerId=p.id)) ORDER BY p.name", org!.id, uid, uid) : undefined,
+      organizationCodes: orgMembership?.role === "organizer" ? await all("SELECT id,expiresAt,useCount,CASE WHEN unlimited=1 THEN NULL ELSE maxUses END maxUses,revokedAt FROM invitation_codes WHERE organizationId=? AND communityId=? ORDER BY createdAt DESC LIMIT 100", org!.id, communityId) : undefined,
       community: communityFor(communityId)!,
       communities: (await all<{ communityId: string }>("SELECT communityId FROM pilot_memberships WHERE userId=?", uid)).flatMap(m => communityFor(m.communityId) ? [communityFor(m.communityId)!] : []),
       events,
@@ -684,7 +719,7 @@ export function socialService(
             interests: JSON.parse(eventPrefs.interestsJson),
             complete: !!eventPrefs.complete,
           }
-        : { ...emptySnapshot.eventPreferences, city: communityFor(communityId)!.locationLabel.replace(", NY", "") },
+        : { ...emptySnapshot.eventPreferences, city: communityFor(communityId)!.locationLabel.split(",")[0] },
       eventSuggestions: await all<
         NonNullable<Snapshot["eventSuggestions"]>[number]
       >(
@@ -703,7 +738,7 @@ export function socialService(
         "SELECT issueId,priority,note FROM issue_priorities WHERE userId=? AND ?='ithaca' ORDER BY priority,issueId",
         uid, communityId,
       ),
-      follows: communityId === defaultCommunityId ? follows : [],
+      follows: follows.filter(f => topicFor(f.issueId)?.communityId === communityId || (communityId === defaultCommunityId && issues.some(i => i.id === f.issueId))),
       plans: plans.filter(
         (p) =>
           (p.userId === uid || visibleUsers.includes(p.userId)) &&
@@ -887,14 +922,24 @@ export function socialService(
         if (await one("SELECT 1 FROM profiles WHERE username=? AND id<>?", data.username, uid)) fail(409, "That username is taken. Choose another one.");
         add("INSERT INTO profiles(id,name,username,communityLabel,activeCommunityId,createdAt) VALUES(?,?,?,'',?,?) ON CONFLICT(id) DO NOTHING", uid, data.name, data.username, openCommunityId, now);
         add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) VALUES(?,?,?)", uid, openCommunityId, pilotOwner() ? "owner" : "member");
+        add("INSERT OR IGNORE INTO preferences(userId,replies,reactions,issues,events) VALUES(?,0,0,0,0)", uid);
       }
       // A fresh retry must not overwrite a profile or move an existing member.
       result = { ok: true, alreadyCreated: !!existing };
+    } else if (data.action === "community.manage") {
+      if (!pilotOwner()) fail(403, "Only the configured pilot owner can manage another community.");
+      if (!communityFor(data.communityId) || !await one("SELECT 1 FROM profiles WHERE id=?", uid)) fail(400, "Create your profile and choose a configured community.");
+      add("INSERT INTO community_memberships(userId,communityId,role) VALUES(?,?,'owner') ON CONFLICT(userId,communityId) DO UPDATE SET role='owner'", uid, data.communityId);
+      add("UPDATE profiles SET activeCommunityId=? WHERE id=?", data.communityId, uid);
+      for (const org of pilotOrganizations.filter(o => o.communityId === data.communityId))
+        add("INSERT INTO organization_memberships(userId,organizationId,role) VALUES(?,?,'organizer') ON CONFLICT(userId,organizationId) DO UPDATE SET role='organizer'", uid, org.id);
+      result = { ok: true, communityId: data.communityId };
     } else if (data.action === "invite.redeem" || (data.action === "join" && /^POLIS/i.test(normalizeCode(data.invite)))) {
       const preview = await previewInvitation(data.invite);
       if (!data.confirmedCommunityId || data.confirmedCommunityId !== preview.community.id)
         fail(400, "Confirm the community associated with this code.");
       const target = preview.community.id;
+      const organization = preview.organization;
       const code = await one<{ id: string }>("SELECT id FROM invitation_codes WHERE tokenHash=?", await digest(normalizeCode(data.invite)));
       if (!code) fail(403, "This invitation is unavailable.");
       const existing = await one<Person>("SELECT * FROM profiles WHERE id=?", uid);
@@ -902,16 +947,24 @@ export function socialService(
       // Every check uses current database time inside the same transactional batch.
       // Already admitted members can safely retry even after a code becomes unusable.
       guard("EXISTS(SELECT 1 FROM invitation_codes WHERE id=? AND communityId=?)", code!.id, target);
-      guard("EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?) OR EXISTS(SELECT 1 FROM invitation_codes WHERE id=? AND revokedAt IS NULL AND (unlimited=1 OR useCount<maxUses) AND expiresAt>strftime('%Y-%m-%dT%H:%M:%fZ','now'))", uid, target, code!.id);
+      const membershipSql = organization ? "SELECT 1 FROM organization_memberships WHERE userId=? AND organizationId=?" : "SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?";
+      const scope = organization?.id ?? target;
+      if (organization) {
+        if (!await one("SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?", uid, target)) fail(403, "Join this campus using a campus invitation before joining its organization.");
+        guard("EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", uid, target);
+      }
+      guard(`EXISTS(${membershipSql}) OR EXISTS(SELECT 1 FROM invitation_codes WHERE id=? AND revokedAt IS NULL AND (unlimited=1 OR useCount<maxUses) AND expiresAt>strftime('%Y-%m-%dT%H:%M:%fZ','now'))`, uid, scope, code!.id);
       if (!existing) {
         add("INSERT INTO profiles(id,name,username,communityLabel,activeCommunityId,createdAt) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING", uid, data.name!, data.username!, preview.community.locationLabel, target, now);
+        add("INSERT OR IGNORE INTO preferences(userId,replies,reactions,issues,events) VALUES(?,0,0,0,0)", uid);
       }
       // Count a person once, including retries with new request IDs or devices.
-      add("INSERT OR IGNORE INTO invitation_redemptions(codeId,userId,requestKey,redeemedAt) SELECT ?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", code!.id, uid, key, now, uid, target);
+      add(`INSERT OR IGNORE INTO invitation_redemptions(codeId,userId,requestKey,redeemedAt) SELECT ?,?,?,? WHERE NOT EXISTS(${membershipSql})`, code!.id, uid, key, now, uid, scope);
       add("UPDATE invitation_codes SET useCount=useCount+1 WHERE id=? AND EXISTS(SELECT 1 FROM invitation_redemptions WHERE codeId=? AND userId=? AND requestKey=?)", code!.id, code!.id, uid, key);
-      add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) SELECT ?,?,'member' WHERE NOT EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", uid, target, uid, target);
+      if (organization) add("INSERT OR IGNORE INTO organization_memberships(userId,organizationId,role) VALUES(?,?,'member')", uid, organization.id);
+      else add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) SELECT ?,?,'member' WHERE NOT EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", uid, target, uid, target);
       add("UPDATE profiles SET activeCommunityId=? WHERE id=?", target, uid);
-      result = { ok: true, communityId: target, alreadyJoined: preview.alreadyJoined };
+      result = { ok: true, communityId: target, organizationId: organization?.id, alreadyJoined: preview.alreadyJoined };
     } else if (data.action === "join") {
       if (await one("SELECT 1 FROM pilot_memberships WHERE userId=?", uid))
         fail(409, "You already have a profile.");
@@ -981,7 +1034,7 @@ export function socialService(
       );
     } else {
       const m = await member();
-      if (communityId !== defaultCommunityId && (["invite", "question.save", "issue.update", "answer", "follow"].includes(data.action) || data.action.startsWith("priority.") || data.action.startsWith("ranking")))
+      if (communityId !== defaultCommunityId && (["invite", "question.save", "answer"].includes(data.action) || data.action.startsWith("priority.") || data.action.startsWith("ranking")))
         fail(400, "This community does not have a local issue catalog yet.");
       guard(
         "EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)",
@@ -996,7 +1049,30 @@ export function socialService(
           uid, communityId,
         );
       };
+      const organizer = async (organizationId: string) => {
+        const org = organizationFor(organizationId);
+        if (org?.communityId !== communityId || !await one("SELECT 1 FROM organization_memberships WHERE userId=? AND organizationId=? AND role='organizer'", uid, organizationId)) fail(403, "Organization organizer access is required.");
+        guard("EXISTS(SELECT 1 FROM organization_memberships WHERE userId=? AND organizationId=? AND role='organizer')", uid, organizationId);
+      };
       switch (data.action) {
+        case "organization.member":
+          owner();
+          if (organizationFor(data.organizationId)?.communityId !== communityId) fail(404, "Organization unavailable.");
+          if (data.role !== "remove") {
+            if (!await one("SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?", data.userId, communityId)) fail(403, "This person must first join the campus.");
+            guard("EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", data.userId, communityId);
+            add("INSERT INTO organization_memberships(userId,organizationId,role) VALUES(?,?,?) ON CONFLICT(userId,organizationId) DO UPDATE SET role=excluded.role", data.userId, data.organizationId, data.role);
+          } else add("DELETE FROM organization_memberships WHERE userId=? AND organizationId=?", data.userId, data.organizationId);
+          break;
+        case "conversation.follow":
+          await guardedPost(data.postId);
+          add(data.enabled ? "INSERT OR IGNORE INTO conversation_follows(userId,postId) VALUES(?,?)" : "DELETE FROM conversation_follows WHERE userId=? AND postId=?", uid, data.postId);
+          break;
+        case "conversation.visit":
+          await guardedPost(data.postId);
+          if (await one("SELECT 1 FROM conversation_follows WHERE userId=? AND postId=?", uid, data.postId))
+            add("INSERT OR IGNORE INTO metrics(id,userId,event,objectId,createdAt,communityId) VALUES(?,?,'conversation_return',NULL,?,?)", "return_" + await digest(uid + communityId + now.slice(0, 10)), uid, now.slice(0, 10), communityId);
+          break;
         case "community.joinOpen": {
           add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) VALUES(?,?,?)", uid, openCommunityId, pilotOwner() ? "owner" : "member");
           add("UPDATE profiles SET activeCommunityId=? WHERE id=?", openCommunityId, uid);
@@ -1033,11 +1109,10 @@ export function socialService(
             fail(400, "End time must follow the start.");
           if ((e.latitude === null) !== (e.longitude === null))
             fail(400, "Supply both venue coordinates or neither.");
-          if (e.issueId && !issues.some((i) => i.id === e.issueId))
-            fail(400, "Choose a related issue or leave it blank.");
+          if (e.issueId) validSubject(e.issueId);
           if (Date.parse(e.checkedAt) > Date.now() + 60000)
             fail(400, "Source check time cannot be in the future.");
-          if (e.id === "community" || catalogItem(e.id) || issues.some((i) => i.id === e.id))
+          if (e.id === "community" || topicFor(e.id) || catalogItem(e.id) || issues.some((i) => i.id === e.id))
             fail(400, "This event ID is reserved.");
           const existing = await eventFor(e.id);
           if (!existing && await one("SELECT 1 FROM community_events WHERE id=?", e.id)) fail(409, "Choose a different event ID.");
@@ -1218,6 +1293,11 @@ export function socialService(
           );
           break;
         case "post": {
+          if (data.organizationId) {
+            if (organizationFor(data.organizationId)?.communityId !== communityId || !await one("SELECT 1 FROM organization_memberships WHERE userId=? AND organizationId=?", uid, data.organizationId)) fail(403, "Join this organization before posting.");
+            guard("EXISTS(SELECT 1 FROM organization_memberships WHERE userId=? AND organizationId=?)", uid, data.organizationId);
+            if (data.organizationChannel === "announcements") await organizer(data.organizationId);
+          }
           const item = catalogItem(data.subjectId);
           const event = data.subjectId !== "community" && !issueFor(data.subjectId)
             ? await guardedEvent(data.subjectId)
@@ -1235,12 +1315,13 @@ export function socialService(
             !event
           )
             fail(400, "Choose an event.");
-          if (data.position && data.kind !== "opinion")
+          if (data.kind === "update" && !data.sourceUrl) fail(400, "Add a source link for this update.");
+          if (data.position && data.kind !== "opinion" && data.kind !== "debate")
             fail(400, "Positions belong to opinion posts.");
           if (
             data.position &&
             item?.kind !== "Policies" &&
-            !issues.some((i) => i.id === data.subjectId)
+            !issues.some((i) => i.id === data.subjectId) && !topicFor(data.subjectId)
           )
             fail(400, "Choose an issue or policy for a position.");
           if (!data.text && !data.position)
@@ -1249,6 +1330,7 @@ export function socialService(
             const earlier = await guardedOwnPost(data.priorPostId);
             if (
               earlier.subjectId !== data.subjectId ||
+              (earlier.organizationId ?? null) !== data.organizationId ||
               earlier.audience !== data.audience
             )
               fail(
@@ -1262,9 +1344,13 @@ export function socialService(
             data.text,
             data.audience,
             data.position,
-            { sourceUrl: data.sourceUrl },
+            { sourceUrl: data.sourceUrl, ...(data.organizationId ? { organizationChannel: data.organizationChannel } : {}) },
             data.priorPostId,
           );
+          if (data.organizationId) {
+            add("UPDATE posts SET organizationId=? WHERE id=?", data.organizationId, objectId);
+            add("INSERT INTO metrics(id,userId,event,createdAt,communityId) VALUES(?,?,'organization_contribution',?,?)", key + "_org", uid, now, communityId);
+          }
 
           break;
         }
@@ -1277,16 +1363,16 @@ export function socialService(
               : {}),
           };
           if (
-            p.kind === "article" &&
+            (p.kind === "article" || p.kind === "update") &&
             catalogItem(p.subjectId)?.kind !== "News" &&
             !attachment.sourceUrl
           )
             fail(400, "Keep the article’s HTTPS link.");
           if (
             data.position &&
-            (p.kind !== "opinion" ||
+            ((p.kind !== "opinion" && p.kind !== "debate") ||
               (catalogItem(p.subjectId)?.kind !== "Policies" &&
-                !issues.some((i) => i.id === p.subjectId)))
+                !issues.some((i) => i.id === p.subjectId) && !topicFor(p.subjectId)))
           )
             fail(400, "This post does not use a policy position.");
           if (!data.text && !data.position)
@@ -1390,6 +1476,8 @@ export function socialService(
           notify(recipient, "reply", p.id, objectId);
           if (recipient !== p.authorId)
             notify(p.authorId, "reply", p.id, objectId);
+          for (const follower of await all<{ userId: string }>("SELECT userId FROM conversation_follows WHERE postId=?", p.id))
+            if (follower.userId !== recipient && follower.userId !== p.authorId) notify(follower.userId, "reply", p.id, objectId);
           if (p.audience !== "only_me")
             add(
               "INSERT INTO metrics(id,userId,event,objectId,createdAt) VALUES(?,?,?,?,?)",
@@ -1612,8 +1700,8 @@ export function socialService(
           break;
         }
         case "follow":
-          if (!issues.some((i) => i.id === data.issueId))
-            fail(400, "Unknown issue.");
+          validSubject(data.issueId);
+          if (data.issueId === "community") fail(400, "Choose an issue.");
           if (data.enabled)
             add(
               "INSERT INTO follows(userId,issueId,notify) VALUES(?,?,?) ON CONFLICT(userId,issueId) DO UPDATE SET notify=excluded.notify",
@@ -1798,10 +1886,11 @@ export function socialService(
           break;
         }
         case "invite.code": {
-          owner();
+          if (data.organizationId) await organizer(data.organizationId); else owner();
           const target = data.communityId ?? communityId;
           if (!communityFor(target)) fail(400, "Choose an available university or community.");
           if (target !== communityId && !pilotOwner()) fail(403, "You can only invite people to your own community.");
+          if (data.organizationId && organizationFor(data.organizationId)?.communityId !== target) fail(400, "Organization and campus must match.");
           // Twelve uniformly sampled base32 characters give 60 bits of entropy.
           const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
           const code = Array.from(crypto.getRandomValues(new Uint8Array(12)), byte => alphabet[byte % 32]).join("");
@@ -1810,10 +1899,12 @@ export function socialService(
             objectId, await digest(token.replace(/-/g, "")), uid, now,
             new Date(Date.parse(now) + data.expiresDays * 86400000).toISOString(), data.maxUses ?? 1, target, +(data.maxUses === null));
           result = { ok: true, invitationCode: token };
+          if (data.organizationId) add("UPDATE invitation_codes SET organizationId=? WHERE id=?", data.organizationId, objectId);
           break;
         }
         case "invite.revoke": {
-          owner();
+          const code = await one<{ organizationId: string | null }>("SELECT organizationId FROM invitation_codes WHERE id=?", data.codeId);
+          if (code?.organizationId) await organizer(code.organizationId); else owner();
           if (!(await one("SELECT id FROM invitation_codes WHERE id=? AND (communityId=? OR ?=1)", data.codeId, communityId, +pilotOwner()))) fail(404, "Invitation code unavailable.");
           add("UPDATE invitation_codes SET revokedAt=COALESCE(revokedAt,?) WHERE id=? AND (communityId=? OR ?=1)", now, data.codeId, communityId, +pilotOwner());
           break;
@@ -1900,16 +1991,17 @@ export function socialService(
           break;
         case "issue.update": {
           owner();
-          if (!issues.some((i) => i.id === data.issueId))
-            fail(400, "Unknown issue.");
+          validSubject(data.issueId);
+          if (data.issueId === "community") fail(400, "Choose an issue.");
           add(
-            "INSERT INTO issue_updates(id,issueId,title,sourceUrl,sample,createdAt) VALUES(?,?,?,?,?,?)",
+            "INSERT INTO issue_updates(id,issueId,title,sourceUrl,sample,createdAt,communityId) VALUES(?,?,?,?,?,?,?)",
             objectId,
             data.issueId,
             data.title,
             data.sourceUrl,
             +data.sample,
             now,
+            communityId,
           );
           const followers = await all<{ userId: string }>(
             "SELECT userId FROM follows WHERE issueId=? AND notify=1",
@@ -1962,11 +2054,12 @@ export function socialService(
           }
         case "visit": {
           add(
-            "INSERT OR IGNORE INTO metrics(id,userId,event,createdAt) VALUES(?,?,?,?)",
-            uid + "_" + now.slice(0, 10),
+            "INSERT OR IGNORE INTO metrics(id,userId,event,createdAt,communityId) VALUES(?,?,?,?,?)",
+            uid + "_" + communityId + "_" + now.slice(0, 10),
             uid,
             "active_day",
             now,
+            communityId,
           );
           const pref = await one<{ events: number }>(
             "SELECT events FROM preferences WHERE userId=?",
@@ -1999,6 +2092,8 @@ export function socialService(
         }
       }
     }
+    // Scope minimal first-party measures without copying text or political positions.
+    add("UPDATE metrics SET communityId=? WHERE id IN (?, ?, ?)", communityId, key + "_post", key + "_reply", key + "_event");
     if (data.action === "plan")
       result.plan = {
         userId: uid,

@@ -55,6 +55,7 @@ export const invitationCodes = sqliteTable("invitation_codes", {
   revokedAt: text(),
   communityId: text().notNull().default("ithaca"),
   unlimited: integer().notNull().default(0),
+  organizationId: text(),
 });
 export const invitationRedemptions = sqliteTable("invitation_redemptions", {
   codeId: text().notNull().references(() => invitationCodes.id),
@@ -91,6 +92,7 @@ export const posts = sqliteTable(
       .notNull()
       .references(() => profiles.id),
     communityId: text().notNull(),
+    organizationId: text(),
     kind: text().notNull(),
     subjectId: text().notNull(),
     issueId: text().notNull(),
@@ -182,6 +184,15 @@ export const follows = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.issueId] })],
 );
+export const conversationFollows = sqliteTable("conversation_follows", {
+  userId: text().notNull().references(() => profiles.id),
+  postId: text().notNull().references(() => posts.id),
+}, t => [primaryKey({ columns: [t.userId, t.postId] })]);
+export const organizationMemberships = sqliteTable("organization_memberships", {
+  userId: text().notNull().references(() => profiles.id),
+  organizationId: text().notNull(),
+  role: text().notNull().default("member"),
+}, t => [primaryKey({ columns: [t.userId, t.organizationId] })]);
 export const plans = sqliteTable(
   "plans",
   {
@@ -263,6 +274,7 @@ export const answers = sqliteTable(
 );
 export const issueUpdates = sqliteTable("issue_updates", {
   id: text().primaryKey(),
+  communityId: text().notNull().default("ithaca"),
   issueId: text().notNull(),
   title: text().notNull(),
   sourceUrl: text().notNull(),
@@ -309,6 +321,7 @@ export const requests = sqliteTable("requests", {
 });
 export const metrics = sqliteTable("metrics", {
   id: text().primaryKey(),
+  communityId: text().notNull().default("ithaca"),
   userId: text().notNull(),
   event: text().notNull(),
   objectId: text(),

@@ -1,5 +1,7 @@
 # Polis
 
+The latest candidate is `codex/cornell-uf-commons`: one Commons experience with separate Cornell/Ithaca and UF/Gainesville memberships, sourced topics and private organization spaces. See [Commons setup, verification and rollout](docs/commons-pilot.md). It is locally verified and has **not** replaced Sites version 2.
+
 Polis is a social app for politics and local civic life: discover an issue, express a view, hear from a friend, and follow what happens next. This repository is its development home.
 
 The `codex/open-signup` candidate separates account creation from invitations. Authenticated people can create a profile in Polis commons without a code; optional codes join protected university/organization communities. Email and Google are offered by the existing OpenAI login, not a separate Polis identity provider. See [signup setup and verification](docs/open-signup.md). This change is not yet deployed.
