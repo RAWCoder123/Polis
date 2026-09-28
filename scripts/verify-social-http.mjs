@@ -53,6 +53,8 @@ assert.equal(
 );
 if (a.status === "onboarding")
   await act("a", { action: "join", name: "Beta Alex", username: "beta_alex" });
+// Other suites move the shared owner between communities; return it to Ithaca.
+await act("a", { action: "community.manage", communityId: "ithaca" });
 for (const [user, name] of [
   ["b", "Beta Blair"],
   ["c", "Beta Casey"],

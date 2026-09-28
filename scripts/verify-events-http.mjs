@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { officialEvents } from "../lib/social/official-events.ts";
-// Isolated local D1 only. Run test:social-http first to establish synthetic memberships.
+// Isolated local D1 only. B and C are new run-scoped synthetic accounts, so the
+// suite needs no earlier fixture and can repeat on the same database.
 const origin = process.env.POLIS_TEST_ORIGIN ?? "http://127.0.0.1:5176";
 assert.ok(["localhost", "127.0.0.1"].includes(new URL(origin).hostname));
+const run = Date.now().toString(36);
 const cookies = {};
 for (const [u, a] of [
   ["a", "1"],
-  ["b", "beta_b"],
-  ["c", "beta_c"],
+  ["b", "qa_events_" + run + "_b"],
+  ["c", "qa_events_" + run + "_c"],
 ]) {
   const r = await fetch(origin + "/signin-with-chatgpt?test_account=" + a, {
     redirect: "manual",
@@ -37,6 +39,23 @@ async function act(u, data, status = 200, requestId = crypto.randomUUID()) {
   assert.equal(r.status, status, JSON.stringify(body));
   return body;
 }
+// The pilot owner curates Ithaca; B and C join it with single-use codes, and
+// B opts in to reply notifications and becomes the owner's friend.
+if ((await read("a")).status === "onboarding")
+  await act("a", { action: "account.create", name: "Local owner", username: "events_owner" });
+await act("a", { action: "community.manage", communityId: "ithaca" });
+for (const [u, name] of [["b", "Events Blair"], ["c", "Events Casey"]]) {
+  const { invitationCode } = await act("a", { action: "invite.code", communityId: "ithaca", maxUses: 1 });
+  await act(u, { action: "join", invite: invitationCode, confirmedCommunityId: "ithaca", name, username: "events_" + run + "_" + u });
+}
+assert.equal(
+  new Set(await Promise.all(["a", "b", "c"].map(async (u) => (await read(u)).me.id))).size,
+  3,
+  "Start with POLIS_TEST_ACCOUNTS=1; test identities must be isolated.",
+);
+await act("b", { action: "preferences", replies: true, reactions: true, issues: true, events: false });
+await act("a", { action: "friend", targetId: (await read("b")).me.id, operation: "request" });
+await act("b", { action: "friend", targetId: (await read("a")).me.id, operation: "accept" });
 for (const e of officialEvents)
   await act("a", { action: "event.save", event: e, createOnly: true });
 for (const e of officialEvents)

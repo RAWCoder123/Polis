@@ -5,6 +5,7 @@ import { expect } from "playwright/test";
 
 // Run on a migrated, disposable local database with POLIS_TEST_ACCOUNTS=1.
 // These identities are synthetic and cannot be used by the production Worker.
+// Each run signs up two new run-scoped accounts, so it can repeat on one database.
 const origin = process.env.POLIS_TEST_ORIGIN ?? "http://localhost:5181";
 const url = new URL(origin);
 assert.ok(url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname));
@@ -13,6 +14,7 @@ await mkdir(output, { recursive: true });
 const browser = await chromium.launch();
 const errors = [];
 const actors = [];
+const run = Date.now().toString(36);
 async function state(actor) {
   const response = await actor.context.request.get(origin + "/api/polis");
   assert.equal(response.status(), 200);
@@ -24,7 +26,9 @@ async function command(actor, data) {
   return response.json();
 }
 try {
-  for (const [account, width] of [["beta_b", 390], ["beta_c", 1440]]) {
+  for (const [role, width] of [["b", 390], ["c", 1440]]) {
+    const account = "qa_signup_" + run + "_" + role;
+    const username = "signup_" + run + "_" + role;
     const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 1000 }, reducedMotion: "reduce" });
     const page = await context.newPage();
     page.on("pageerror", e => errors.push(e.message));
@@ -40,31 +44,26 @@ try {
     });
     await page.getByRole("link", { name: "Continue with OpenAI", exact: true }).click();
     const snapshot = await state(actor);
-    if (snapshot.status === "onboarding") {
-      await expect(page.getByRole("heading", { name: "Make yourself at home." })).toBeVisible();
-      await page.getByRole("textbox", { name: "Your name", exact: true }).fill("Test " + account);
-      await page.getByRole("textbox", { name: "Username", exact: true }).fill("signup_" + account);
-      let failed = false;
-      await page.route("**/api/polis", route => {
-        if (!failed && route.request().method() === "POST" && route.request().postDataJSON()?.data?.action === "account.create") {
-          failed = true;
-          return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Temporary test failure. Please retry." }) });
-        }
-        return route.continue();
-      });
-      await page.getByRole("button", { name: "Create my Polis account" }).click();
-      await expect(page.locator(".account-entry [role=alert]")).toContainText("Temporary test failure");
-      await expect(page.getByRole("textbox", { name: "Username", exact: true })).toHaveValue("signup_" + account);
-      await page.screenshot({ path: output + "/setup-" + width + ".png", fullPage: true });
-      await page.getByRole("button", { name: "Create my Polis account" }).click();
-      // Members without a campus email are guided to find their local community first.
-      await expect(page.getByRole("heading", { name: "Polis is a commons for a real place." })).toBeVisible();
-      await page.goto(origin + "/#home");
-    } else {
-      assert.equal(snapshot.status, "ready");
-      await command(actor, { action: "community.joinOpen" });
-      await page.reload();
-    }
+    assert.equal(snapshot.status, "onboarding", "Each run signs up a new synthetic account.");
+    await expect(page.getByRole("heading", { name: "Make yourself at home." })).toBeVisible();
+    await page.getByRole("textbox", { name: "Your name", exact: true }).fill("Test " + account);
+    await page.getByRole("textbox", { name: "Username", exact: true }).fill(username);
+    let failed = false;
+    await page.route("**/api/polis", route => {
+      if (!failed && route.request().method() === "POST" && route.request().postDataJSON()?.data?.action === "account.create") {
+        failed = true;
+        return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Temporary test failure. Please retry." }) });
+      }
+      return route.continue();
+    });
+    await page.getByRole("button", { name: "Create my Polis account" }).click();
+    await expect(page.locator(".account-entry [role=alert]")).toContainText("Temporary test failure");
+    await expect(page.getByRole("textbox", { name: "Username", exact: true })).toHaveValue(username);
+    await page.screenshot({ path: output + "/setup-" + width + ".png", fullPage: true });
+    await page.getByRole("button", { name: "Create my Polis account" }).click();
+    // Members without a campus email are guided to find their local community first.
+    await expect(page.getByRole("heading", { name: "Polis is a commons for a real place." })).toBeVisible();
+    await page.goto(origin + "/#home");
     await expect(page.getByText("Welcome to Polis commons.", { exact: true })).toBeVisible();
     await page.reload();
     assert.equal((await state(actor)).community.id, "polis");

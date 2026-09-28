@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { officialEvents } from "../lib/social/official-events.ts";
 
 // This writes synthetic records in local D1. It must never run against a host.
+// A, B and C are new run-scoped synthetic accounts, so the journey needs no
+// earlier fixture and can repeat on the same database.
 const origin = process.env.POLIS_TEST_ORIGIN ?? "http://127.0.0.1:5176";
 // Conversation and event links carry their community: #post/<id>?community=<id>.
 const postUrl = (path) => new RegExp("#post/" + path + "(\\?community=[a-z]+)?$");
@@ -18,9 +21,14 @@ await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const errors = [], failedTiles = [], checks = [];
 const runLabel = "SYNTHETIC BROWSER TEST " + Date.now();
+const run = Date.now().toString(36);
 const contexts = [];
 function pass(name) { checks.push(name); console.log("PASS " + name); }
-async function actor(account, viewport) {
+async function signIn(context, account) {
+  const response = await context.request.get(origin + "/signin-with-chatgpt?test_account=" + account, { maxRedirects: 0 });
+  assert.equal(response.status(), 302);
+}
+async function actor(role, name, viewport) {
   const context = await browser.newContext({ viewport, isMobile: viewport.width < 600,
     hasTouch: viewport.width < 600, reducedMotion: "reduce", timezoneId: "America/New_York" });
   contexts.push(context);
@@ -30,12 +38,19 @@ async function actor(account, viewport) {
     if (r.url().includes("tile.openstreetmap.org") && (r.status() >= 400 || r.headers()["x-blocked"]))
       failedTiles.push({ status: r.status(), blocked: !!r.headers()["x-blocked"] });
   });
-  await page.goto(origin + "/signin-with-chatgpt?test_account=" + account + "&return_to=%2F%23home");
+  // Join Ithaca with a single-use code before the first page load. New accounts
+  // start with in-app notifications off; testers opt in explicitly.
+  await signIn(context, "qa_cycle_" + run + "_" + role);
+  const { invitationCode } = await setup(curator, { action: "invite.code", communityId: "ithaca", maxUses: 1 });
+  await setup({ context }, { action: "join", invite: invitationCode, confirmedCommunityId: "ithaca", name, username: "beta_" + run + "_" + role });
+  await setup({ context }, { action: "preferences", replies: true, reactions: true, issues: true, events: false });
+  await page.goto(origin + "/#home");
   await expect(page.getByRole("button", { name: /^Notifications,/ })).toBeVisible();
   const state = await (await context.request.get(origin + "/api/polis")).json();
-  assert.equal(state.status, "ready", "Run local HTTP fixtures first.");
+  assert.equal(state.status, "ready", "Run-scoped setup must leave the account ready.");
+  assert.equal(state.community.id, "ithaca");
   assert.ok(state.me.username.startsWith("beta_"), "Synthetic memberships only.");
-  return { context, page, id: state.me.id };
+  return { context, page, id: state.me.id, username: state.me.username };
 }
 async function read(a, params = {}) {
   const response = await a.context.request.get(origin + "/api/polis?" + new URLSearchParams(params));
@@ -78,10 +93,27 @@ async function sendComment(a, label, text) {
   await expect(a.page.locator("#comment-" + value.commentId)).toContainText(text);
   return value.commentId;
 }
+// The pilot owner prepares Ithaca: the listings the event journey uses and a
+// single-use code for each member.
+const curator = { context: await browser.newContext() };
 try {
-  const a = await actor("1", { width: 1440, height: 1000 });
-  const b = await actor("beta_b", { width: 390, height: 844 });
-  const c = await actor("beta_c", { width: 390, height: 844 });
+  await signIn(curator.context, "1");
+  if ((await read(curator)).status === "onboarding")
+    await setup(curator, { action: "account.create", name: "Local owner", username: "cycle_owner" });
+  await setup(curator, { action: "community.manage", communityId: "ithaca" });
+  for (const event of officialEvents) await setup(curator, { action: "event.save", event, createOnly: true });
+  // Checked listings end; a synthetic far-future occurrence at the same market
+  // venue keeps the map and RSVP journey independent of the calendar.
+  await setup(curator, { action: "event.save", event: {
+    ...officialEvents[0], id: "synthetic-browser-market", seriesId: "synthetic-browser-series",
+    title: "SYNTHETIC browser market visit", description: "Local browser fixture only.",
+    organizer: "Test organizer", sourceUrl: "https://example.test/fixture",
+    startsAt: "2099-09-19T13:00:00.000Z", endsAt: "2099-09-19T19:00:00.000Z",
+    registrationUrl: "https://example.test/fixture", sample: true, status: "published",
+  } });
+  const a = await actor("a", "Beta Alex", { width: 1440, height: 1000 });
+  const b = await actor("b", "Beta Blair", { width: 390, height: 844 });
+  const c = await actor("c", "Beta Casey", { width: 390, height: 844 });
   assert.equal(new Set([a.id, b.id, c.id]).size, 3);
   for (const [person, targetId] of [[a, b.id], [b, a.id]]) {
     await setup(person, { action: "block", targetId, enabled: false });
@@ -94,8 +126,8 @@ try {
   await expect(a.page.getByRole("tab", { name: "Requests", exact: true })).toBeFocused();
   await expect(a.page).toHaveURL(origin + "/#friends/requests");
   await a.page.getByRole("tab", { name: "Discover people", exact: true }).click();
-  await a.page.locator(".person-row").filter({ hasText: "@beta_b" }).getByRole("button", { name: "Add friend", exact: true }).click();
-  await expect(a.page.locator(".person-row").filter({ hasText: "@beta_b" }).getByRole("button", { name: "Cancel request", exact: true })).toBeVisible();
+  await a.page.locator(".person-row").filter({ hasText: "@" + b.username }).getByRole("button", { name: "Add friend", exact: true }).click();
+  await expect(a.page.locator(".person-row").filter({ hasText: "@" + b.username }).getByRole("button", { name: "Cancel request", exact: true })).toBeVisible();
   await go(b, "notifications");
   await b.page.getByRole("button", { name: /^Beta Alex sent you a friend request/ }).first().click();
   await expect(b.page).toHaveURL(origin + "/#friends/requests");

@@ -38,15 +38,79 @@ npx playwright install chromium
 POLIS_TEST_ACCOUNTS=1 npm run dev -- --hostname 127.0.0.1 --port 5176
 ```
 
-In another terminal:
+In another terminal, run any of the suites, in any order and as often as you like, against the same database:
 
 ```sh
+POLIS_TEST_ORIGIN=http://127.0.0.1:5176 npm run test:browser
 POLIS_TEST_ORIGIN=http://127.0.0.1:5176 npm run test:social-http
 POLIS_TEST_ORIGIN=http://127.0.0.1:5176 npm run test:events-http
-POLIS_TEST_ORIGIN=http://127.0.0.1:5176 npm run test:browser
 ```
 
-The scripts reject hosted origins. HTTP fixtures establish synthetic memberships and import organizer listings through the authenticated API. Browser binaries and test artifacts are not committed. `POLIS_BROWSER_PACKAGE_ROOT` optionally selects a preinstalled Playwright package root; ordinary clones use the pinned development dependency.
+The scripts reject hosted origins. Each one creates the synthetic members and imports the organizer listings it needs through the authenticated API, so `test:browser` no longer depends on the HTTP fixtures (see [Independent local suites](#independent-local-suites--september-27-2026)). Browser binaries and test artifacts are not committed. `POLIS_BROWSER_PACKAGE_ROOT` optionally selects a preinstalled Playwright package root; ordinary clones use the pinned development dependency.
+
+## Independent local suites — September 27, 2026
+
+Every local suite now establishes the state it needs. All nine pass back to back on one fresh, migrated local D1 in any order, and each can repeat on the same database. Before this change they shared synthetic accounts and leftover data and needed two databases in fixed orders. For example, `test:invitations-browser` failed after `test:social-http` because its tester was already an Ithaca member, and failed its own second run because the tester had already joined Emory. Branch `codex/independent-local-suites`; local synthetic results only.
+
+How the suites stay independent:
+
+- **Run-scoped synthetic accounts.** With `POLIS_TEST_ACCOUNTS=1`, the loopback-only development sign-in shim in `build/sites-vite-plugin.ts` also accepts `test_account=qa_<suite>_<run>_<role>` (for example `qa_signup_mg2k3x9a_b`) and signs in a synthetic `…@sites.test` identity for it.
+  - Suites that follow a new person use new accounts on every run: signup, invitation redemption, the event RSVP fixture, the social cycle, civic journey E, and the anywhere founder and neighbor. Every run therefore exercises the first-time path, and no run sees another run's relationships, notifications or memberships.
+  - Without `POLIS_TEST_ACCOUNTS=1`, off loopback, or for any other name, sign-in falls back to the example owner and the cookie is ignored (`tests/local-sign-in.test.ts`). The shim is never installed in a production build, and the built output contains no test-account code.
+- **Fixed identities belong to one suite each:**
+  - `beta_b`/`beta_c`: `test:social-http`;
+  - `ithaca_*`/`uf_*`: the commons suite;
+  - `campus_cu`/`campus_uf`: the civic suite;
+  - `campus_new`: the anywhere suite.
+- **The pilot owner `1` is necessarily shared**, because owner access comes from `POLIS_OWNER_EMAIL`. Each suite that uses the owner creates its profile if it is missing, then calls `community.manage` for the community it needs instead of assuming where another suite left it. No suite depends on the owner's name or username.
+- **Setup goes through the public API:**
+  - owner-issued single-use codes (`join` with `invite` and `confirmedCommunityId`);
+  - explicit notification opt-in, since new accounts start with notifications off;
+  - friend request and accept;
+  - idempotent `createOnly` imports of the checked Ithaca listings.
+
+  `test:browser` also saves a clearly labeled synthetic occurrence in 2099 at the market venue. Its map and RSVP steps therefore no longer run out when the last checked market date (October 3, 2026) passes. With the browser clock set to October 10, 2026, the journey fails without that occurrence ("No upcoming events match yet.") and passes with it.
+
+| Suite | Identities | State it establishes |
+| --- | --- | --- |
+| `test:http` | none | Read-only; rejected writes only |
+| `test:social-http` | owner, `beta_b`, `beta_c` | Owner profile, owner in Ithaca; B and C join with codes; block, mute and friendship reset |
+| `test:events-http` | owner, run-scoped B and C | Owner in Ithaca; B and C join; B opts in and becomes the owner's friend; listings imported |
+| `test:browser` | owner (setup only), run-scoped A, B, C | Listings and the 2099 occurrence; A, B, C join Ithaca as Beta Alex, Blair and Casey and opt in |
+| `test:invitations-browser` | owner, run-scoped tester and second member | Owner in Ithaca; two new people redeem the Emory code |
+| `verify-signup-browser.mjs` | run-scoped B and C | Two new accounts; the suite now asserts they are new |
+| `verify-commons-browser.mjs` | owner, `ithaca_*`, `uf_*` | Owner manages each campus; members join with codes (later runs continue as members) |
+| `test:civic-browser` | owner, `campus_cu`, `campus_uf`, run-scoped journey E member | Owner manages both campuses and imports curated listings when a campus has none |
+| `test:anywhere-browser` | run-scoped founder and neighbor, `campus_new` | The first run on a database founds Burlington and Example University; later runs join them |
+
+Test-script problems found and fixed during verification (application code unchanged):
+
+- The commons suite clicked **Enable in-app reply notifications** and published at once. For a new member, the app correctly rejected the post with "Please wait for your previous change." The suite now waits for the saved preference to hide the opt-in.
+- On a cold dev server, the app shell writes its starting URL into history up to about a second after the load event, just before it requests its first snapshot. An in-page route change made in that window was overwritten; the commons owner stayed on `#admin`. The commons, civic and anywhere sign-ins now wait for that first `/api/polis` request.
+- `test:browser` now finds B in Discover people by B's exact username.
+
+Verification record:
+
+- Node 24.14.0/npm 11.9.0 and Chromium from the pinned Playwright 1.62.1. The database was fresh and migrated (`npm run db:migrate:local`: migrations 0000–0011, no profiles, events or communities). The server was a cold `POLIS_TEST_ACCOUNTS=1` dev server on port 5191, with the synthetic owner from `.env.example`.
+- Three passes over all nine suites against the same database and server, with no reset in between:
+  1. `test:browser` (on the empty database), commons, anywhere, civic, events HTTP, social HTTP, local HTTP, invitations, signup;
+  2. signup, invitations, local HTTP, social HTTP, events HTTP, commons, `test:browser`, civic, anywhere;
+  3. a random order: invitations, social HTTP, civic, events HTTP, local HTTP, signup, commons, `test:browser`, anywhere.
+- **27 of 27 runs passed.** The anywhere suite used live OpenStreetMap services:
+  - pass 1 founded Burlington, and its background import added 60 public places without the map fallback;
+  - passes 2 and 3 joined the same Burlington, so the database holds one Burlington community.
+  - The owner profile was first created by `test:browser`.
+- `npm run lint`: 0 errors, the 7 inherited warnings. `npm run typecheck` passes. `npm test`: 79 tests, including 2 for the sign-in shim. `npm run build` passes.
+
+To run every suite against one server, use this loop. `verify-signup-browser.mjs` and `verify-commons-browser.mjs` have no npm aliases.
+
+```sh
+for suite in local-http social-http events-http social-browser invitations-browser signup-browser commons-browser civic-browser anywhere-browser; do
+  POLIS_TEST_ORIGIN=http://127.0.0.1:5176 node scripts/verify-$suite.mjs || break
+done
+```
+
+These are local synthetic results. They do not verify hosted ChatGPT sign-in, production persistence or multi-user acceptance.
 
 ## Remaining release gates
 
