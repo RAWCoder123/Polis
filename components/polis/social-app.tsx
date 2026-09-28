@@ -75,6 +75,19 @@ import {
   RankingList,
 } from "./social-views";
 import { Admin, Notifications } from "./social-admin";
+// On a history traversal the framework scrolls hash routes to their (missing)
+// anchor one frame later. When the page commits at once (reduced motion, or a
+// hidden tab) that undid the restored position, so hold it for two frames.
+function restoreScroll(top: number) {
+  window.scrollTo({ top, behavior: "instant" });
+  let frames = 2;
+  const hold = () => {
+    if (Math.abs(window.scrollY - top) > 1) window.scrollTo({ top, behavior: "instant" });
+    if (--frames > 0) requestAnimationFrame(hold);
+  };
+  requestAnimationFrame(hold);
+}
+
 export default function SocialApp() {
   const browserLocation = useSyncExternalStore(subscribeRoute, routeHref, () => "/");
   const currentLocation = new URL(browserLocation, "https://polis.invalid");
@@ -238,14 +251,20 @@ export default function SocialApp() {
     // transition captures it, so it slides back in at the place you left.
     if (pending && data.posts.length && !commentId && !replyRequested) {
       const top = scrollPositions.current.get(browserLocation);
-      if (top) window.scrollTo({ top, behavior: "instant" });
+      if (top) restoreScroll(top);
       restoreLocation.current = "";
     }
     // Only a route change restores; later data for the same route does not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [browserLocation]);
   useEffect(() => {
-    const save = () => scrollPositions.current.set(committedLocation.current, window.scrollY);
+    // Scrolls while a view awaits its restore come from the browser or the
+    // framework (hash anchors), not the reader; they must not replace the
+    // position being restored.
+    const save = () => {
+      if (restoreLocation.current !== committedLocation.current)
+        scrollPositions.current.set(committedLocation.current, window.scrollY);
+    };
     window.addEventListener("scroll", save, { passive: true });
     return () => window.removeEventListener("scroll", save);
   }, []);
@@ -256,7 +275,7 @@ export default function SocialApp() {
         const input = document.querySelector<HTMLTextAreaElement>("#discussion-reply textarea");
         if (!input) return;
         input.focus();
-      } else if (!commentId) window.scrollTo({ top: scrollPositions.current.get(browserLocation) ?? 0, behavior: "instant" });
+      } else if (!commentId) restoreScroll(scrollPositions.current.get(browserLocation) ?? 0);
       // Consume only after the frame runs. A loading render can cancel a frame
       // before the thread mounts; its next ready render must retry restoration.
       restoreLocation.current = "";
