@@ -5,7 +5,9 @@ import { expect as baseExpect } from "playwright/test";
 
 // Polis beyond the configured campuses: find, start and join a town commons,
 // found a campus under a new university domain, and discover communities near
-// you. Synthetic LOCAL identities only (POLIS_TEST_ACCOUNTS=1). Uses the real
+// you. Synthetic LOCAL identities only (POLIS_TEST_ACCOUNTS=1); the founder and
+// neighbor are new run-scoped accounts, so the suite can repeat on one database
+// (later runs join the existing Burlington commons). Uses the real
 // OpenStreetMap place search and public-place import through the local Worker;
 // set POLIS_SKIP_OSM=1 on networks where those services are blocked.
 const origin = process.env.POLIS_TEST_ORIGIN ?? "http://localhost:5173";
@@ -21,7 +23,12 @@ async function actor(account, width = 1440, options = {}) {
   const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 1000 }, reducedMotion: "reduce", ...options });
   const page = await context.newPage();
   page.on("pageerror", (e) => errors.push(account + ": " + e.message));
-  await page.goto(origin + "/signin-with-chatgpt?test_account=" + account + "&return_to=" + encodeURIComponent("/#home"));
+  // The shell writes its starting URL into history before it requests its
+  // first snapshot; an in-page route change made earlier can be overwritten.
+  await Promise.all([
+    page.waitForRequest((r) => r.url().startsWith(origin + "/api/polis")),
+    page.goto(origin + "/signin-with-chatgpt?test_account=" + account + "&return_to=" + encodeURIComponent("/#home")),
+  ]);
   return { context, page, account };
 }
 async function state(a, params = "") {
@@ -52,7 +59,7 @@ async function findTown(a, query, city) {
 }
 
 // F: a member without a campus email starts (or finds) a town commons.
-const founder = await actor("beta_b");
+const founder = await actor("qa_anywhere_" + stamp + "_founder");
 const created = await ensureProfile(founder, "town_founder_" + stamp.slice(-5));
 if (created) await expect(founder.page.getByRole("heading", { name: "Polis is a commons for a real place." })).toBeVisible();
 const { existing, start } = await findTown(founder, "Burlington, Vermont", "Burlington");
@@ -95,7 +102,7 @@ if (!process.env.POLIS_SKIP_OSM) await expect(founder.page.locator(".civic-map-l
 await shot(founder, "f-town-map-desktop");
 
 // G: a second member finds the same town (no duplicate) and sees the discussion.
-const neighbor = await actor("beta_c", 390);
+const neighbor = await actor("qa_anywhere_" + stamp + "_neighbor", 390);
 await ensureProfile(neighbor, "town_neighbor_" + stamp.slice(-5));
 const found = await findTown(neighbor, "burlington", "Burlington");
 await expect(found.existing.first()).toBeVisible();
@@ -127,7 +134,7 @@ await expect(main(student).locator(".commons-tabs")).toContainText("Campus");
 await shot(student, "h-new-campus-commons-desktop");
 
 // I: "near me" finds nearby communities from rounded device coordinates.
-const nearby = await actor("beta_c", 390, { geolocation: { latitude: 44.48, longitude: -73.21 }, permissions: ["geolocation"] });
+const nearby = await actor("qa_anywhere_" + stamp + "_neighbor", 390, { geolocation: { latitude: 44.48, longitude: -73.21 }, permissions: ["geolocation"] });
 await nearby.page.goto(origin + "/#communities");
 await nearby.page.getByRole("button", { name: /Use my location|Show communities near me/ }).click();
 await nearby.page.getByRole("button", { name: /Show communities near me/ }).click().catch(() => {});

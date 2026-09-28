@@ -6,6 +6,8 @@ import { chromium } from "playwright";
 import { expect as baseExpect } from "playwright/test";
 
 // Synthetic local identities only. Never run fixture writes against a deployed Site.
+// The tester and second member are new run-scoped accounts, so every run redeems
+// the code for the first time and the suite can repeat on one database.
 const origin = process.env.POLIS_TEST_ORIGIN ?? "http://localhost:5180";
 const target = new URL(origin);
 assert.ok(target.protocol === "http:" && ["localhost", "127.0.0.1"].includes(target.hostname));
@@ -14,6 +16,9 @@ const output = path.join(tmpdir(), "polis-invitation-qa");
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const errors = [];
+const run = Date.now().toString(36);
+const account = role => "qa_invites_" + run + "_" + role;
+const username = role => "invite_" + run + "_" + role;
 async function session(width) {
   const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 1000 }, reducedMotion: "reduce", permissions: ["clipboard-read", "clipboard-write"] });
   const page = await context.newPage();
@@ -50,7 +55,8 @@ try {
   await owner.page.goto(origin + "/signin-with-chatgpt?test_account=1&return_to=%2F%23admin");
   if ((await snapshot(owner)).status === "onboarding")
     await command(owner, { action: "join", name: "Beta Alex", username: "beta_alex" });
-  await command(owner, { action: "community.select", communityId: "ithaca" });
+  // Other suites move the shared owner between communities; return it to Ithaca.
+  await command(owner, { action: "community.manage", communityId: "ithaca" });
   await owner.page.reload();
   await expect(owner.page.getByRole("heading", { name: "Invite with a code" })).toBeVisible();
   await owner.page.getByRole("combobox", { name: "University / community" }).selectOption("emory");
@@ -84,7 +90,7 @@ try {
   await layout(tester, "mobile-confirm-community");
   // Choose an isolated synthetic identity through the local sign-in shim only.
   await tester.page.route("**/signin-with-chatgpt?**", route => {
-    const url = new URL(route.request().url()); url.searchParams.set("test_account", "beta_b");
+    const url = new URL(route.request().url()); url.searchParams.set("test_account", account("b"));
     return route.continue({ url: url.href });
   });
   await tester.page.getByRole("link", { name: "Confirm community & sign in" }).click();
@@ -94,7 +100,7 @@ try {
   const name = tester.page.getByRole("textbox", { name: "Your name", exact: true });
   if (await name.isVisible()) {
     await name.fill("Beta Blair");
-    await tester.page.getByRole("textbox", { name: "Username", exact: true }).fill("beta_b");
+    await tester.page.getByRole("textbox", { name: "Username", exact: true }).fill(username("b"));
   }
   let failedOnce = false;
   await tester.page.route("**/api/polis", async route => {
@@ -121,13 +127,13 @@ try {
   const second = await session(1440);
   await checkCode(second, code);
   await second.page.route("**/signin-with-chatgpt?**", route => {
-    const url = new URL(route.request().url()); url.searchParams.set("test_account", "beta_c"); return route.continue({ url: url.href });
+    const url = new URL(route.request().url()); url.searchParams.set("test_account", account("c")); return route.continue({ url: url.href });
   });
   await second.page.getByRole("link", { name: "Confirm community & sign in" }).click();
   await expect(second.page.getByRole("button", { name: "Join Emory University", exact: true })).toBeVisible();
   if (await second.page.getByRole("textbox", { name: "Your name", exact: true }).isVisible()) {
     await second.page.getByRole("textbox", { name: "Your name", exact: true }).fill("Beta Casey");
-    await second.page.getByRole("textbox", { name: "Username", exact: true }).fill("beta_c");
+    await second.page.getByRole("textbox", { name: "Username", exact: true }).fill(username("c"));
   }
   await second.page.getByRole("button", { name: "Join Emory University", exact: true }).click();
   await expect(second.page).toHaveURL(origin + "/#home");

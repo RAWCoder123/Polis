@@ -75,15 +75,16 @@ Curated Cornell and UF catalogs are unchanged and still take precedence.
   - **G:** a second member at 390 px finds the same Burlington (no duplicate) and sees the discussion under Local.
   - **H:** an `example.edu` student founds "Example University"; the Campus tab appears.
   - **I:** "Use my location" near Burlington lists it with a distance.
-- Several suites share synthetic accounts, so each needs the right starting state. `verify-signup-browser` needs `beta_b`/`beta_c` without profiles or campus memberships. `test:browser` needs the profiles created by the social and events HTTP fixtures, and must run before the commons suite moves owner `1` between campuses. On fresh, migrated, isolated worktree databases (port 5181), everything passes in two runs:
-  - Database 1, in order: signup, invitations, local HTTP, social HTTP, events HTTP, commons, civic, anywhere.
-  - Database 2, the documented social-cycle order: social HTTP, events HTTP, `test:browser`.
+- All nine local suites pass back to back on **one** fresh, migrated database, in any order, and can repeat. Each suite now establishes its own state: run-scoped synthetic accounts, explicit owner setup through `community.manage`, and code-based memberships. See [Independent local suites](social-cycle-verification.md#independent-local-suites--september-27-2026), follow-up branch `codex/independent-local-suites`.
+  - In `test:anywhere-browser` the founder and neighbor are new run-scoped accounts rather than the shared `beta_b`/`beta_c`. The first run on a database starts Burlington; later runs find and join it, and there is never a duplicate.
+  - The earlier ordering constraints are gone. Previously signup needed `beta_b`/`beta_c` untouched, `test:browser` needed the HTTP fixtures, and commons moved owner `1`. This branch was first verified on two databases in fixed orders.
+  - Final record (September 27, 2026): on one fresh database (port 5191), all nine suites passed three times in a row in three different orders, 27 of 27 runs. Pass 1 founded Burlington, and its background place import (60 places, live OpenStreetMap) succeeded without the map fallback; passes 2 and 3 joined it.
 
   The suites covered are:
   - `test:invitations-browser`, `test:http`, `test:social-http`, `test:events-http`;
   - `verify-signup-browser.mjs` (updated: new accounts now land on Find your community);
   - `verify-commons-browser.mjs`, `verify-social-browser.mjs`, `test:civic-browser` (journeys A–E);
-  - `test:anywhere-browser` (journeys F–I). In the final run the background place import succeeded without the map fallback.
+  - `test:anywhere-browser` (journeys F–I).
 - Desktop 1440 px and mobile 390 px pages were checked for horizontal overflow (none).
 - Verification found and fixed:
   - posts about generic subjects were misread as event posts;

@@ -357,7 +357,7 @@ export function CommonsView({
       ) : (
         children
       )}
-      <section className="commons-source-shelf"><h2>{tab === "national" ? "National source notes" : "Local source notes"}</h2><p className="metadata">Curator-checked background, separate from member opinions.</p>{entitiesFor(data.community?.id ?? "").filter(e => !e.sample && (tab === "national" ? e.scope === "national" && e.kind === "news" : !!e.background)).slice(0, 3).map(e => <button key={e.id} className="entity-row" onClick={() => navigate(entityRoute(e.id))}><FileText size={20}/><span><strong>{e.name}</strong><small>{e.sourceLabel} · Checked {e.checkedAt ?? e.background?.checkedAt}</small></span><ArrowUpRight size={16}/></button>)}</section>
+      <section className="commons-source-shelf"><h2>{tab === "national" ? "National source notes" : "Local source notes"}</h2><p className="metadata">Curator-checked background, separate from member opinions.</p>{catalogOf(data).filter((e) => !e.sample && (tab === "national" ? e.scope === "national" && e.kind === "news" : !!e.background)).slice(0, 3).map((e) => <button key={e.id} className="entity-row" onClick={() => navigate(entityRoute(e.id))}><FileText size={20}/><span><strong>{e.name}</strong><small>{e.sourceLabel} · Checked {e.checkedAt ?? e.background?.checkedAt}</small></span><ArrowUpRight size={16}/></button>)}</section>
       {openQuestions}
       <details className="commons-extras"><summary>Topics, groups & notifications</summary><CommonsIntro data={data} compose={compose} navigate={navigate} run={run} extrasOnly /><button className="text-button" onClick={() => navigate("guidelines")}><ShieldCheck size={14} /> Commons guidelines</button></details>
       <p className="metadata commons-footnote">

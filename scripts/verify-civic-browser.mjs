@@ -19,7 +19,12 @@ async function actor(account, width = 1440, options = {}) {
   const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 1000 }, reducedMotion: "reduce", ...options });
   const page = await context.newPage();
   page.on("pageerror", (e) => errors.push(account + ": " + e.message));
-  await page.goto(origin + "/signin-with-chatgpt?test_account=" + account + "&return_to=" + encodeURIComponent("/#home"));
+  // The shell writes its starting URL into history before it requests its
+  // first snapshot; an in-page route change made earlier can be overwritten.
+  await Promise.all([
+    page.waitForRequest((r) => r.url().startsWith(origin + "/api/polis")),
+    page.goto(origin + "/signin-with-chatgpt?test_account=" + account + "&return_to=" + encodeURIComponent("/#home")),
+  ]);
   return { context, page, account };
 }
 async function command(a, data, expected = 200) {
@@ -139,8 +144,9 @@ await student.page.getByRole("button", { name: "Show on map" }).click();
 await expect(student.page.locator(".entity-summary")).toContainText("Late-night bus service to North Campus");
 await shot(student, "a-issue-on-map");
 
-// Journey E: a sites.test account joins Cornell with the reusable memorable code.
-const invited = await actor("ithaca_c");
+// Journey E: a new run-scoped sites.test account joins Cornell with the
+// reusable memorable code.
+const invited = await actor("qa_civic_" + stamp.toLowerCase() + "_invited");
 await invited.page.goto(origin + "/#join/ithaca");
 await invited.page.getByLabel("Invite code").fill(code.toLowerCase().replace("-", " "));
 await invited.page.getByRole("button", { name: "Check code" }).click();

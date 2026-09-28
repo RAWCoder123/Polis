@@ -29,7 +29,12 @@ async function state(a, params = "") {
   assert.equal(r.status(), 200, await r.text()); return r.json();
 }
 async function login(a, route = "home") {
-  await a.page.goto(origin + "/signin-with-chatgpt?test_account=" + a.account + "&return_to=" + encodeURIComponent("/#" + route));
+  // The shell writes its starting URL into history before it requests its
+  // first snapshot; an in-page route change made earlier can be overwritten.
+  await Promise.all([
+    a.page.waitForRequest(r => r.url().startsWith(origin + "/api/polis")),
+    a.page.goto(origin + "/signin-with-chatgpt?test_account=" + a.account + "&return_to=" + encodeURIComponent("/#" + route)),
+  ]);
 }
 async function shot(a, name, mask = []) {
   await expect(a.page.getByRole("combobox", { name: "Current community" })).toBeVisible();
@@ -86,7 +91,8 @@ try {
     await expect(a.page.getByRole("button", { name: "Question", exact: true })).toBeVisible();
     await a.page.getByText("Topics, groups & notifications", { exact: true }).click();
     const optin = a.page.getByRole("button", { name: "Enable in-app reply notifications" });
-    // Wait for the opt-in to save: a second command while one is in flight is refused.
+    // The opt-in is a write; publishing before it settles is rejected as a
+    // concurrent change, so wait until the saved preference hides it.
     if (await optin.isVisible()) { await optin.click(); await expect(optin).toHaveCount(0); }
     await command(b, { action: "preferences", replies: true, reactions: true, issues: false, events: false });
     await a.page.getByRole("button", { name: "Question", exact: true }).click();

@@ -72,6 +72,15 @@ export function sites({ mockAuth = true } = {}): Plugin {
             }
           : {}),
       };
+      // Run-scoped synthetic identities (qa_<suite>_<run>_<role>) let a local
+      // suite start every run from accounts that no other run has touched.
+      const runAccount = /^qa_[a-z]{2,12}_[a-z0-9]{4,12}_[a-z0-9]{1,8}$/;
+      const identityFor = (account: string) =>
+        Object.hasOwn(identities, account)
+          ? identities[account]
+          : testAccounts && runAccount.test(account)
+            ? { id: "local_" + account, email: account + "@sites.test", name: "Test " + account }
+            : undefined;
 
       server.config.logger.info(`Sites local sign-in: ${localEmail}`);
       server.middlewares.use((request, response, next) => {
@@ -136,9 +145,8 @@ export function sites({ mockAuth = true } = {}): Plugin {
         const signOut = url.pathname === "/signout-with-chatgpt";
         if (!signIn && !signOut) {
           const identity =
-            signInCookies.length === 1 &&
-            Object.hasOwn(identities, signInCookies[0])
-              ? identities[signInCookies[0]]
+            signInCookies.length === 1
+              ? identityFor(signInCookies[0])
               : undefined;
           if (identity) {
             setHeader(request, "oai-authenticated-user-id", identity.id);
@@ -192,9 +200,7 @@ export function sites({ mockAuth = true } = {}): Plugin {
 
         const requestedAccount = url.searchParams.get("test_account");
         const account =
-          testAccounts &&
-          requestedAccount &&
-          Object.hasOwn(identities, requestedAccount)
+          testAccounts && requestedAccount && identityFor(requestedAccount)
             ? requestedAccount
             : "1";
         response.statusCode = request.method === "POST" ? 303 : 302;
