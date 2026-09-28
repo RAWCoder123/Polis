@@ -1,7 +1,9 @@
 "use client";
+import { InvitationCodes } from "./social-invitations";
 import { useState } from "react";
-import { Copy, Check, ArrowUpRight } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { issues } from "@/lib/social/catalog";
+import { topicsFor, topicFor } from "@/lib/social/commons";
 import type { Snapshot, Question } from "@/lib/social/types";
 import type { Run, Navigate } from "./social-post";
 import { Quiet } from "./social-views";
@@ -38,58 +40,75 @@ export function Notifications({
       {[...groups.values()].map((group) => {
         const n = group[0];
         return (
-          <button
-            key={n.id}
-            className={
-              "notification-row " +
-              (group.some((v) => !v.readAt) ? "unread" : "")
-            }
-            onClick={() => {
-              void run({
-                action: "notifications.read",
-                notificationId: n.kind === "reaction" ? undefined : n.id,
-                postId: n.kind === "reaction" ? n.targetId : undefined,
-              }).catch(() => {});
-              navigate(
-                n.kind === "friend"
-                  ? "friends"
-                  : n.kind === "issue"
-                    ? "issue/" + n.targetId
-                    : n.kind === "event"
-                      ? "item/" + n.targetId
-                      : "post/" +
-                        n.targetId +
-                        (n.commentId ? "/" + n.commentId : ""),
-              );
-            }}
-          >
-            <span className="notification-dot" />
-            <span>
-              <strong>
-                {n.kind === "reply"
-                  ? n.name + " replied to your conversation"
-                  : n.kind === "reaction"
-                    ? n.name +
-                      (group.length > 1
-                        ? " and " + (group.length - 1) + " others"
-                        : "") +
-                      " reacted to your post"
+          <div key={n.id} className="notification-item">
+            <button
+              className={
+                "notification-row " +
+                (group.some((v) => !v.readAt) ? "unread" : "")
+              }
+              onClick={() => {
+                void run({
+                  action: "notifications.read",
+                  notificationId: n.kind === "reaction" ? undefined : n.id,
+                  postId: n.kind === "reaction" ? n.targetId : undefined,
+                }).catch(() => {});
+                navigate(
+                  n.kind === "friend_request"
+                    ? "friends/requests"
                     : n.kind === "friend"
-                      ? n.name + " accepted your friend request"
+                      ? "friends"
+                    : n.kind === "issue"
+                      ? (topicFor(n.targetId) ? "topic/" : "issue/") + n.targetId
                       : n.kind === "event"
-                        ? "An event in your plans is coming up"
-                        : "An issue you follow has an update"}
-              </strong>
-              <small>{new Date(n.createdAt).toLocaleString()}</small>
-            </span>
-            <ArrowUpRight size={17} />
-          </button>
+                        ? "event/" + n.targetId
+                        : "post/" +
+                          n.targetId +
+                          (n.commentId ? "/" + n.commentId : "") + (n.communityId ? "?community=" + n.communityId : ""),
+                );
+              }}
+            >
+              <span className="notification-dot" />
+              <span>
+                <strong>
+                  {n.kind === "reply"
+                    ? n.name + " replied to your conversation"
+                    : n.kind === "reaction"
+                      ? n.name +
+                        (group.length > 1
+                          ? " and " + (group.length - 1) + " others"
+                          : "") +
+                        " reacted to your post"
+                      : n.kind === "friend_request"
+                        ? n.name + " sent you a friend request"
+                        : n.kind === "friend"
+                          ? n.name + " accepted your friend request"
+                          : n.kind === "event"
+                            ? "An event in your plans is coming up"
+                            : "An issue you follow has an update"}
+                </strong>
+                <small>{new Date(n.createdAt).toLocaleString()}</small>
+              </span>
+              <ArrowUpRight size={17} />
+            </button>
+            <button
+              className="text-button notification-read"
+              onClick={() => {
+                void run({
+                  action: "notifications.read",
+                  notificationId: n.kind === "reaction" ? undefined : n.id,
+                  postId: n.kind === "reaction" ? n.targetId : undefined,
+                  read: !group.every((v) => v.readAt),
+                }).catch(() => {});
+              }}
+            >
+              {group.every((v) => v.readAt) ? "Mark unread" : "Mark read"}
+            </button>
+          </div>
         );
       })}
       {!data.notifications.length && (
         <Quiet title="You’re all caught up.">
-          Replies, accepted requests, and followed-issue updates will appear
-          here.
+          Replies, friend requests, and followed-issue updates will appear here.
         </Quiet>
       )}
       <details className="notification-preferences">
@@ -112,7 +131,7 @@ export function Notifications({
             />
             {
               {
-                replies: "Replies and accepted friendships",
+                replies: "Replies and friendship requests",
                 reactions: "Reactions to your posts",
                 issues: "Important followed-issue updates",
                 events: "In-app event reminders (within 24 hours)",
@@ -141,18 +160,14 @@ const newQuestion = (): Question => ({
   status: "draft",
 });
 export function Admin({ data, run }: { data: Snapshot; run: Run }) {
-  const [checkedAt] = useState(() => Date.now());
-  const [email, setEmail] = useState(""),
-    [invite, setInvite] = useState(""),
-    [copied, setCopied] = useState(false),
-    [q, setQ] = useState<Question>(newQuestion),
+  const [q, setQ] = useState<Question>(newQuestion),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [update, setUpdate] = useState({
-      issueId: "housing",
+      issueId: String(topicsFor(data.community?.id ?? "")[0]?.id ?? "housing"),
       title: "",
-      sourceUrl: "https://www.cityofithaca.org/",
-      sample: true,
+      sourceUrl: "",
+      sample: false,
     });
   if (!data.admin)
     return (
@@ -163,91 +178,12 @@ export function Admin({ data, run }: { data: Snapshot; run: Run }) {
   return (
     <div className="admin-view">
       <p className="catalog-notice">
-        Community owner tools · Invitation links are email-bound and expire
-        after seven days. Invitees also need access to this private site.
+        Community owner tools · Generate a community code and share it with your testers.
+        No recipient emails or invitation emails are needed.
       </p>
-      <section>
-        <h2>Invite someone into the community</h2>
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            try {
-              const r = await run({ action: "invite", email });
-              if (r.invite) {
-                setInvite(
-                  location.origin + "/?invite=" + encodeURIComponent(r.invite),
-                );
-                setCopied(false);
-              }
-              setError("");
-            } catch (e) {
-              setError(e instanceof Error ? e.message : "Please retry.");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <label className="social-field">
-            Their ChatGPT email
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </label>
-          <button className="btn primary" disabled={busy}>
-            Create invitation link
-          </button>
-        </form>
-        {invite && (
-          <div className="invite-result">
-            <label className="social-field">
-              Invitation link
-              <input
-                readOnly
-                value={invite}
-                onFocus={(e) => e.target.select()}
-              />
-            </label>
-            <button
-              className="text-button"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(invite);
-                  setCopied(true);
-                } catch {
-                  setError("Select the invitation link and copy it.");
-                }
-              }}
-            >
-              {copied ? <Check size={15} /> : <Copy size={15} />}{" "}
-              {copied ? "Copied" : "Copy invitation"}
-            </button>
-            <p className="metadata">
-              Nothing has been sent. Share the link with this person after
-              granting private site access.
-            </p>
-          </div>
-        )}
-        <details>
-          <summary>
-            Created invitations ({data.admin.invitations.length})
-          </summary>
-          {data.admin.invitations.map((i) => (
-            <p key={i.id}>
-              {i.email} ·{" "}
-              {i.usedBy
-                ? "Accepted"
-                : Date.parse(i.expiresAt) < checkedAt
-                  ? "Expired"
-                  : "Pending"}
-            </p>
-          ))}
-        </details>
-      </section>
-      <section>
+      <InvitationCodes data={data} run={run} />
+      {data.admin.invitationCommunities.length > 1 && <section><h2>Pilot communities</h2><p>Prepare Cornell first. Enable UF invitations only after the hosted Cornell checks pass.</p>{data.admin.invitationCommunities.filter(c => ["ithaca", "uf"].includes(c.id)).map(c => <button className="btn secondary" key={c.id} onClick={() => void run({ action: "community.manage", communityId: c.id }).catch(() => {})}>Manage {c.name}</button>)}</section>}
+      {data.community?.id === "ithaca" && <section>
         <h2>Daily questions</h2>
         <div className="question-choices">
           <button
@@ -405,7 +341,7 @@ export function Admin({ data, run }: { data: Snapshot; run: Run }) {
             Save question
           </button>
         </form>
-      </section>
+      </section>}
       <section>
         <h2>Publish an issue update</h2>
         <form
@@ -428,7 +364,7 @@ export function Admin({ data, run }: { data: Snapshot; run: Run }) {
                 setUpdate({ ...update, issueId: e.target.value })
               }
             >
-              {issues.map((i) => (
+              {[...topicsFor(data.community?.id ?? ""), ...(data.community?.id === "ithaca" ? issues : [])].map((i) => (
                 <option key={i.id} value={i.id}>
                   {i.name}
                 </option>

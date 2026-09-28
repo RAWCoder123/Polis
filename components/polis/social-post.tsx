@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { toast } from "sonner";
+import { pop, settle } from "@/lib/motion";
 import {
   MessageCircle,
   Bookmark,
@@ -11,6 +12,9 @@ import {
   HelpCircle,
   MoreHorizontal,
   ArrowRight,
+  CalendarDays,
+  FileText,
+  Users,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -28,12 +32,24 @@ import {
 } from "@/lib/social/types";
 import { itemById } from "@/lib/polis-data";
 import { subjectTitle } from "@/lib/social/catalog";
+import { discussionLabels, organizationFor } from "@/lib/social/commons";
+import { communityFor } from "@/lib/social/communities";
+import { entityFor, inCatalog } from "@/lib/social/civic";
+import type { CivicEntity } from "@/lib/social/types";
 import type { CommandData } from "@/lib/social/service";
+import { EntityChip } from "./civic-cards";
 export type Run = (
   data: CommandData,
   requestId?: string,
 ) => Promise<CommandResult>;
 export type Navigate = (route: string) => void;
+// Stored reaction kinds remain compatible. One per person; switching replaces it.
+const reactionChoices = [
+  { kind: "agree", label: "Agree", Icon: ThumbsUp },
+  { kind: "thoughtful", label: "Thought-provoking", Icon: Lightbulb },
+  { kind: "curious", label: "Want to understand more", Icon: HelpCircle },
+] as const;
+
 export function PostCard({
   post,
   me,
@@ -43,8 +59,17 @@ export function PostCard({
   onReport,
   busy,
   expanded = false,
+  catalog = [],
+  communityName,
+  compact = false,
+  unread = false,
 }: {
   expanded?: boolean;
+  // The viewer's current community catalog and name, for chips and labels.
+  catalog?: CivicEntity[];
+  communityName?: string;
+  compact?: boolean;
+  unread?: boolean;
   post: Post;
   me: Person;
   run: Run;
@@ -53,22 +78,44 @@ export function PostCard({
   onReport: (id: string) => void;
   busy: boolean;
 }) {
-  const [showCounts, setShowCounts] = useState(false);
+  const route = "post/" + post.id + "?community=" + post.communityId;
   const attachment = JSON.parse(post.attachmentJson || "{}");
-  const react = async (kind: "agree" | "thoughtful" | "curious") => {
+  const lookup = (id: string) => inCatalog(catalog, id) ?? entityFor(id);
+  const entity = lookup(post.subjectId);
+  const topic = entity && entity.kind !== "issue" && post.issueId ? lookup(post.issueId) : undefined;
+  const legacyItem = itemById[post.subjectId];
+  // Taps show at once; the server's answer replaces this, or undoes it on error.
+  const [optimistic, setOptimistic] = useState<{ reaction?: { base: string | null | undefined; kind: string | null }; saved?: { base: boolean; value: boolean } }>({});
+  const myReaction =
+    optimistic.reaction && optimistic.reaction.base === post.myReaction ? optimistic.reaction.kind : post.myReaction;
+  const saved = optimistic.saved && optimistic.saved.base === !!post.saved ? optimistic.saved.value : !!post.saved;
+  const reactionCount = (kind: string) =>
+    (post.reactions.find((r) => r.kind === kind)?.count ?? 0) +
+    (myReaction !== post.myReaction ? (kind === myReaction ? 1 : 0) - (kind === post.myReaction ? 1 : 0) : 0);
+  const react = async (kind: (typeof reactionChoices)[number]["kind"], icon: Element | null) => {
+    const next = myReaction === kind ? null : kind;
+    if (next) pop(icon);
+    else settle(icon);
+    setOptimistic((o) => ({ ...o, reaction: { base: post.myReaction, kind: next } }));
     try {
-      await run({
-        action: "reaction",
-        postId: post.id,
-        kind: post.myReaction === kind ? null : kind,
-      });
-    } catch {}
+      await run({ action: "reaction", postId: post.id, kind: next });
+    } catch {
+      setOptimistic((o) => ({ ...o, reaction: undefined }));
+    }
   };
   return (
-    <article className="social-post" id={"post-" + post.id}>
+    <article
+      className={"social-post " + (compact ? "forum-row" : "") + (unread ? " has-unread" : "")}
+      id={"post-" + post.id}
+      data-arrive-id={post.id}
+      data-morph={expanded ? "none" : ""}
+      data-position={post.position ?? ""}
+    >
+      {compact && <h2 className="forum-title"><button onClick={() => navigate(route)}>{post.title || (post.text.length > 140 ? post.text.slice(0, 137) + "…" : post.text) || subjectTitle(post.subjectId)}</button></h2>}
       <header>
         <button
           className="avatar-link"
+          data-morph="none"
           aria-label={"View " + post.name}
           onClick={() => navigate("profile/" + post.authorId)}
         >
@@ -83,6 +130,7 @@ export function PostCard({
         <div>
           <button
             className="plain-name"
+            data-morph="none"
             onClick={() => navigate("profile/" + post.authorId)}
           >
             {post.name}
@@ -94,7 +142,9 @@ export function PostCard({
               hour: "numeric",
               minute: "2-digit",
             })}{" "}
-            · {audiences[post.audience]}
+            · {post.organizationId && post.audience === "community" ? "Organization members" : post.audience === "community" ? "The Commons" : audiences[post.audience]}
+            {" · "}{communityFor(post.communityId)?.name ?? communityName ?? "Community"}
+            {post.organizationId && " · " + organizationFor(post.organizationId)?.name + " (private)"}
             {post.editedAt ? " · Edited" : ""}
           </span>
         </div>
@@ -114,15 +164,18 @@ export function PostCard({
                 {[
                   "opinion",
                   "question",
+                  "debate",
+                  "update",
                   "article",
                   "event_reflection",
+                  "event_share",
                 ].includes(post.kind) && (
                   <DropdownMenuItem
                     onClick={() =>
                       onEdit({ ...post, priorPostId: "republish" })
                     }
                   >
-                    Share as a new post
+                    {post.organizationId ? "Publish a new copy to Commons" : "Share as a new post"}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onClick={() => onReport("delete:" + post.id)}>
@@ -155,7 +208,7 @@ export function PostCard({
             <DropdownMenuItem
               onClick={() => {
                 void navigator.clipboard
-                  .writeText(location.origin + "/#post/" + post.id)
+                  .writeText(location.origin + "/#" + route)
                   .then(() => toast.success("Conversation link copied."))
                   .catch(() =>
                     toast.error(
@@ -169,11 +222,26 @@ export function PostCard({
           </DropdownMenuContent>
         </DropdownMenu>
       </header>
+      {/* Untitled posts lead with their text rather than repeating it as a heading. */}
+      {!compact && (post.title || !post.text) && (
+        <h2 className="forum-title">
+          <button onClick={() => navigate(route)}>{post.title || subjectTitle(post.subjectId)}</button>
+        </h2>
+      )}
+      {unread && <button className="thread-unread text-button" onClick={() => navigate(route)}>Unread reply · Return to the conversation</button>}
       {post.position && (
         <span className="post-position">{positions[post.position]}</span>
       )}
+      {!compact && discussionLabels[post.kind] && <span className="post-position">{post.organizationId && attachment.organizationChannel === "announcements" ? "Announcement" : discussionLabels[post.kind]}</span>}
       {post.kind === "ranking" && (
-        <span className="post-position">Shared a ranking</span>
+        <span className="post-position">
+          {attachment.rankingKind === "issue_priorities"
+            ? "Shared issue priorities"
+            : "Shared a ranking"}
+        </span>
+      )}
+      {post.kind === "event_share" && (
+        <span className="post-position">Shared an event</span>
       )}
       {post.kind === "event_reflection" && (
         <span className="post-position">An event reflection</span>
@@ -186,7 +254,18 @@ export function PostCard({
           An updated view · Read the earlier post <ArrowRight size={14} />
         </button>
       )}
-      <p className="post-text">{post.text}</p>
+      {(!compact || !!post.title) && <p className="post-text">{post.text}</p>}
+      {attachment.sourceUrl && (
+        <a
+          className="post-source"
+          href={attachment.sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Source · {new URL(attachment.sourceUrl).hostname}{" "}
+          <ArrowUpRight size={14} />
+        </a>
+      )}
       {attachment.items && (
         <button
           className="shared-list-preview"
@@ -198,7 +277,8 @@ export function PostCard({
               r: {
                 itemId: string;
                 title: string;
-                score: number;
+                score?: number;
+                note?: string;
                 position?: keyof typeof positions;
               },
               i: number,
@@ -207,7 +287,7 @@ export function PostCard({
                 <b>{i + 1}</b>
                 <span>
                   {r.title}
-                  {expanded && (
+                  {expanded && typeof r.score === "number" && (
                     <small>
                       {itemById[r.itemId]?.kind === "News"
                         ? "Usefulness"
@@ -218,6 +298,7 @@ export function PostCard({
                       {r.position ? " · " + positions[r.position] : ""}
                     </small>
                   )}
+                  {expanded && r.note && <small>{r.note}</small>}
                 </span>
               </span>
             ),
@@ -230,83 +311,84 @@ export function PostCard({
           </small>
         </button>
       )}
-      <button
-        className="post-subject"
-        onClick={() => navigate("item/" + post.subjectId)}
-      >
-        <span>
-          {post.kind === "event_plan" ? "SHARED PLAN" : "RELATED ISSUE"} ·{" "}
-          {post.issueId.toUpperCase()}
-          <strong>{subjectTitle(post.subjectId)}</strong>
-        </span>
-        <ArrowUpRight size={19} />
-      </button>
+      {post.subjectId !== "community" && (
+        <div className="post-about">
+          <span>About</span>
+          {entity ? (
+            <>
+              <EntityChip entity={entity} navigate={navigate} />
+              {topic && <EntityChip entity={topic} navigate={navigate} />}
+            </>
+          ) : attachment.eventId ? (
+            <button className="entity-chip tone-event" data-morph onClick={() => navigate("event/" + attachment.eventId)}>
+              <CalendarDays size={13} aria-hidden="true" />
+              <span>{attachment.eventTitle}</span>
+            </button>
+          ) : (
+            <button
+              className="entity-chip tone-paper"
+              data-morph
+              onClick={() => navigate((legacyItem ? "item/" : "issue/") + post.subjectId)}
+            >
+              <FileText size={13} aria-hidden="true" />
+              <span>
+                {subjectTitle(post.subjectId)}
+                {legacyItem ? " · Sample" : ""}
+              </span>
+            </button>
+          )}
+        </div>
+      )}
       <footer>
-        {(
-          [
-            { kind: "agree", label: "Agree", Icon: ThumbsUp },
-            { kind: "thoughtful", label: "Thoughtful", Icon: Lightbulb },
-            { kind: "curious", label: "Curious", Icon: HelpCircle },
-          ] as const
-        ).map(({ kind, label, Icon }) => (
-          <button
-            key={kind}
-            className={"reaction " + (post.myReaction === kind ? "chosen" : "")}
-            aria-pressed={post.myReaction === kind}
-            disabled={busy}
-            onClick={() => void react(kind)}
-          >
-            <Icon size={16} />
-            {label}
-            <span>
-              {post.reactions.find((r) => r.kind === kind)?.count || ""}
-            </span>
-          </button>
-        ))}
+        <span className="reaction-set" role="group" aria-label="Reactions from people who can see this post">
+          {reactionChoices.map(({ kind, label, Icon }) => {
+            const count = reactionCount(kind);
+            return (
+              <button
+                key={kind}
+                className={"reaction " + (myReaction === kind ? "chosen" : "")}
+                aria-pressed={myReaction === kind}
+                aria-label={label + (count ? " " + count : "")}
+                title={label}
+                disabled={busy}
+                onClick={(e) => void react(kind, e.currentTarget.querySelector("svg"))}
+              >
+                <Icon size={15} aria-hidden="true" />
+                <span className="reaction-label">{label}</span>
+                {count > 0 && <span className="reaction-count">{count}</span>}
+              </button>
+            );
+          })}
+        </span>
         <button
           className="reaction"
-          onClick={() => navigate("post/" + post.id)}
-          aria-label={"Open conversation, " + post.replyCount + " replies"}
+          onClick={() => navigate(route + "&reply=1")}
+          aria-label={"Open conversation, " + post.replyCount + (post.replyCount === 1 ? " reply" : " replies")}
         >
-          <MessageCircle size={17} />
-          {post.replyCount || "Reply"}
+          <MessageCircle size={16} />
+          {post.replyCount ? post.replyCount + (post.replyCount === 1 ? " reply" : " replies") : "Reply"}
         </button>
         <button
           className="reaction save-post"
-          aria-label={post.saved ? "Unsave post" : "Save post"}
-          aria-pressed={post.saved}
+          aria-label={saved ? "Unsave post" : "Save post"}
+          aria-pressed={saved}
           disabled={busy}
-          onClick={() => {
+          onClick={(e) => {
+            const button = e.currentTarget;
+            setOptimistic((o) => ({ ...o, saved: { base: !!post.saved, value: !saved } }));
+            // The icon swaps on this render; pop the new one.
+            requestAnimationFrame(() => (saved ? settle : pop)(button.querySelector("svg")));
             void run({
               action: "save",
               targetId: post.id,
-              enabled: !post.saved,
-            }).catch(() => {});
+              enabled: !saved,
+            }).catch(() => setOptimistic((o) => ({ ...o, saved: undefined })));
           }}
         >
-          {post.saved ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
+          {saved ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
         </button>
       </footer>
-      <button
-        className="count-disclosure"
-        onClick={() => setShowCounts(!showCounts)}
-        aria-expanded={showCounts}
-      >
-        Reaction counts
-      </button>
-      {showCounts && (
-        <p className="metadata">
-          {["agree", "thoughtful", "curious"]
-            .map(
-              (k) =>
-                k +
-                ": " +
-                (post.reactions.find((r) => r.kind === k)?.count ?? 0),
-            )
-            .join(" · ")}{" "}
-          · Responses from people who can see this post.
-        </p>
-      )}
+      <div className="commons-thread-meta"><button className="text-button" aria-pressed={!!post.following} disabled={busy} onClick={() => void run({ action: "conversation.follow", postId: post.id, enabled: !post.following }).catch(() => {})}>{post.following ? "Following thread · Undo" : "Follow thread"}</button><span><Users size={13} aria-hidden="true" /> {post.participantCount} {post.participantCount === 1 ? "person" : "people"} · Latest activity {new Date(post.latestActivity ?? post.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span></div>
     </article>
   );
 }

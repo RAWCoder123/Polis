@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 // Read-only and rejected writes against the local Worker; creates no user data.
-const origin = "http://localhost:5173";
+const origin = process.env.POLIS_TEST_ORIGIN ?? "http://localhost:5173";
 const get = await fetch(origin + "/api/polis", {
   headers: {
     "oai-authenticated-user-id": "forged-owner",
@@ -14,6 +14,21 @@ const snapshot = await get.json();
 assert.equal(snapshot.status, "signed_out");
 assert.equal(snapshot.me, null);
 assert.deepEqual(snapshot.posts, []);
+for (const cookie of [
+  "__sites_local_auth=unknown",
+  "__sites_local_auth=constructor",
+  "__sites_local_auth=__proto__",
+  "__sites_local_auth=1; __sites_local_auth=1",
+]) {
+  const response = await fetch(origin + "/api/polis", {
+    headers: { Cookie: cookie },
+  });
+  assert.equal(response.status, 200);
+  const invalidSession = await response.json();
+  assert.equal(invalidSession.status, "signed_out");
+  assert.equal(invalidSession.me, null);
+  assert.deepEqual(invalidSession.posts, []);
+}
 const command = JSON.stringify({
   requestId: crypto.randomUUID(),
   data: { action: "visit" },
@@ -36,5 +51,5 @@ for (const [headers, expected] of [
   assert.equal(response.status, expected, body);
 }
 console.log(
-  "PASS local HTTP: anonymous isolation, forged header stripping, no-store, cross-origin/format/auth rejection.",
+  "PASS local HTTP: anonymous isolation, forged header stripping, invalid/duplicate cookie rejection, no-store, cross-origin/format/auth rejection.",
 );

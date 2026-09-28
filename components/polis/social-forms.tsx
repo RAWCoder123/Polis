@@ -10,15 +10,18 @@ import {
 } from "@/components/ui/dialog";
 import { items, itemById } from "@/lib/polis-data";
 import { subjectTitle } from "@/lib/social/catalog";
+import { subjectTakesPosition } from "@/lib/social/civic";
 import {
   audiences,
   positions,
   type Audience,
+  type CivicEntity,
   type Position,
   type Post,
   type Snapshot,
 } from "@/lib/social/types";
 import type { CommandData } from "@/lib/social/service";
+import { PendingSubmissions } from "@/lib/social/pending-submissions";
 import type { Run, Navigate } from "./social-post";
 export function Modal({
   title,
@@ -52,10 +55,12 @@ export function AudienceField({
   value,
   onChange,
   disabled = false,
+  communityLabel = "Community",
 }: {
   value: Audience;
   onChange: (v: Audience) => void;
   disabled?: boolean;
+  communityLabel?: string;
 }) {
   return (
     <label className="social-field">
@@ -67,16 +72,17 @@ export function AudienceField({
       >
         {Object.entries(audiences).map(([v, label]) => (
           <option key={v} value={v}>
-            {label}
+            {v === "community" ? communityLabel : label}
           </option>
         ))}
       </select>
     </label>
   );
 }
-function useSubmit(run: Run) {
+function useSubmit(run: Run, draft?: { userId: string; key: string }) {
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [pending] = useState(() => new PendingSubmissions(() => window.sessionStorage));
   return {
     error,
     busy,
@@ -84,7 +90,17 @@ function useSubmit(run: Run) {
       setBusy(true);
       setError("");
       try {
-        return await run(data);
+        const submission = draft ? await pending.start(draft.userId, data) : null;
+        const result = await run(data, submission?.id);
+        if (draft && submission) {
+          // Clear the draft before its token, after the caller's refresh has
+          // finished. A reload while awaiting that refresh can safely retry.
+          try {
+            sessionStorage.removeItem(draft.key);
+          } catch { /* Storage may be unavailable; the in-memory draft is cleared by the form. */ }
+          pending.acknowledge(submission);
+        }
+        return result;
       } catch (e) {
         setError(e instanceof Error ? e.message : "Please try again.");
         return null;
@@ -117,7 +133,7 @@ export function Onboarding({ name, run }: { name: string; run: Run }) {
             invite,
           });
           if (r)
-            history.replaceState(null, "", location.pathname + location.hash);
+            history.replaceState(history.state, "", location.pathname + location.hash);
         }}
       >
         <label className="social-field">
@@ -145,12 +161,15 @@ export function Onboarding({ name, run }: { name: string; run: Run }) {
           <input
             value={invite}
             onChange={(e) => setInvite(e.target.value)}
-            placeholder="From your community invitation"
+            placeholder="POLIS-XXXX-XXXX-XXXX"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
           />
         </label>
         <p className="metadata">
-          An invitation is linked to your signed-in email. The configured
-          community owner can leave this blank.
+          Enter a shared code from your community owner, or use your email-specific
+          invitation. The configured community owner can leave this blank.
         </p>
         {error && (
           <p role="alert" className="form-error">
@@ -165,12 +184,33 @@ export function Onboarding({ name, run }: { name: string; run: Run }) {
   );
 }
 export type ComposeOptions = {
+  coverage?: "local" | "national";
+  // Preselected audience, e.g. The Commons when started from the Commons.
+  audience?: Audience;
+  // The current community's civic catalog, for subjects and positions.
+  catalog?: CivicEntity[];
+  communityId?: string;
+  communityName?: string;
+  organizationId?: string;
+  organizationChannel?: "announcements" | "discussion" | "plans";
+  communityOnly?: boolean;
+  subjectLabel?: string;
   subjectId?: string;
   post?: Post;
   prior?: Post;
   copy?: Post;
-  kind?: "opinion" | "question" | "article" | "event_reflection";
+  kind?:
+    "opinion" | "question" | "debate" | "update" | "article" | "event_reflection" | "event_share";
 };
+const subjectGroups: { label: string; kinds: CivicEntity["kind"][] }[] = [
+  { label: "Local topics & issues", kinds: ["issue"] },
+  { label: "Starter questions", kinds: ["question"] },
+  { label: "Proposals & projects", kinds: ["policy", "project"] },
+  { label: "People & offices", kinds: ["official"] },
+  { label: "Places & buildings", kinds: ["place", "building", "institution", "elections"] },
+  { label: "Organizations & meetings", kinds: ["organization", "meeting"] },
+  { label: "Briefs", kinds: ["news"] },
+];
 export function Composer({
   options,
   onClose,
@@ -189,13 +229,17 @@ export function Composer({
   const post = options.post,
     prior = options.prior,
     copy = options.copy;
-  const key = "polis-draft:" + userId + ":" + (post?.id ?? "new");
+  const key = "polis-draft:" + userId + ":" + (options.communityId ?? "ithaca") + ":" + (options.organizationId ?? "commons") + ":" + (options.organizationChannel ?? "") + ":" + (post?.id ?? "new");
   const [draft] = useState<{
-    kind?: "opinion" | "question" | "article" | "event_reflection";
+    kind?:
+      "opinion" | "question" | "debate" | "update" | "article" | "event_reflection" | "event_share";
     subject?: string;
+    title?: string;
     body?: string;
+    sourceUrl?: string;
     pos?: Position | "";
     aud?: Audience;
+    priorPostId?: string | null;
   }>(() => {
     if (post || prior || copy || options.subjectId || options.kind) return {};
     try {
@@ -204,8 +248,9 @@ export function Composer({
       return {};
     }
   });
+  const priorPostId = prior?.id ?? draft.priorPostId ?? null;
   const [kind, setKind] = useState<
-      "opinion" | "question" | "article" | "event_reflection"
+      "opinion" | "question" | "debate" | "update" | "article" | "event_reflection" | "event_share"
     >(
       ((post?.kind ?? copy?.kind) as "opinion") ??
         options.kind ??
@@ -218,55 +263,67 @@ export function Composer({
         copy?.subjectId ??
         options.subjectId ??
         draft.subject ??
-        "homes",
+        "community",
     ),
+    [title, setTitle] = useState(post?.title ?? copy?.title ?? draft.title ?? ""),
     [body, setBody] = useState(post?.text ?? copy?.text ?? draft.body ?? ""),
+    [sourceUrl, setSourceUrl] = useState<string>(
+      JSON.parse(post?.attachmentJson ?? copy?.attachmentJson ?? "{}")
+        .sourceUrl ??
+        draft.sourceUrl ??
+        "",
+    ),
     [pos, setPos] = useState<Position | "">(
       post?.position ?? copy?.position ?? draft.pos ?? "",
     ),
     [aud, setAud] = useState<Audience>(
-      post?.audience ?? prior?.audience ?? draft.aud ?? "friends",
+      post?.audience ?? prior?.audience ?? options.audience ?? draft.aud ?? "friends",
     );
-  const { error, busy, submit } = useSubmit(run);
+  const { error, busy, submit } = useSubmit(run, post ? undefined : { userId, key });
   useEffect(() => {
     if (post) return;
     try {
       sessionStorage.setItem(
         key,
-        JSON.stringify({ body, subject, kind, aud, pos }),
+        JSON.stringify({ title, body, subject, kind, aud, pos, sourceUrl, priorPostId }),
       );
     } catch {}
-  }, [key, body, subject, kind, aud, pos, post]);
+  }, [key, title, body, subject, kind, aud, pos, sourceUrl, post, priorPostId]);
   const canPosition =
-    kind === "opinion" && itemById[subject]?.kind === "Policies";
-  const choices = items.filter((i) =>
+    (kind === "opinion" || kind === "debate") &&
+    subjectTakesPosition(options.catalog ?? [], options.communityId ?? "ithaca", subject);
+  const catalog = options.catalog ?? [];
+  const choices = options.communityOnly ? [] : items.filter((i) =>
     kind === "article"
       ? i.kind === "News"
-      : kind === "event_reflection"
+      : kind === "event_reflection" || kind === "event_share"
         ? i.kind === "Events"
         : true,
   );
   function changeKind(value: typeof kind) {
     setKind(value);
     setPos("");
-    if (value === "article") setSubject("housing-news");
-    if (value === "event_reflection") setSubject("housing-meeting");
+    if (value === "article") setSubject(options.communityOnly ? "community" : "housing");
+    if (value === "event_reflection" || value === "event_share")
+      setSubject("housing-meeting");
   }
   return (
     <Modal
       title={
         post
           ? "Edit your post"
-          : prior
+          : priorPostId
             ? "What changed your mind?"
-            : "Add your perspective"
+            : aud === "community" && !options.organizationId
+              ? "Start a discussion in The Commons"
+              : "Add your perspective"
       }
       description={
         copy
           ? "This starts a new conversation. Existing replies stay with the original post."
           : post
             ? "The audience stays the same, including for existing replies."
-            : "A view, a question, or something you’re still thinking through."
+            : "Tie it to something real — a topic, place, office or proposal — so others can find it."
       }
       onClose={onClose}
     >
@@ -277,18 +334,25 @@ export function Composer({
             post
               ? {
                   action: "post.edit",
+                  title,
                   postId: post.id,
                   text: body,
+                  sourceUrl,
                   position: canPosition && pos ? pos : null,
                 }
               : {
                   action: "post",
+                  title,
+                  coverage: options.coverage ?? "local",
+                  organizationId: options.organizationId,
+                  organizationChannel: options.organizationChannel,
                   kind,
                   subjectId: subject,
                   text: body,
+                  sourceUrl,
                   position: canPosition && pos ? pos : null,
                   audience: aud,
-                  priorPostId: prior?.id ?? null,
+                  priorPostId,
                 },
           );
           if (r) {
@@ -296,11 +360,11 @@ export function Composer({
               sessionStorage.removeItem(key);
             } catch {}
             onClose();
-            if (r.postId) navigate("post/" + r.postId);
+            if (r.postId) navigate("post/" + r.postId + "?community=" + (options.communityId ?? "ithaca"));
           }
         }}
       >
-        {!post && !prior && (
+        {!post && !priorPostId && (
           <label className="social-field">
             What would you like to share?
             <select
@@ -314,9 +378,14 @@ export function Composer({
             >
               <option value="opinion">An opinion</option>
               <option value="question">A question</option>
+              <option value="debate">A debate · No side required</option>
+              <option value="update">A sourced update</option>
               <option value="article">An article with commentary</option>
+              {!options.communityOnly && <>
+              <option value="event_share">An event with commentary</option>
               <option value="event_reflection">An event reflection</option>
               <option value="ranking">A selected ranking update</option>
+              </>}
             </select>
           </label>
         )}
@@ -324,22 +393,46 @@ export function Composer({
           Subject
           <select
             value={subject}
-            disabled={!!post || !!prior}
+            disabled={!!post || !!priorPostId}
             onChange={(e) => {
               setSubject(e.target.value);
               setPos("");
             }}
           >
-            {!itemById[subject] && (
-              <option value={subject}>{subjectTitle(subject)}</option>
-            )}
-            {choices.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.title} · Sample {i.kind.toLowerCase()}
+            <option value="community">General conversation</option>
+            {kind !== "event_reflection" &&
+              kind !== "event_share" &&
+              subjectGroups.map((g) => {
+                const rows = catalog.filter((e) => g.kinds.includes(e.kind));
+                return rows.length ? (
+                  <optgroup key={g.label} label={g.label}>
+                    {rows.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.name}
+                        {e.sample ? " · Sample" : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null;
+              })}
+            {subject !== "community" && !catalog.some((e) => e.id === subject) && !itemById[subject] && (
+              <option value={subject}>
+                {subject === "community" ? "Community observation" : options.subjectLabel || subjectTitle(subject)}
               </option>
-            ))}
+            )}
+            {choices.length > 0 && (
+              <optgroup label="Fictional sample catalog">
+                {choices.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.title} · Sample {i.kind.toLowerCase()}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </label>
+        <p className="metadata">{post?.coverage === "national" || options.coverage === "national" ? "National discussion" : "Local discussion"} · {options.communityName ?? "Your community"}. The scope and audience stay fixed after publication.</p>
+        <label className="social-field">{kind === "question" || kind === "debate" ? "Headline or question" : "Discussion title"} <span>optional</span><input maxLength={160} value={title} onChange={e => setTitle(e.target.value)} placeholder={kind === "debate" ? "e.g. Should the late bus run until 2 a.m.?" : "What would you like to talk about?"} /></label>
         {canPosition && (
           <label className="social-field">
             Your position <span>optional</span>
@@ -367,18 +460,34 @@ export function Composer({
             placeholder="What matters to you about this?"
           />
         </label>
+        <label className="social-field">
+          {kind === "update" ? "Source link · required" : kind === "article" ? "Article link" : "Source link · optional"}
+          <input
+            type="url"
+            placeholder="https://…"
+            maxLength={2000}
+            value={sourceUrl}
+            onChange={(e) => setSourceUrl(e.target.value)}
+            required={kind === "update" || (kind === "article" && itemById[subject]?.kind !== "News")}
+          />
+        </label>
         <AudienceField
           value={aud}
           onChange={setAud}
-          disabled={!!post || !!prior}
+          disabled={!!post || !!priorPostId}
+          communityLabel={options.organizationId || post?.organizationId ? "Organization members" : options.communityName ?? "Community"}
         />
         <p className="metadata">
+          {(options.organizationId || post?.organizationId) && <strong>Private organization conversation. </strong>}
           <Lock size={13} />{" "}
           {aud === "friends"
             ? "Only accepted friends can see and respond."
             : aud === "only_me"
               ? "Only you can see this post."
-              : "Visible to invited members of the Ithaca community."}
+              : options.organizationId || post?.organizationId ? "Visible only inside this organization." : "Posted in The Commons: visible to members of " + (options.communityName ?? "your current community") + ", not the public web."}{" "}
+          <button type="button" className="text-button inline" onClick={() => { onClose(); navigate("guidelines"); }}>
+            Guidelines
+          </button>
         </p>
         {error && (
           <p role="alert" className="form-error">
@@ -387,13 +496,15 @@ export function Composer({
         )}
         <button
           className="btn primary full"
-          disabled={busy || (!body.trim() && !pos)}
+          disabled={busy || (!body.trim() && !pos && !(title.trim() && (kind === "question" || kind === "debate")))}
         >
           {busy
             ? "Saving…"
             : post
               ? "Save changes"
-              : "Publish to " + audiences[aud]}
+              : aud === "community" && !options.organizationId
+                ? "Post to The Commons"
+                : "Publish to " + (aud === "community" && options.organizationId ? "organization members" : audiences[aud])}
           <Send size={16} />
         </button>
       </form>
@@ -577,14 +688,18 @@ export function ReplyComposer({
   onCancel,
   run,
   onSaved,
+  disabled = false,
+  takesPosition = false,
 }: {
   userId: string;
   postId: string;
   parentId?: string | null;
-  editing?: { id: string; text: string };
+  editing?: { id: string; text: string; position?: Position | null };
   onCancel?: () => void;
   run: Run;
   onSaved?: () => void;
+  disabled?: boolean;
+  takesPosition?: boolean;
 }) {
   const key =
     "polis-reply:" +
@@ -601,19 +716,22 @@ export function ReplyComposer({
       return "";
     }
   });
-  const { submit, error, busy } = useSubmit(run);
+  const [stance, setStance] = useState<Position | "">(editing?.position ?? "");
+  const { submit, error, busy } = useSubmit(run, editing ? undefined : { userId, key });
   return (
     <form
       className="reply-form"
       onSubmit={async (e) => {
         e.preventDefault();
+        const position = takesPosition && stance ? stance : null;
         const r = await submit(
           editing
-            ? { action: "comment.edit", commentId: editing.id, text: body }
-            : { action: "comment", postId, parentId, text: body },
+            ? { action: "comment.edit", commentId: editing.id, text: body, ...(takesPosition ? { position } : {}) }
+            : { action: "comment", postId, parentId, text: body, position },
         );
         if (r) {
           setBody("");
+          setStance("");
           try {
             sessionStorage.removeItem(key);
           } catch {}
@@ -642,6 +760,25 @@ export function ReplyComposer({
           }}
         />
       </label>
+      {takesPosition && (
+        <fieldset className="stance-picker">
+          <legend>
+            Your perspective <span>optional</span>
+          </legend>
+          {([["", "No label"], ...Object.entries(positions)] as [Position | "", string][]).map(([value, label]) => (
+            <label key={value || "none"} className={stance === value ? "chosen" : ""}>
+              <input
+                type="radio"
+                name={"stance-" + key}
+                value={value}
+                checked={stance === value}
+                onChange={() => setStance(value)}
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+      )}
       {error && (
         <p role="alert" className="form-error">
           {error}
@@ -650,7 +787,7 @@ export function ReplyComposer({
       <div className="form-actions">
         <button
           className="btn primary small-btn"
-          disabled={busy || !body.trim()}
+          disabled={disabled || busy || !body.trim()}
         >
           {editing ? "Save reply" : "Reply"}
           <Send size={14} />
@@ -678,7 +815,7 @@ export function ShareRanking({
   const [selected, setSelected] = useState(
       data.rankings.slice(0, 5).map((r) => r.itemId),
     ),
-    [title, setTitle] = useState("My priorities for Ithaca"),
+    [title, setTitle] = useState("My civic ratings"),
     [body, setBody] = useState(""),
     [aud, setAud] = useState<Audience>("friends");
   const { submit, error, busy } = useSubmit(run);

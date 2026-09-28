@@ -8,6 +8,7 @@ import {
   uniqueIndex,
   index,
   check,
+  sqliteView,
 } from "drizzle-orm/sqlite-core";
 export const profiles = sqliteTable("profiles", {
   id: text().primaryKey(),
@@ -16,6 +17,8 @@ export const profiles = sqliteTable("profiles", {
   bio: text().notNull().default(""),
   communityLabel: text().notNull().default("Ithaca, NY"),
   createdAt: text().notNull(),
+  onboardingComplete: integer().notNull().default(0),
+  activeCommunityId: text().notNull().default("ithaca"),
 });
 export const memberships = sqliteTable("memberships", {
   userId: text()
@@ -32,6 +35,37 @@ export const invitations = sqliteTable("invitations", {
   expiresAt: text().notNull(),
   usedBy: text(),
 });
+// Preserve legacy memberships in place. New memberships use a composite key.
+export const communityMemberships = sqliteTable("community_memberships", {
+  userId: text().notNull().references(() => profiles.id),
+  communityId: text().notNull(),
+  role: text().notNull().default("member"),
+}, t => [primaryKey({ columns: [t.userId, t.communityId] })]);
+export const pilotMemberships = sqliteView("pilot_memberships", {
+  userId: text().notNull(), communityId: text().notNull(), role: text().notNull(),
+}).as(sql`SELECT userId,communityId,role FROM memberships UNION ALL SELECT c.userId,c.communityId,c.role FROM community_memberships c WHERE NOT EXISTS(SELECT 1 FROM memberships m WHERE m.userId=c.userId AND m.communityId=c.communityId)`);
+export const invitationCodes = sqliteTable("invitation_codes", {
+  id: text().primaryKey(),
+  tokenHash: text().notNull().unique(),
+  createdBy: text().notNull(),
+  createdAt: text().notNull(),
+  expiresAt: text().notNull(),
+  maxUses: integer().notNull(),
+  useCount: integer().notNull().default(0),
+  revokedAt: text(),
+  communityId: text().notNull().default("ithaca"),
+  unlimited: integer().notNull().default(0),
+  organizationId: text(),
+  // Owner-chosen memorable codes are meant to be shared, so their text can be
+  // listed for administrators. Generated secret codes keep this empty.
+  label: text(),
+});
+export const invitationRedemptions = sqliteTable("invitation_redemptions", {
+  codeId: text().notNull().references(() => invitationCodes.id),
+  userId: text().notNull().references(() => profiles.id),
+  requestKey: text().notNull(),
+  redeemedAt: text().notNull(),
+}, t => [primaryKey({ columns: [t.codeId, t.userId] })]);
 export const friendships = sqliteTable(
   "friendships",
   {
@@ -61,6 +95,9 @@ export const posts = sqliteTable(
       .notNull()
       .references(() => profiles.id),
     communityId: text().notNull(),
+    organizationId: text(),
+    title: text().notNull().default(""),
+    coverage: text().notNull().default("local"),
     kind: text().notNull(),
     subjectId: text().notNull(),
     issueId: text().notNull(),
@@ -87,6 +124,9 @@ export const comments = sqliteTable(
       .references(() => profiles.id),
     parentId: text(),
     text: text().notNull(),
+    // Optional perspective on the conversation's question. Null for replies
+    // that simply respond; never inferred.
+    position: text(),
     createdAt: text().notNull(),
     editedAt: text(),
     deletedAt: text(),
@@ -121,6 +161,18 @@ export const rankings = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.itemId] })],
 );
+export const issuePriorities = sqliteTable(
+  "issue_priorities",
+  {
+    userId: text()
+      .notNull()
+      .references(() => profiles.id),
+    issueId: text().notNull(),
+    priority: integer().notNull(),
+    note: text().notNull().default(""),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.issueId] })],
+);
 export const lists = sqliteTable("lists", {
   id: text().primaryKey(),
   postId: text()
@@ -140,6 +192,15 @@ export const follows = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.issueId] })],
 );
+export const conversationFollows = sqliteTable("conversation_follows", {
+  userId: text().notNull().references(() => profiles.id),
+  postId: text().notNull().references(() => posts.id),
+}, t => [primaryKey({ columns: [t.userId, t.postId] })]);
+export const organizationMemberships = sqliteTable("organization_memberships", {
+  userId: text().notNull().references(() => profiles.id),
+  organizationId: text().notNull(),
+  role: text().notNull().default("member"),
+}, t => [primaryKey({ columns: [t.userId, t.organizationId] })]);
 export const plans = sqliteTable(
   "plans",
   {
@@ -150,6 +211,52 @@ export const plans = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.eventId] })],
 );
+export const eventSeries = sqliteTable("event_series", {
+  id: text().primaryKey(),
+  title: text().notNull(),
+});
+export const communityEvents = sqliteTable(
+  "community_events",
+  {
+    id: text().primaryKey(),
+    seriesId: text()
+      .notNull()
+      .references(() => eventSeries.id),
+    communityId: text().notNull(),
+    recordJson: text().notNull(),
+    startsAt: text().notNull(),
+    endsAt: text(),
+    status: text().notNull(),
+    createdBy: text()
+      .notNull()
+      .references(() => profiles.id),
+    updatedAt: text().notNull(),
+  },
+  (t) => [
+    index("events_upcoming").on(t.communityId, t.status, t.startsAt),
+    uniqueIndex("event_series_occurrence").on(t.seriesId, t.startsAt),
+  ],
+);
+export const eventPreferences = sqliteTable("event_preferences", {
+  userId: text()
+    .primaryKey()
+    .references(() => profiles.id),
+  city: text().notNull().default("Ithaca"),
+  interestsJson: text().notNull().default("[]"),
+  complete: integer().notNull().default(0),
+});
+export const eventSuggestions = sqliteTable("event_suggestions", {
+  id: text().primaryKey(),
+  communityId: text().notNull().default("ithaca"),
+  userId: text()
+    .notNull()
+    .references(() => profiles.id),
+  title: text().notNull(),
+  sourceUrl: text().notNull(),
+  note: text().notNull(),
+  status: text().notNull().default("pending"),
+  createdAt: text().notNull(),
+});
 export const questions = sqliteTable("questions", {
   id: text().primaryKey(),
   issueId: text().notNull(),
@@ -175,6 +282,7 @@ export const answers = sqliteTable(
 );
 export const issueUpdates = sqliteTable("issue_updates", {
   id: text().primaryKey(),
+  communityId: text().notNull().default("ithaca"),
   issueId: text().notNull(),
   title: text().notNull(),
   sourceUrl: text().notNull(),
@@ -204,6 +312,7 @@ export const preferences = sqliteTable("preferences", {
 });
 export const reports = sqliteTable("reports", {
   id: text().primaryKey(),
+  communityId: text().notNull().default("ithaca"),
   reporterId: text().notNull(),
   targetId: text().notNull(),
   reason: text().notNull(),
@@ -220,6 +329,7 @@ export const requests = sqliteTable("requests", {
 });
 export const metrics = sqliteTable("metrics", {
   id: text().primaryKey(),
+  communityId: text().notNull().default("ithaca"),
   userId: text().notNull(),
   event: text().notNull(),
   objectId: text(),
@@ -230,4 +340,52 @@ export const writeGuards = sqliteTable(
   "write_guards",
   { id: text().primaryKey(), allowed: integer().notNull() },
   (t) => [check("write_allowed", sql`${t.allowed}=1`)],
+);
+// Communities members create for any city or town, or for a university whose
+// students sign in with its plain institutional domain. Configured campuses
+// stay in code; these rows extend the same community model.
+export const placeCommunities = sqliteTable(
+  "place_communities",
+  {
+    id: text().primaryKey(),
+    kind: text().notNull(),
+    name: text().notNull(),
+    locationLabel: text().notNull(),
+    city: text().notNull(),
+    region: text().notNull().default(""),
+    country: text().notNull().default(""),
+    latitude: real().notNull(),
+    longitude: real().notNull(),
+    timezone: text().notNull(),
+    domain: text(),
+    university: text(),
+    createdBy: text()
+      .notNull()
+      .references(() => profiles.id),
+    createdAt: text().notNull(),
+    placesImportedAt: text(),
+    status: text().notNull().default("active"),
+  },
+  (t) => [
+    uniqueIndex("place_community_domain").on(t.domain),
+    index("place_community_city").on(t.country, t.region, t.city),
+  ],
+);
+// Public places imported from OpenStreetMap for a community map.
+export const communityPlaces = sqliteTable(
+  "community_places",
+  {
+    communityId: text().notNull(),
+    id: text().notNull(),
+    kind: text().notNull(),
+    name: text().notNull(),
+    subtitle: text().notNull(),
+    latitude: real().notNull(),
+    longitude: real().notNull(),
+    source: text().notNull(),
+    sourceRef: text().notNull(),
+    website: text(),
+    importedAt: text().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.communityId, t.id] })],
 );

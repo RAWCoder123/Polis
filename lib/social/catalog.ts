@@ -1,4 +1,5 @@
 import { items } from "../polis-data.ts";
+import { topicFor } from "./commons.ts";
 export const communityId = "ithaca";
 export const issues = [
   {
@@ -31,8 +32,9 @@ export const issues = [
   },
 ];
 export const issueFor = (subjectId: string) =>
-  issues.find((i) => i.id === subjectId || i.items.includes(subjectId));
+  issues.find((i) => i.id === subjectId || i.items.includes(subjectId)) ?? (topicFor(subjectId) ? { ...topicFor(subjectId)!, items: [] as string[] } : undefined);
 export const subjectTitle = (id: string) =>
+  topicFor(id)?.name ??
   items.find((i) => i.id === id)?.title ??
   issues.find((i) => i.id === id)?.name ??
   "Local conversation";
@@ -42,4 +44,11 @@ export const eventStart = (id: string) =>
     "creek-cleanup": "2026-09-14T13:00:00.000Z",
     "transit-walk": "2026-09-13T19:00:00.000Z",
     "library-forum": "2026-09-15T21:30:00.000Z",
+  })[id];
+export const eventEnd = (id: string) =>
+  ({
+    "housing-meeting": "2026-09-13T00:00:00.000Z",
+    "creek-cleanup": "2026-09-14T15:00:00.000Z",
+    "transit-walk": "2026-09-13T20:30:00.000Z",
+    "library-forum": "2026-09-15T23:00:00.000Z",
   })[id];

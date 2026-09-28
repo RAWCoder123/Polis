@@ -42,6 +42,45 @@ export function sites({ mockAuth = true } = {}): Plugin {
     configureServer(server) {
       if (!mockAuth) return;
       const secure = Boolean(server.config.server.https);
+      // Explicit loopback-only synthetic identities for integration tests. This
+      // middleware is never installed in a production build or Worker.
+      const testAccounts = process.env.POLIS_TEST_ACCOUNTS === "1";
+      const identities: Record<
+        string,
+        { id: string; email: string; name: string }
+      > = {
+        "1": { id: localUserId, email: localEmail, name: localFullName },
+        ...(testAccounts
+          ? {
+              ...Object.fromEntries(["ithaca_a", "ithaca_b", "ithaca_c", "uf_a", "uf_b", "uf_c", "motion_a", "motion_b"].map(key => [key, { id: "local_" + key, email: key + "@sites.test", name: "Test " + key }])),
+              // Synthetic local parts at campus domains, used only to exercise
+              // email-domain association on loopback. Never contacted.
+              campus_cu: { id: "local_campus_cu", email: "polis-fixture-cu@cornell.edu", name: "Test Cornell student" },
+              campus_uf: { id: "local_campus_uf", email: "polis-fixture-uf@ufl.edu", name: "Test UF student" },
+              // Reserved example.edu: a campus with no community yet.
+              campus_new: { id: "local_campus_new", email: "polis-fixture@example.edu", name: "Test new-campus student" },
+              beta_b: {
+                id: "local_beta_b",
+                email: "beta_b@sites.test",
+                name: "Beta Blair",
+              },
+              beta_c: {
+                id: "local_beta_c",
+                email: "beta_c@sites.test",
+                name: "Beta Casey",
+              },
+            }
+          : {}),
+      };
+      // Run-scoped synthetic identities (qa_<suite>_<run>_<role>) let a local
+      // suite start every run from accounts that no other run has touched.
+      const runAccount = /^qa_[a-z]{2,12}_[a-z0-9]{4,12}_[a-z0-9]{1,8}$/;
+      const identityFor = (account: string) =>
+        Object.hasOwn(identities, account)
+          ? identities[account]
+          : testAccounts && runAccount.test(account)
+            ? { id: "local_" + account, email: account + "@sites.test", name: "Test " + account }
+            : undefined;
 
       server.config.logger.info(`Sites local sign-in: ${localEmail}`);
       server.middlewares.use((request, response, next) => {
@@ -105,13 +144,17 @@ export function sites({ mockAuth = true } = {}): Plugin {
         const signIn = url.pathname === "/signin-with-chatgpt";
         const signOut = url.pathname === "/signout-with-chatgpt";
         if (!signIn && !signOut) {
-          if (signInCookies.length === 1 && signInCookies[0] === "1") {
-            setHeader(request, "oai-authenticated-user-id", localUserId);
-            setHeader(request, "oai-authenticated-user-email", localEmail);
+          const identity =
+            signInCookies.length === 1
+              ? identityFor(signInCookies[0])
+              : undefined;
+          if (identity) {
+            setHeader(request, "oai-authenticated-user-id", identity.id);
+            setHeader(request, "oai-authenticated-user-email", identity.email);
             setHeader(
               request,
               "oai-authenticated-user-full-name",
-              localFullName,
+              identity.name,
             );
             setHeader(
               request,
@@ -155,6 +198,16 @@ export function sites({ mockAuth = true } = {}): Plugin {
           return;
         }
 
+        const requestedAccount = url.searchParams.get("test_account");
+        // A mistyped test account must not quietly become the pilot owner.
+        if (signIn && testAccounts && requestedAccount && !identityFor(requestedAccount)) {
+          respond(response, 400);
+          return;
+        }
+        const account =
+          testAccounts && requestedAccount && identityFor(requestedAccount)
+            ? requestedAccount
+            : "1";
         response.statusCode = request.method === "POST" ? 303 : 302;
         response.setHeader("Cache-Control", "private, no-store");
         response.setHeader(
@@ -163,7 +216,7 @@ export function sites({ mockAuth = true } = {}): Plugin {
         );
         response.setHeader(
           "Set-Cookie",
-          `${localCookieName}=${signIn ? "1" : ""}; Path=/; ${
+          `${localCookieName}=${signIn ? account : ""}; Path=/; ${
             signOut ? "Max-Age=0; " : ""
           }HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`,
         );

@@ -1,14 +1,80 @@
+import type { PilotCommunity } from "./communities";
+export type InvitationPreview = { community: PilotCommunity; organization?: { id: string; name: string }; expiresAt: string; alreadyJoined: boolean };
 export type Audience = "only_me" | "friends" | "community";
 export type PostType =
   | "opinion"
   | "question"
+  | "debate"
+  | "update"
   | "article"
   | "ranking"
+  | "event_share"
   | "event_reflection"
   | "event_plan";
 export type Position =
   "support" | "reservations" | "mixed" | "oppose" | "learning";
 export type EventPlanStatus = "interested" | "attending";
+export type EventCategory =
+  | "food_markets"
+  | "arts_culture"
+  | "festivals_parades"
+  | "outdoors"
+  | "volunteering"
+  | "civic_meetings"
+  | "campus_life"
+  | "music"
+  | "sports"
+  | "community"
+  | "politics";
+export type CommunityEvent = {
+  campusId?: string;
+  organizationName?: string;
+  scope?: "campus" | "town";
+  imageAlt?: string;
+  imageCredit?: string;
+  imageSourceUrl?: string;
+  imageNote?: string;
+
+  id: string;
+  seriesId: string;
+  title: string;
+  description: string;
+  organizer: string;
+  sourceUrl: string;
+  checkedAt: string;
+  venue: string;
+  address: string;
+  city: string;
+  latitude: number | null;
+  longitude: number | null;
+  imageUrl: string;
+  startsAt: string;
+  endsAt: string | null;
+  timezone: string;
+  category: EventCategory;
+  cost: "free" | "paid" | "unknown";
+  costDetails: string;
+  accessibility: string;
+  registration: string;
+  registrationUrl: string;
+  issueId: string;
+  status: "draft" | "published" | "canceled" | "archived";
+  sample: boolean;
+};
+export type EventPreferences = {
+  city: string;
+  interests: EventCategory[];
+  complete: boolean;
+};
+export type EventSuggestion = {
+  id: string;
+  userId: string;
+  title: string;
+  sourceUrl: string;
+  note: string;
+  status: string;
+  createdAt: string;
+};
 export type PlanConfirmation = {
   userId: string;
   eventId: string;
@@ -20,7 +86,16 @@ export type CommandResult = {
   postId?: string;
   commentId?: string;
   invite?: string;
+  invitationCode?: string;
+  communityId?: string;
+  alreadyJoined?: boolean;
+  organizationId?: string;
   plan?: PlanConfirmation;
+  // community.create: false when an existing nearby or campus community was joined.
+  created?: boolean;
+  // places.import: places added or refreshed; recent when skipped as up to date.
+  imported?: number;
+  recent?: boolean;
 };
 export const audiences: Record<Audience, string> = {
   only_me: "Only me",
@@ -40,7 +115,9 @@ export type Person = {
   username: string;
   bio: string;
   communityLabel: string;
+  activeCommunityId?: string;
   role?: string;
+  onboardingComplete?: number;
   relationship?: string;
   muted?: boolean;
   blocked?: boolean;
@@ -54,6 +131,13 @@ export type Rank = {
 };
 export type Post = {
   id: string;
+  communityId: string;
+  organizationId?: string | null;
+  title?: string;
+  coverage?: "local" | "national";
+  activitySort?: string;
+  following?: boolean;
+  latestActivity?: string;
   authorId: string;
   name: string;
   username: string;
@@ -70,6 +154,8 @@ export type Post = {
   reactions: { kind: string; count: number }[];
   myReaction: string | null;
   replyCount: number;
+  // Distinct people visible to the viewer: the author plus reply authors.
+  participantCount: number;
   saved: boolean;
 };
 export type Comment = {
@@ -79,10 +165,12 @@ export type Comment = {
   name: string;
   parentId: string | null;
   text: string;
+  position: Position | null;
   createdAt: string;
   editedAt: string | null;
 };
 export type Notice = {
+  communityId?: string;
   id: string;
   kind: string;
   name: string;
@@ -104,14 +192,174 @@ export type Question = {
   status: string;
   counts?: { choice: string; count: number }[];
 };
+// A university pilot site. Adding a campus is configuration, not new pages.
+export type Campus = {
+  university: string;
+  shortName: string;
+  // Sign-in email domains associated with this campus community. Exact matches
+  // only; an empty list keeps the campus invitation-only.
+  domains: string[];
+  city: string;
+  state: string;
+  center: [number, number];
+  zoom: number;
+  timezone: string;
+  // Small brand marks only; the Polis cobalt remains the interface color.
+  accent: string;
+  monogram: string;
+  // Reserved for a later approved campus SSO/SAML integration. Unused today.
+  sso?: { protocol: "saml" | "oidc"; metadataUrl: string };
+  // ISO 3166-1 alpha-2 when known.
+  country?: string;
+};
+// A city or town community. Any place can have one; joining is open, and
+// membership never asserts residence.
+export type Locality = {
+  city: string;
+  region: string;
+  country: string;
+  center: [number, number];
+  zoom: number;
+  timezone: string;
+};
+// A public place imported from OpenStreetMap for a community's map. Names and
+// coordinates come from the source; Polis adds no claims about them.
+export type CommunityPlace = {
+  id: string;
+  communityId: string;
+  kind: EntityKind;
+  name: string;
+  subtitle: string;
+  latitude: number;
+  longitude: number;
+  source: "openstreetmap";
+  sourceRef: string;
+  website: string | null;
+};
+export type CommunitySearchResult = {
+  community: PilotCommunity;
+  members: number;
+  miles: number | null;
+};
+export type PlaceSuggestion = {
+  label: string;
+  city: string;
+  region: string;
+  country: string;
+  latitude: number;
+  longitude: number;
+};
+export type EntityKind =
+  | "official"
+  | "institution"
+  | "building"
+  | "organization"
+  | "place"
+  | "issue"
+  | "policy"
+  | "project"
+  | "news"
+  | "meeting"
+  | "elections"
+  | "question";
+export type EntityScope = "campus" | "local" | "national";
+export type EntityLink = { title: string; url: string };
+// Code-defined civic context for a community. `sample` marks illustrative
+// content; unsampled records only state what an office or place is.
+export type CivicEntity = {
+  id: string;
+  communityId: string;
+  kind: EntityKind;
+  name: string;
+  subtitle: string;
+  summary: string;
+  details?: string[];
+  scope: EntityScope;
+  topics: string[];
+  related: string[];
+  location?: { lat: number; lng: number; label: string; approximate?: boolean };
+  imageUrl?: string;
+  imageAlt?: string;
+  imageCredit?: string;
+  imageSourceUrl?: string;
+  imagePosition?: string;
+  checkedAt?: string;
+  monogram?: string;
+  sourceUrl?: string;
+  sourceLabel?: string;
+  sample: boolean;
+  // Manually checked source background for a sourced Commons topic.
+  background?: {
+    text: string;
+    documentTitle: string;
+    url: string;
+    publisher: string;
+    sourceDate: string | null;
+    checkedAt: string;
+  };
+  office?: {
+    title: string;
+    jurisdiction: string;
+    // Only when supplied from a checked source; never inferred.
+    officeholder?: string;
+    party?: string;
+    directoryUrl?: string;
+  };
+  policy?: {
+    status: string;
+    category: string;
+    institutionId?: string;
+    steps: { when: string; label: string }[];
+    documents: EntityLink[];
+  };
+  news?: { source: string; publishedAt: string; url?: string };
+  meeting?: { schedule: string; bodyId?: string; calendarUrl?: string };
+  debate?: {
+    // Open-ended questions collect ideas rather than support or opposition.
+    openEnded?: boolean;
+    context: string;
+    perspectives: { label: string; points: string[] }[];
+    documents: EntityLink[];
+    openedAt: string;
+  };
+};
+export type CommonsSummary = {
+  // Subjects with the most distinct participants in the recent window.
+  topics: { subjectId: string; posts: number; replies: number; participants: number }[];
+  // Structured questions: visible responses and each person's latest perspective.
+  questions: {
+    id: string;
+    responses: number;
+    participants: number;
+    positions: { position: string; count: number }[];
+  }[];
+};
 export type Snapshot = {
+  // Public places for a community created anywhere (curated campuses have their own catalog).
+  places?: CommunityPlace[];
+  // A registrable campus email domain that has no community yet, e.g. "umich.edu".
+  unclaimedCampusDomain?: string | null;
+  // A campus the signed-in email domain is associated with but not joined yet.
+  eligibleCommunity?: PilotCommunity | null;
+  commons?: CommonsSummary;
+  nationalJoined?: boolean;
+  organizations?: { id: string; name: string; description: string; role: string | null }[];
+  organizationMembers?: { id: string; name: string; role: string }[];
+  organizationCodes?: { id: string; expiresAt: string; useCount: number; maxUses: number | null; revokedAt: string | null }[];
+  community: PilotCommunity | null;
+  communities: PilotCommunity[];
+  events: CommunityEvent[];
+  eventPreferences: EventPreferences;
+  eventSuggestions?: EventSuggestion[];
   me: Person | null;
   status: "signed_out" | "onboarding" | "ready";
   posts: Post[];
   nextCursor: string | null;
   people: Person[];
   rankings: Rank[];
+  priorities: { issueId: string; priority: number; note: string }[];
   follows: { issueId: string; notify: number }[];
+  venuePlans?: { userId: string; name: string; eventId: string; status: EventPlanStatus }[];
   plans: {
     userId: string;
     name: string;
@@ -138,6 +386,7 @@ export type Snapshot = {
     createdAt: string;
   }[];
   comments?: Comment[];
+  commentUnavailable?: boolean;
   nextCommentCursor?: string | null;
   lists?: {
     id: string;
@@ -148,6 +397,8 @@ export type Snapshot = {
     name: string;
   }[];
   admin?: {
+    invitationCommunities: PilotCommunity[];
+    invitationCodes: { id: string; communityId: string; createdAt: string; expiresAt: string; maxUses: number | null; useCount: number; revokedAt: string | null; label: string | null }[];
     invitations: {
       id: string;
       email: string;
@@ -159,12 +410,17 @@ export type Snapshot = {
   };
 };
 export const emptySnapshot: Snapshot = {
+  community: null,
+  communities: [],
+  events: [],
+  eventPreferences: { city: "Ithaca", interests: [], complete: false },
   me: null,
   status: "signed_out",
   posts: [],
   nextCursor: null,
   people: [],
   rankings: [],
+  priorities: [],
   follows: [],
   plans: [],
   saved: [],

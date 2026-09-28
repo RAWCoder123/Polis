@@ -35,3 +35,37 @@ Comparison points:
 Functional checks passed: first rating and note; disabled save before choosing a score; a second rating and pairwise priority comparison; order and notes after refresh; search results and empty search; text copying; linked news-to-event details; adding a demo plan; map category filtering; mobile navigation; profile plans; following a sample friend; saved news appearing in the profile. The final browser console check showed no application errors. A transient pre-fix module-load error was resolved before these checks.
 
 Known scope: fictional sample data, schematic geographic placements, local browser storage, audience previews, and demo friends. No live data ingestion or multi-user backend is claimed.
+
+## Campus civic extension (September 26, 2026)
+
+Extends, not replaces, the system above. Styles live in `components/polis/civic.css`.
+
+- **Entity visuals.** Offices and bodies use navy seal monograms (no synthetic headshots); proposals and briefs use paper tiles with a folded corner; buildings, places, organizations and meetings use soft tinted icon tiles (slate, green, violet, amber). Licensed photos replace tiles when an `imageUrl` is supplied.
+- **Map pins.** White discs with a colored ring by layer: navy people & offices (filled), slate government & voting, cobalt campus, amber issues & projects, green community, warm orange events. Sample entries carry a small dashed dot. Pins sharing a spot fan out. The basemap is desaturated so civic markers lead.
+- **Perspectives.** Teal, sage, ochre, slate and pale gray — never red versus blue. Party affiliation appears only when supplied from a checked source.
+- **Commons cards.** Georgia titles, an "About" row of rounded entity chips, four compact reactions (icon-only below 520 px), participant counts. Starter questions use a pale-cobalt card with a perspective bar.
+- **Layout.** Home and Map use a 1240 px wide layout; Home has a 330 px side column that stacks under 1100 px. Mobile navigation: Home, Commons, Map, Friends, Profile (Rankings is on the profile and desktop sidebar).
+
+## Motion (September 27, 2026)
+
+Motion follows the launch film and extends, not replaces, the system above. See [docs/motion.md](docs/motion.md).
+
+- **Curves.** smooth `cubic-bezier(.45,.05,.25,1)` for general UI; out `(.16,1,.3,1)` for arrivals; in `(.55,0,.85,.35)` for departures; in-out `(.65,0,.35,1)` for swipes; container `(.45,0,.15,1)` for card-to-page transforms. Springs are sampled into CSS `linear()`.
+- **Durations.** 0.18 s for touch feedback, 0.34–0.56 s for page changes, 0.74 s for container transforms, 0.6 s for phone back swipes.
+- **Rules.** The rail, header and tab bar never move during page changes. Only transform, opacity, clip-path and arrival height animate. A tap finishes a running transition. Reduced motion removes all of it.
+
+## Reviewed social milestone (September 27, 2026)
+
+Preserve the existing white/cobalt/navy system. Commons uses title-first rows, Local/National scopes, explicit Following and recency controls, and compact contribution buttons. Topics and introductory guidance sit below conversations on mobile. Existing tab routes remain compatible.
+
+Maps use bundled OSM-derived outlines, with ODbL attribution, original geographic venue coordinates, anchored previews and an independent list. Initials indicate permitted friends’ shared plans at event venues, never present location. Several occurrences at one venue remain individually selectable. Photos identify sourced events and verified officials; source credits are visible and missing images fall back to icons or initials.
+
+## Map (September 28, 2026)
+
+Supersedes the desaturated raster basemap above; pin colors by layer are unchanged. See [docs/map.md](docs/map.md).
+
+- **Basemap.** Bright and simplified, in the spirit of Snap Map: warm paper land `#f6f3ec`, pastel parks `#c6ecb0`, water `#8ecff5`, white streets with butter-yellow main roads, soft lavender 3D buildings (`#efeaf5`–`#c8d2f5` by height), hill shading. Labels in navy and slate with white halos; neighbourhoods in spaced capitals; civic buildings in muted violet. No POI icons or shields.
+- **Camera.** Opens tilted (about 60° on the Map tab, 52° in previews) and turned slightly; street level for *Use my location* is zoom 16.4.
+- **Markers.** White discs with the layer ring and a small pointer; count bubbles are white pills with layer dots; friends' initials are cobalt discs. Markers drop in on the film's bouncy spring, lift on hover, and shrink slightly toward the horizon. The location dot is cobalt with a soft pulse.
+- **Phones.** The Map tab drops its description and gives the map most of the screen; Home's glance cards become one swipeable row. Credits fold into the ⓘ button after a few seconds.
+

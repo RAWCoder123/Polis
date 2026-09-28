@@ -15,6 +15,76 @@
       "when": 1789101044069,
       "tag": "0001_lowly_ted_forrester",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789425296669,
+      "tag": "0002_majestic_trish_tilby",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789565617335,
+      "tag": "0003_gorgeous_wong",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1789683507209,
+      "tag": "0004_odd_lord_hawal",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790207526849,
+      "tag": "0005_curious_gladiator",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790207927209,
+      "tag": "0006_clear_saracen",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1790364817687,
+      "tag": "0007_outstanding_zarda",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790365266270,
+      "tag": "0008_strange_nocturne",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1790471733740,
+      "tag": "0009_loud_warpath",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790476581850,
+      "tag": "0010_foamy_blockbuster",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1790494557994,
+      "tag": "0011_cultured_tinkerer",
+      "breakpoints": true
     }
   ]
 }
