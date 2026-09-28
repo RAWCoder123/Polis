@@ -14,7 +14,8 @@ Corrections made during this review:
 4. **Wider discussions:** unjoined Across Polis no longer presents a campus composer as though it published into the wider scope. Joining the wider community remains explicit and leaves the selected campus unchanged.
 5. **Mobile hierarchy:** the introduction displaced discussions. Local/National tabs and New/Recently active/Following controls now lead into title-first compact rows; optional topic/group guidance sits below conversations.
 6. **Reply focus:** the first navigation frame could be canceled while a thread loaded and never retried. Restoration is now consumed only after it runs; the browser test verifies that Reply focuses the composer.
-7. **Venue ambiguity:** several dated occurrences at one venue now have an occurrence selector. Friend plans are associated with their actual occurrence; a venue icon does not imply current location or attendance at every event there.
+7. **Venue ambiguity:** several dated occurrences at one venue now have an occurrence selector in event discovery, Home and the civic map. The sidebar and View event action follow the selected occurrence. Friend plans are associated with their actual occurrence; a venue icon does not imply current location or attendance at every event there.
+8. **National defaults:** opening National and pressing its already-selected New control now use the same visibility-filtered eligible posts, including permitted friends-only discussions.
 
 Retained useful architecture, ranking behavior, authentication, friendships, original routes, assets and migration history. Historical reaction data remains readable, while the visible set is Agree, Thought-provoking and Want to understand more. This is a focused review, not a claim of an exhaustive security audit.
 
@@ -31,12 +32,13 @@ Retained useful architecture, ranking behavior, authentication, friendships, ori
 
 Local synthetic identities only; production authentication is not simulated as a verified hosted result.
 
-- 72 service/unit tests pass: three identities per campus, private attendance, organization membership, blocking/muting, duplicate retries, capacity/expiry guards, national scopes, campus isolation, date/time filtering and migration upgrades.
+- 73 service/unit tests pass: three identities per campus, private attendance, organization membership, blocking/muting, duplicate retries, capacity/expiry guards, national scopes, campus isolation, date/time filtering, recent-activity pagination and migration upgrades.
 - Type check and production build pass. Lint: zero errors, seven inherited warnings in the original demo.
 - Local HTTP boundary passes: anonymous isolation, forged-header stripping, invalid/duplicate cookie rejection, no-store, origin/content-type/auth enforcement.
 - Commons browser journey: three independent sessions per campus; invite handoff, post/reply, exact notification, thread follow, organization announcement, cross-campus denial, sources, denied location, missing-map fallback and reload. Desktop plus 320/390px layouts; reduced motion and keyboard checks.
 - Civic browser journeys A–E pass with invitation-based admission, optional location denial, map-to-discussion, perspective replies and reusable-code joining.
 - Focused event milestone browser test covers interests → campus discovery → private save → private plan → Friends visibility → friend map icon → conversation → exact reply notification → reload, with unrelated identity denied. Also verifies Home pin behavior, occurrence selection, Back/filter/scroll restoration, failed publication with retained drafts, exact reply focus, broken-image fallback, canceled direct links and national scope switching.
+- GitHub review follow-up: Home/civic-map occurrence selection and National's initial New filter now have browser regressions. The reported active-sort alias failure did not reproduce: both the SQLite service test (including tied timestamps) and the local D1 HTTP journey return all 25 threads exactly once across two pages. No speculative SQL rewrite was made; hosted D1 acceptance remains separate.
 
 Screenshots are local synthetic-account evidence. The scripts write them to `/tmp/polis-milestone-qa`, `/tmp/polis-commons-qa` and `/tmp/polis-civic-qa`. Run `npm run test:milestone-browser` against an isolated loopback server with `POLIS_TEST_ACCOUNTS=1`; never point fixture scripts at production.
 

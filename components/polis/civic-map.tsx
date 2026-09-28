@@ -7,7 +7,7 @@ import type { LayerGroup, Map as LeafletMap, Marker, Popup } from "leaflet";
 import { CalendarDays, LocateFixed, MapPin } from "lucide-react";
 import type { CivicEntity, CommunityEvent, EntityKind, Snapshot } from "@/lib/social/types";
 import { entitiesFor } from "@/lib/social/civic";
-import { distanceMiles, eventExpired, eventCategories } from "@/lib/social/events";
+import { distanceMiles, eventExpired, eventCategories, eventTime } from "@/lib/social/events";
 import { addMapOutline } from "@/lib/social/map-outline";
 import { communityFor } from "@/lib/social/communities";
 import { useDeviceLocation } from "@/lib/social/use-device-location";
@@ -165,6 +165,7 @@ export function CivicMap({
   const you = useRef<Marker | null>(null);
   const popup = useRef<Popup | null>(null);
   const [popupHost, setPopupHost] = useState<HTMLElement | null>(null);
+  const [occurrence, setOccurrence] = useState("");
   const selectRef = useRef(onSelect);
   const fitted = useRef("");
   const [ready, setReady] = useState(false);
@@ -295,7 +296,7 @@ export function CivicMap({
     // Marker geometry is encoded in pinKey; snapshot refreshes keep the popup in place.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, selected, pinKey]);
-  useEffect(() => { popup.current?.update(); }, [popupHost, selected, data.venuePlans]);
+  useEffect(() => { popup.current?.update(); }, [popupHost, selected, occurrence, data.venuePlans]);
 
   useEffect(() => {
     if (!ready) return;
@@ -313,6 +314,7 @@ export function CivicMap({
   }, [ready, near]);
 
   const active = pins.find((p) => p.id === selected);
+  const activeEvent = active?.events?.find(e => e.id === occurrence) ?? active?.events?.[0];
   const listed = [...pins]
     .map((p) => ({ pin: p, miles: origin ? distanceMiles(origin, [p.lat, p.lng]) : null }))
     .sort((a, b) => (a.miles ?? 0) - (b.miles ?? 0));
@@ -328,7 +330,7 @@ export function CivicMap({
       />
     ) : (
       <EventSummaryCard
-        event={active.events![0]}
+        event={activeEvent!}
         data={data}
         navigate={navigate}
         discuss={discussEvent}
@@ -357,10 +359,13 @@ export function CivicMap({
           </p>
         )}
         {active && popupHost && createPortal(<div className="venue-preview">
-          <strong>{active.events?.[0].title ?? active.entity?.name}</strong>
-          <p>{active.events?.[0].venue ?? active.entity?.subtitle}</p>
-          {(data.venuePlans ?? []).filter(p => active.events?.some(e => e.id === p.eventId)).map(p => <p key={p.userId + p.eventId}>{p.name} · {p.status === "attending" ? "Going" : "Interested"}{active.events!.length > 1 ? " at " + active.events!.find(e => e.id === p.eventId)?.title : ""}</p>)}
-          <button className="text-button" onClick={() => navigate(active.events ? "event/" + active.events[0].id : "entity/" + active.entity!.id)}>{active.events ? "View event" : "View details"}</button>
+          <strong>{activeEvent?.title ?? active.entity?.name}</strong>
+          <p>{activeEvent?.venue ?? active.entity?.subtitle}</p>
+          {activeEvent && <p>{eventTime(activeEvent)}</p>}
+          {activeEvent && active.events!.length > 1 && <label className="social-field">Occurrence at this venue<select value={activeEvent.id} onChange={e => setOccurrence(e.target.value)}>{active.events!.map(e => <option key={e.id} value={e.id}>{e.title} · {eventTime(e)}</option>)}</select></label>}
+          {(data.venuePlans ?? []).filter(p => p.eventId === activeEvent?.id).map(p => <p className="map-shared-plan" key={p.userId + p.eventId}>{p.name} · {p.status === "attending" ? "Going" : "Interested"}</p>)}
+          {(data.venuePlans ?? []).filter(p => p.eventId !== activeEvent?.id && active.events?.some(e => e.id === p.eventId)).map(p => <button className="text-button" key={p.userId + p.eventId} onClick={() => setOccurrence(p.eventId)}>{p.name} · {p.status === "attending" ? "Going" : "Interested"} · {eventTime(active.events!.find(e => e.id === p.eventId)!)}</button>)}
+          <button className="text-button" onClick={() => navigate(activeEvent ? "event/" + activeEvent.id : "entity/" + active.entity!.id)}>{activeEvent ? "View event" : "View details"}</button>
           <button className="text-button" onClick={() => onSelect("")}>Close preview</button>
         </div>, popupHost)}
         <p className="map-caption">Simplified local outline · Venue plans are shared intentions, never a person’s current location.</p>

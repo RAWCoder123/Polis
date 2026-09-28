@@ -130,6 +130,16 @@ try {
   await expect(b.page).toHaveURL(/#home\?selected=/);
   await expect(b.page.locator('.venue-preview')).toBeVisible();
   checks.push('Home map pins select an anchored preview without leaving Home.');
+  for (const view of ['home', 'explore?layer=events']) {
+    await ready(b, view);
+    await b.page.locator('.civic-map .leaflet-marker-icon[title^="North Campus Retail Food Show"]').dispatchEvent('click');
+    await b.page.getByLabel('Occurrence at this venue').selectOption(event.id);
+    await expect(b.page.locator('.venue-preview .map-shared-plan')).toContainText('Going');
+    if (view.startsWith('explore')) await expect(b.page.locator('.civic-map-card')).toContainText(event.title);
+    await b.page.locator('.venue-preview').getByRole('button', { name: 'View event', exact: true }).click();
+    await expect(b.page).toHaveURL(new RegExp('#event/' + event.id));
+  }
+  checks.push('Home and Map previews select later occurrences, match shared plans and open the selected date.');
   await ready(a, 'explore/events?scope=campus&sort=date');
   const food = a.page.locator('#event-card-cornell-north-campus-food-show-2026');
   await food.scrollIntoViewIfNeeded();
@@ -153,6 +163,12 @@ try {
     await shot(user, 'commons-' + user.context.pages()[0].viewportSize().width);
   }
   await ready(a, 'commons/national');
+  const nationalPost = await command(b, { action: 'post', kind: 'question', title: 'Synthetic national discussion ' + stamp, coverage: 'national', subjectId: 'community', text: 'Friends-only national discussion', audience: 'friends' });
+  await a.page.reload();
+  await expect(a.page.locator('#post-' + nationalPost.postId)).toBeVisible();
+  await a.page.getByRole('button', { name: 'New', exact: true }).click();
+  await expect(a.page.locator('#post-' + nationalPost.postId)).toBeVisible();
+  checks.push('National starts with the same eligible conversations as its selected New filter.');
   await a.page.getByRole('button', { name: 'Across Polis', exact: true }).click();
   const join = a.page.getByRole('button', { name: 'Join Across Polis', exact: true });
   if (await join.isVisible()) await join.click();
@@ -166,6 +182,16 @@ try {
   await expect(a.page.getByRole('button', { name: 'Going', exact: true })).toBeDisabled();
   assert.ok(!(await state(b)).venuePlans.some(p => p.eventId === event.id));
   checks.push('Canceled occurrences retain informative direct links and disappear from venue activity.');
+  const paginationIds = [];
+  for (let i = 0; i < 25; i++) paginationIds.push((await command(b, { action: 'post', kind: 'question', title: 'Synthetic pagination ' + stamp + ' ' + i, subjectId: 'community', text: 'Temporary local pagination fixture', audience: 'only_me' })).postId);
+  const pageQuery = '?filter=all&sort=active&q=' + encodeURIComponent('Synthetic pagination ' + stamp);
+  const pageOne = await state(b, pageQuery);
+  assert.equal(pageOne.posts.length, 20);
+  const pageTwo = await state(b, pageQuery + '&cursor=' + encodeURIComponent(pageOne.nextCursor));
+  assert.equal(pageTwo.posts.length, 5);
+  assert.deepEqual(new Set([...pageOne.posts, ...pageTwo.posts].map(p => p.id)), new Set(paginationIds));
+  for (const postId of paginationIds) await command(b, { action: 'post.delete', postId });
+  checks.push('Recently active pagination works through the local D1 HTTP boundary without duplicate or missing threads.');
   await ready(b, 'home'); await shot(b, 'desktop-home');
   await ready(a, 'event/cornell-csa-mid-autumn-2026'); await shot(a, 'mobile-campus-event');
   assert.deepEqual(errors, []);

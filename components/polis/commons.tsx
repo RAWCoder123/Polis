@@ -30,7 +30,7 @@ export const commonsTabs: {
   { id: "for-you", label: "Recent", filter: "all", sortable: true },
   { id: "campus", label: "Campus", filter: "campus", campusOnly: true, sortable: true },
   { id: "local", label: "Local", filter: "all", sortable: true },
-  { id: "national", label: "National", filter: "community", sortable: true },
+  { id: "national", label: "National", filter: "all", sortable: true },
 
   { id: "following", label: "Following", filter: "followed", sortable: true },
 ];

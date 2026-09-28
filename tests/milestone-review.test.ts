@@ -98,3 +98,24 @@ test("campus/town filters use verified associations rather than a category guess
     assert.ok(town.every(({ event }) => event.scope === "town" && !event.sample));
   }
 });
+
+test("recent activity pagination returns every visible thread once, including tied timestamps", async () => {
+  const f = fixture(); await f.setup();
+  const ids: string[] = [];
+  for (let i = 0; i < 25; i++) {
+    const p = await f.act("a", { action: "post", kind: "question", subjectId: "community", text: "Synthetic page " + i, audience: "community" });
+    ids.push(p.postId!);
+    f.raw.prepare("UPDATE posts SET createdAt=? WHERE id=?").run("2026-01-01T00:00:00.000Z", p.postId!);
+  }
+  await f.act("c", { action: "comment", postId: ids[0], text: "Visible recent activity" });
+  const first = await f.snap("b", { filter: "all", sort: "active" });
+  assert.equal(first.posts[0].id, ids[0]);
+  assert.equal(first.posts.length, 20);
+  assert.ok(first.nextCursor);
+  const second = await f.snap("b", { filter: "all", sort: "active", cursor: first.nextCursor! });
+  assert.equal(second.posts.length, 5);
+  assert.equal(second.nextCursor, null);
+  const returned = [...first.posts, ...second.posts].map(p => p.id);
+  assert.equal(new Set(returned).size, 25);
+  assert.deepEqual(new Set(returned), new Set(ids));
+});
