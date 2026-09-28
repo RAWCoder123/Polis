@@ -36,7 +36,7 @@ async function actor(role, name, viewport) {
   const page = await context.newPage();
   page.on("pageerror", e => errors.push(e.stack || e.message));
   page.on("response", r => {
-    if (r.url().includes("tile.openstreetmap.org") && (r.status() >= 400 || r.headers()["x-blocked"]))
+    if (r.url().includes("tiles.openfreemap.org") && (r.status() >= 400 || r.headers()["x-blocked"]))
       failedTiles.push({ status: r.status(), blocked: !!r.headers()["x-blocked"] });
   });
   // Join Ithaca with a single-use code before the first page load. New accounts
