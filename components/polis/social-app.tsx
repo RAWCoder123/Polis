@@ -104,8 +104,17 @@ export default function SocialApp() {
   // the dedicated Commons, and Home becomes the curated dashboard.
   const legacyForum =
     requestedView === "home" && ["coverage", "filter", "sort", "scope"].some((k) => exploreParams.has(k));
+  // People type and share #map for the Map tab, whose route is #explore.
   const view =
-    requestedView === "signup" ? "home" : legacyForum ? "commons" : requestedView === "topic" ? "entity" : requestedView;
+    requestedView === "signup"
+      ? "home"
+      : legacyForum
+        ? "commons"
+        : requestedView === "topic"
+          ? "entity"
+          : requestedView === "map"
+            ? "explore"
+            : requestedView;
   const tab = commonsTab(
     legacyForum
       ? exploreParams.get("coverage") === "national"
