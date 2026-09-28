@@ -52,6 +52,8 @@ Verification found and fixed two intermittent failures:
 
 Both have steps in `test:motion-browser` that fail without their fix.
 
+The commons suite had an existing intermittent failure on fresh databases. It clicked "Enable in-app reply notifications" and posted before that command finished. The app correctly refuses a second command while one is in flight ("Please wait for your previous change"), so the URL never reached the new thread. A delayed-request probe reproduced it deterministically. The suite now waits for the opt-in to save.
+
 ## Known limits
 
 - View Transitions need Chrome/Edge 111+, Safari 18+ or Firefox 144+. Other browsers change views instantly.

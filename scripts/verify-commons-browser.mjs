@@ -85,7 +85,8 @@ try {
     await a.page.goto(origin + "/#commons");
     await expect(a.page.getByRole("button", { name: "Question Ask your community" })).toBeVisible();
     const optin = a.page.getByRole("button", { name: "Enable in-app reply notifications" });
-    if (await optin.isVisible()) await optin.click();
+    // Wait for the opt-in to save: a second command while one is in flight is refused.
+    if (await optin.isVisible()) { await optin.click(); await expect(optin).toHaveCount(0); }
     await command(b, { action: "preferences", replies: true, reactions: true, issues: false, events: false });
     await a.page.getByRole("button", { name: "Question Ask your community" }).click();
     const dialog = a.page.getByRole("dialog");
