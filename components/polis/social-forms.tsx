@@ -133,7 +133,7 @@ export function Onboarding({ name, run }: { name: string; run: Run }) {
             invite,
           });
           if (r)
-            history.replaceState(null, "", location.pathname + location.hash);
+            history.replaceState(history.state, "", location.pathname + location.hash);
         }}
       >
         <label className="social-field">

@@ -114,7 +114,7 @@ export function EntityPage({
           {entity.kind === "question" ? "Share your perspective" : "Discuss in The Commons"}
         </button>
         <FollowButton entity={entity} data={data} run={run} />
-        <button className="btn secondary small-btn" aria-pressed={saved} onClick={() => void save()}>
+        <button className="btn secondary small-btn" data-pop aria-pressed={saved} onClick={() => void save()}>
           <Bookmark size={15} />
           {saved ? "Saved" : "Save"}
         </button>

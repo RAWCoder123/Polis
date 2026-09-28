@@ -1,5 +1,6 @@
 "use client";
 import "./civic.css";
+import { useEffect, useState } from "react";
 import { ArrowRight, ArrowUpRight, Bell, Bookmark, GraduationCap, LocateFixed, MapPin, MessageCircle, Users } from "lucide-react";
 import type { CivicEntity, CommunityEvent, Post, Snapshot } from "@/lib/social/types";
 import { catalogOf, inCatalog } from "@/lib/social/civic";
@@ -15,12 +16,34 @@ import type { Navigate, Run } from "./social-post";
 const dayLabel = (e: CommunityEvent) =>
   new Intl.DateTimeFormat("en-US", { timeZone: e.timezone, month: "short", day: "numeric" }).format(new Date(e.startsAt));
 
+// The first Home of a visit greets you like the film's opening line: the
+// headline arrives word by word. Later visits show it at once.
+let headlineShown = false;
+function Headline({ text }: { text: string }) {
+  const [reveal] = useState(() => !headlineShown);
+  useEffect(() => {
+    headlineShown = true;
+  }, []);
+  if (!reveal) return <h1>{text}</h1>;
+  return (
+    <h1 className="reveal-words" aria-label={text}>
+      {text.split(" ").map((word, i) => (
+        <span key={i} aria-hidden="true">
+          <span className="w" style={{ "--i": i } as React.CSSProperties}>
+            {word}
+          </span>{" "}
+        </span>
+      ))}
+    </h1>
+  );
+}
+
 function DiscussionRow({ post, data, navigate }: { post: Post; data: Snapshot; navigate: Navigate }) {
   const attachment = JSON.parse(post.attachmentJson || "{}");
   const subject = inCatalog(catalogOf(data), post.subjectId);
   const title: string = post.title || post.text.split("\n")[0];
   return (
-    <button className="discussion-row" onClick={() => navigate("post/" + post.id + "?community=" + post.communityId)}>
+    <button className="discussion-row" data-morph onClick={() => navigate("post/" + post.id + "?community=" + post.communityId)}>
       <span className="entity-kind">
         {subject ? subject.name : post.subjectId === "community" ? "General conversation" : attachment.eventTitle || subjectTitle(post.subjectId)}
       </span>
@@ -152,13 +175,13 @@ export function HomeDashboard({
           {campus ? <GraduationCap size={14} aria-hidden="true" /> : <MapPin size={14} aria-hidden="true" />}{" "}
           {[campus?.university, [locale.city, locale.region].filter(Boolean).join(", ")].filter(Boolean).join(" · ").toUpperCase()} · {dateLine.toUpperCase()}
         </p>
-        <h1>What’s happening around {locale.shortName} today.</h1>
+        <Headline text={"What’s happening around " + locale.shortName + " today."} />
         <Pulse data={data} navigate={navigate} />
       </header>
       {children}
       <div className="home-grid">
         <div className="home-main">
-          <section className="home-section">
+          <section className="home-section" data-morph>
             <div className="section-row">
               <h2>Happening near you</h2>
               <button className="text-button" onClick={() => navigate("explore")}>
@@ -270,7 +293,7 @@ export function HomeDashboard({
               </button>
             </div>
             {upcoming.slice(0, 4).map((e) => (
-              <button key={e.id} className="upcoming-row" onClick={() => navigate("event/" + e.id)}>
+              <button key={e.id} className="upcoming-row" data-morph onClick={() => navigate("event/" + e.id)}>
                 <span className="date-chip">
                   <strong>{dayLabel(e).split(" ")[1]}</strong>
                   <small>{dayLabel(e).split(" ")[0].toUpperCase()}</small>

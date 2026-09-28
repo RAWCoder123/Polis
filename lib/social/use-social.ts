@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   emptySnapshot,
   type Snapshot,
@@ -9,6 +9,36 @@ import {
 import { applyConfirmedPlans } from "./confirmed-plans";
 import { readResponse } from "./read-response";
 import type { CommandData } from "./service";
+
+// Views seen in the last two minutes, kept in memory so returning to one shows
+// it at once while it is fetched again; the server's answer always replaces it.
+// Posts seen anywhere let a conversation open with its post while replies load.
+const recentSnapshots = new Map<string, { data: Snapshot; at: number }>();
+const recentPosts = new Map<string, Snapshot["posts"][number]>();
+const RECENT_MS = 120000;
+function remember(key: string, snapshot: Snapshot) {
+  const now = Date.now();
+  for (const [k, v] of recentSnapshots) if (now - v.at > RECENT_MS) recentSnapshots.delete(k);
+  for (const p of snapshot.posts) {
+    recentPosts.delete(p.id);
+    recentPosts.set(p.id, p);
+  }
+  while (recentPosts.size > 300) recentPosts.delete(recentPosts.keys().next().value!);
+  // Keep other remembered views consistent with the newest copy of each post.
+  for (const [k, v] of recentSnapshots)
+    if (v.data.posts.some((p) => snapshot.posts.some((n) => n.id === p.id)))
+      recentSnapshots.set(k, { ...v, data: { ...v.data, posts: v.data.posts.map((p) => recentPosts.get(p.id) ?? p) } });
+  recentSnapshots.delete(key);
+  recentSnapshots.set(key, { data: snapshot, at: now });
+  while (recentSnapshots.size > 12) recentSnapshots.delete(recentSnapshots.keys().next().value!);
+}
+function forgetRecent() {
+  recentSnapshots.clear();
+  recentPosts.clear();
+}
+// Changes to who can see what are never shown from memory.
+const visibilityActions = /delete|block|mute|friend|leave|revoke|audience/i;
+
 export function useSocial(params: string) {
   const [data, setData] = useState<Snapshot>(emptySnapshot),
     [loading, setLoading] = useState(true),
@@ -46,6 +76,7 @@ export function useSocial(params: string) {
             const session = await fetch("/api/polis", { cache: "no-store" });
             if (session.ok) shell = (await session.json()) as Snapshot;
           }
+          forgetRecent();
           if (n === seq.current) {
             if (
               response.status === 401 ||
@@ -108,6 +139,8 @@ export function useSocial(params: string) {
           a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
       );
       confirmedPlans.current.clear();
+      remember((communityRef.current ?? "") + "|" + queryParams, next);
+      if (next.community?.id !== communityRef.current) remember((next.community?.id ?? "") + "|" + queryParams, next);
       setData(next);
       communityRef.current = next.community?.id;
       setSnapshotParams(queryParams);
@@ -169,6 +202,7 @@ export function useSocial(params: string) {
         const value = await readResponse<CommandResult & { error?: string }>(r);
         if (!r.ok) throw new Error(value.error ?? "Unable to save.");
         retry.current = null;
+        if (visibilityActions.test(values.action)) forgetRecent();
         if (value.plan) {
           // Invalidate GETs started before this committed write. Confirmations
           // survive a failed refresh and are shared by every event view.
@@ -245,17 +279,22 @@ export function useSocial(params: string) {
       if (n === seq.current) setLoading(false);
     }
   }
+  // While a new view loads, show what is already known about it.
+  const stale = snapshotParams !== params;
+  const community = data.community?.id ?? "";
+  const shown = useMemo(() => {
+    if (!stale) return data;
+    const empty = { ...data, posts: [], comments: [], nextCursor: null, nextCommentCursor: null };
+    const hit = recentSnapshots.get(community + "|" + params);
+    if (hit && hit.data.community?.id === data.community?.id) return hit.data;
+    const postId = new URLSearchParams(params).get("post");
+    const post = postId ? recentPosts.get(postId) : undefined;
+    return post ? { ...empty, posts: [post] } : empty;
+  }, [stale, data, community, params]);
   return {
-    data:
-      snapshotParams === params
-        ? data
-        : {
-            ...data,
-            posts: [],
-            comments: [],
-            nextCursor: null,
-            nextCommentCursor: null,
-          },
+    data: shown,
+    // True while the view shows remembered data that is being fetched again.
+    pending: stale && shown.posts.length > 0,
     loading,
     error,
     busy,

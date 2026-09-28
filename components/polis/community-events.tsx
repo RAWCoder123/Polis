@@ -141,7 +141,7 @@ export function EventCard({
         <button
           className="text-button"
           disabled={pending}
-          aria-pressed={saved}
+          data-pop aria-pressed={saved}
           onClick={() => void save()}
         >
           <Bookmark size={17} />
@@ -932,7 +932,7 @@ export function CommunityEventDetail({
         <button
           className="btn secondary"
           disabled={pending}
-          aria-pressed={saved}
+          data-pop aria-pressed={saved}
           onClick={() =>
             void act(() =>
               run({ action: "save", targetId: id, enabled: !saved }),
@@ -990,7 +990,7 @@ export function CommunityEventDetail({
               "btn " + (plan?.status === "interested" ? "primary" : "secondary")
             }
             disabled={pending || !active}
-            aria-pressed={plan?.status === "interested"}
+            data-pop aria-pressed={plan?.status === "interested"}
             onClick={() => void change("interested")}
           >
             Interested
@@ -1000,7 +1000,7 @@ export function CommunityEventDetail({
               "btn " + (plan?.status === "attending" ? "primary" : "secondary")
             }
             disabled={pending || !active}
-            aria-pressed={plan?.status === "attending"}
+            data-pop aria-pressed={plan?.status === "attending"}
             onClick={() => void change("attending")}
           >
             Going

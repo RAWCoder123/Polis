@@ -1,5 +1,7 @@
 "use client";
+import { useState } from "react";
 import { toast } from "sonner";
+import { pop, settle } from "@/lib/motion";
 import {
   MessageCircle,
   Bookmark,
@@ -85,24 +87,37 @@ export function PostCard({
   const entity = lookup(post.subjectId);
   const topic = entity && entity.kind !== "issue" && post.issueId ? lookup(post.issueId) : undefined;
   const legacyItem = itemById[post.subjectId];
-  const react = async (kind: (typeof reactionChoices)[number]["kind"]) => {
+  // Taps show at once; the server's answer replaces this, or undoes it on error.
+  const [optimistic, setOptimistic] = useState<{ reaction?: { base: string | null | undefined; kind: string | null }; saved?: { base: boolean; value: boolean } }>({});
+  const myReaction =
+    optimistic.reaction && optimistic.reaction.base === post.myReaction ? optimistic.reaction.kind : post.myReaction;
+  const saved = optimistic.saved && optimistic.saved.base === !!post.saved ? optimistic.saved.value : !!post.saved;
+  const reactionCount = (kind: string) =>
+    (post.reactions.find((r) => r.kind === kind)?.count ?? 0) +
+    (myReaction !== post.myReaction ? (kind === myReaction ? 1 : 0) - (kind === post.myReaction ? 1 : 0) : 0);
+  const react = async (kind: (typeof reactionChoices)[number]["kind"], icon: Element | null) => {
+    const next = myReaction === kind ? null : kind;
+    if (next) pop(icon);
+    else settle(icon);
+    setOptimistic((o) => ({ ...o, reaction: { base: post.myReaction, kind: next } }));
     try {
-      await run({
-        action: "reaction",
-        postId: post.id,
-        kind: post.myReaction === kind ? null : kind,
-      });
-    } catch {}
+      await run({ action: "reaction", postId: post.id, kind: next });
+    } catch {
+      setOptimistic((o) => ({ ...o, reaction: undefined }));
+    }
   };
   return (
     <article
       className={"social-post " + (compact ? "forum-row" : "") + (unread ? " has-unread" : "")}
       id={"post-" + post.id}
+      data-arrive-id={post.id}
+      data-morph={expanded ? "none" : ""}
       data-position={post.position ?? ""}
     >
       <header>
         <button
           className="avatar-link"
+          data-morph="none"
           aria-label={"View " + post.name}
           onClick={() => navigate("profile/" + post.authorId)}
         >
@@ -117,6 +132,7 @@ export function PostCard({
         <div>
           <button
             className="plain-name"
+            data-morph="none"
             onClick={() => navigate("profile/" + post.authorId)}
           >
             {post.name}
@@ -306,13 +322,14 @@ export function PostCard({
               {topic && <EntityChip entity={topic} navigate={navigate} />}
             </>
           ) : attachment.eventId ? (
-            <button className="entity-chip tone-event" onClick={() => navigate("event/" + attachment.eventId)}>
+            <button className="entity-chip tone-event" data-morph onClick={() => navigate("event/" + attachment.eventId)}>
               <CalendarDays size={13} aria-hidden="true" />
               <span>{attachment.eventTitle}</span>
             </button>
           ) : (
             <button
               className="entity-chip tone-paper"
+              data-morph
               onClick={() => navigate((legacyItem ? "item/" : "issue/") + post.subjectId)}
             >
               <FileText size={13} aria-hidden="true" />
@@ -327,16 +344,16 @@ export function PostCard({
       <footer>
         <span className="reaction-set" role="group" aria-label="Reactions from people who can see this post">
           {reactionChoices.map(({ kind, label, Icon }) => {
-            const count = post.reactions.find((r) => r.kind === kind)?.count ?? 0;
+            const count = reactionCount(kind);
             return (
               <button
                 key={kind}
-                className={"reaction " + (post.myReaction === kind ? "chosen" : "")}
-                aria-pressed={post.myReaction === kind}
+                className={"reaction " + (myReaction === kind ? "chosen" : "")}
+                aria-pressed={myReaction === kind}
                 aria-label={label + (count ? " " + count : "")}
                 title={label}
                 disabled={busy}
-                onClick={() => void react(kind)}
+                onClick={(e) => void react(kind, e.currentTarget.querySelector("svg"))}
               >
                 <Icon size={15} aria-hidden="true" />
                 <span className="reaction-label">{label}</span>
@@ -355,18 +372,22 @@ export function PostCard({
         </button>
         <button
           className="reaction save-post"
-          aria-label={post.saved ? "Unsave post" : "Save post"}
-          aria-pressed={post.saved}
+          aria-label={saved ? "Unsave post" : "Save post"}
+          aria-pressed={saved}
           disabled={busy}
-          onClick={() => {
+          onClick={(e) => {
+            const button = e.currentTarget;
+            setOptimistic((o) => ({ ...o, saved: { base: !!post.saved, value: !saved } }));
+            // The icon swaps on this render; pop the new one.
+            requestAnimationFrame(() => (saved ? settle : pop)(button.querySelector("svg")));
             void run({
               action: "save",
               targetId: post.id,
-              enabled: !post.saved,
-            }).catch(() => {});
+              enabled: !saved,
+            }).catch(() => setOptimistic((o) => ({ ...o, saved: undefined })));
           }}
         >
-          {post.saved ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
+          {saved ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
         </button>
       </footer>
       <div className="commons-thread-meta"><button className="text-button" aria-pressed={!!post.following} disabled={busy} onClick={() => void run({ action: "conversation.follow", postId: post.id, enabled: !post.following }).catch(() => {})}>{post.following ? "Following thread · Undo" : "Follow thread"}</button><span><Users size={13} aria-hidden="true" /> {post.participantCount} {post.participantCount === 1 ? "person" : "people"} · Latest activity {new Date(post.latestActivity ?? post.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span></div>

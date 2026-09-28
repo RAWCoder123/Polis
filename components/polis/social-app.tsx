@@ -20,7 +20,11 @@ import {
   EventCollections,
 } from "./community-events";
 import { EventManager } from "./event-manager";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import "./motion.css";
+import { navigateTo, routeHref, subscribeRoute } from "@/lib/social/route";
+import { ease, reducedMotion } from "@/lib/motion";
+import { useArrivals } from "@/lib/social/use-arrivals";
 import {
   Asterisk,
   House,
@@ -71,20 +75,8 @@ import {
   RankingList,
 } from "./social-views";
 import { Admin, Notifications } from "./social-admin";
-function subscribeLocation(change: () => void) {
-  window.addEventListener("hashchange", change);
-  window.addEventListener("popstate", change);
-  return () => {
-    window.removeEventListener("hashchange", change);
-    window.removeEventListener("popstate", change);
-  };
-}
 export default function SocialApp() {
-  const browserLocation = useSyncExternalStore(
-    subscribeLocation,
-    () => location.href,
-    () => "/",
-  );
+  const browserLocation = useSyncExternalStore(subscribeRoute, routeHref, () => "/");
   const currentLocation = new URL(browserLocation, "https://polis.invalid");
   const localPreview = ["localhost", "127.0.0.1", "[::1]"].includes(
     currentLocation.hostname,
@@ -151,8 +143,19 @@ export default function SocialApp() {
   if (view === "organization") { params.set("organization", id ?? ""); params.set("channel", commentId ?? "discussion"); }
   if (view === "saved") params.set("filter", "saved");
 
-  const { data, loading, error, busy, run, refresh, loadMore, loadComments } =
+  const { data, loading, pending, error, busy, run, refresh, loadMore, loadComments } =
     useSocial(params.toString());
+  const content = useRef<HTMLElement>(null);
+  useArrivals(content, browserLocation);
+  // The first view of a visit comes into focus, like the film's opening feed.
+  const arrived = useRef(false);
+  const signedIn = !!data.me;
+  useLayoutEffect(() => {
+    if (!signedIn || arrived.current || !content.current) return;
+    arrived.current = true;
+    if (!reducedMotion())
+      content.current.animate([{ opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0)" }], { duration: 900, easing: ease.smooth });
+  }, [signedIn]);
   const me = data.me;
   const catalog = catalogOf(data);
   const locale = localeOf(data.community);
@@ -216,12 +219,25 @@ export default function SocialApp() {
   }, [data.status, visitorId]);
   const scrollPositions = useRef(new Map<string, number>());
   const restoreLocation = useRef("");
-  useEffect(() => {
+  const committedLocation = useRef(browserLocation);
+  useLayoutEffect(() => {
+    committedLocation.current = browserLocation;
     restoreLocation.current = browserLocation;
-    const save = () => scrollPositions.current.set(browserLocation, window.scrollY);
+    // A view already on screen (returning to it) is restored before the page
+    // transition captures it, so it slides back in at the place you left.
+    if (pending && data.posts.length && !commentId && exploreParams.get("reply") !== "1") {
+      const top = scrollPositions.current.get(browserLocation);
+      if (top) window.scrollTo({ top, behavior: "instant" });
+      restoreLocation.current = "";
+    }
+    // Only a route change restores; later data for the same route does not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [browserLocation]);
+  useEffect(() => {
+    const save = () => scrollPositions.current.set(committedLocation.current, window.scrollY);
     window.addEventListener("scroll", save, { passive: true });
     return () => window.removeEventListener("scroll", save);
-  }, [browserLocation]);
+  }, []);
   useEffect(() => {
     if (loading || restoreLocation.current !== browserLocation) return;
     restoreLocation.current = "";
@@ -243,10 +259,7 @@ export default function SocialApp() {
     if (location.hash === "#" + next) {
       return;
     }
-    window.location.assign("#" + next);
-    setQuery("");
-    if (!options.preserveScroll)
-      window.scrollTo({ top: 0, behavior: "instant" });
+    navigateTo("#" + next, () => setQuery(""), options);
   }
   function search(value: string) {
     if (view !== "explore" && view !== "search") {
@@ -256,7 +269,7 @@ export default function SocialApp() {
     const p = new URLSearchParams(exploreParams);
     if (value) p.set("q", value);
     else p.delete("q");
-    history.replaceState(null, "", "#" + route + (p.size ? "?" + p : ""));
+    history.replaceState(history.state, "", "#" + route + (p.size ? "?" + p : ""));
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
   function compose(o: ComposeOptions = {}) {
@@ -363,8 +376,15 @@ export default function SocialApp() {
     <>
       {posts}
       {loading && !posts.length ? (
-        <div className="social-loading" role="status">
-          Loading your conversations…
+        <div className="skeleton-list" role="status">
+          <span className="sr-only">Loading your conversations…</span>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="skeleton-card" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </div>
+          ))}
         </div>
       ) : !posts.length && !error ? (
         <Quiet
@@ -416,7 +436,7 @@ export default function SocialApp() {
       >
         Skip to content
       </a>
-      <aside className="social-sidebar">
+      <aside className="social-sidebar" data-vt-name="polis-rail">
         <button
           className="brand"
           onClick={() => navigate("home")}
@@ -492,7 +512,7 @@ export default function SocialApp() {
         </div>
       </aside>
       <div className="social-body">
-        <header className="social-topbar">
+        <header className="social-topbar" data-vt-name="polis-topbar">
           <button
             className="brand social-mobile-brand"
             onClick={() => navigate("home")}
@@ -564,7 +584,7 @@ export default function SocialApp() {
               >
                 <Bell size={21} />
                 {data.notifications.some((n) => !n.readAt) && (
-                  <span>
+                  <span key={data.notifications.filter((n) => !n.readAt).length}>
                     {data.notifications.filter((n) => !n.readAt).length}
                   </span>
                 )}
@@ -603,7 +623,7 @@ export default function SocialApp() {
             ((view === "explore" && !id) || view === "home" ? " civic-wide" : "")
           }
         >
-          <section className="social-content">
+          <section className="social-content" ref={content}>
             {localPreview && (
               <p className="local-preview-notice">
                 Local preview · Test activity stays on this computer.
@@ -848,6 +868,7 @@ export default function SocialApp() {
                         </p>
                       )}
                     <Conversation
+                      pending={pending}
                       data={data}
                       run={run}
                       navigate={navigate}
@@ -1080,7 +1101,7 @@ export default function SocialApp() {
           </aside>
         </main>
       </div>
-      {data.status === "ready" && <nav className="social-mobile-nav" aria-label="Mobile navigation">
+      {data.status === "ready" && <nav className="social-mobile-nav" aria-label="Mobile navigation" data-vt-name="polis-tabbar">
         {nav.filter((n) => !n.desktopOnly).map(({ id, label, Icon }) => (
           <button
             aria-current={view === id ? "page" : undefined}

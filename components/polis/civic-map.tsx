@@ -10,6 +10,7 @@ import { catalogOf } from "@/lib/social/civic";
 import { distanceMiles, eventExpired, eventCategories } from "@/lib/social/events";
 import { localeOf } from "@/lib/social/communities";
 import { useDeviceLocation } from "@/lib/social/use-device-location";
+import { reducedMotion } from "@/lib/motion";
 import {
   categoryIcons,
   EntitySummaryCard,
@@ -185,11 +186,14 @@ export function CivicMap({
     void import("leaflet")
       .then((L) => {
         if (canceled || !element.current) return;
+        // Smooth zooming, tile fades and pans, unless reduced motion is preferred.
+        const motion = !reducedMotion();
+        element.current.classList.toggle("motion", motion);
         map.current = L.map(element.current, {
           scrollWheelZoom: false,
-          zoomAnimation: false,
-          markerZoomAnimation: false,
-          fadeAnimation: false,
+          zoomAnimation: motion,
+          markerZoomAnimation: motion,
+          fadeAnimation: motion,
           zoomControl: variant === "full",
           attributionControl: true,
         }).setView(locale?.center ?? [39.5, -98.35], locale?.zoom ?? 4);
@@ -222,9 +226,10 @@ export function CivicMap({
       markers.current.clear();
       hostEls.current.clear();
       const next: [string, HTMLElement][] = [];
-      for (const pin of pins) {
+      for (const [index, pin] of pins.entries()) {
         const host = document.createElement("span");
         host.className = "civic-pin-root";
+        host.style.setProperty("--i", String(index));
         const marker = L.marker([pin.lat, pin.lng], {
           icon: L.divIcon({ html: host, className: "civic-pin-host", iconSize: [40, 46], iconAnchor: [20, 44] }),
           keyboard: true,
@@ -269,7 +274,7 @@ export function CivicMap({
     for (const [id, m] of markers.current) m.setZIndexOffset(id === selected ? 1000 : 0);
     const pin = pins.find((p) => p.id === selected);
     if (pin && map.current && !map.current.getBounds().contains([pin.lat, pin.lng]))
-      map.current.panTo([pin.lat, pin.lng], { animate: false });
+      map.current.panTo([pin.lat, pin.lng], { animate: !reducedMotion(), duration: 0.7, easeLinearity: 0.2 });
   }, [selected, pins]);
 
   useEffect(() => {
@@ -331,7 +336,7 @@ export function CivicMap({
               : "Loading the basemap…"}
           </p>
         )}
-        {variant === "preview" && card && <div className="civic-map-card">{card}</div>}
+        {variant === "preview" && card && <div className="civic-map-card" key={selected}>{card}</div>}
       </div>
       {variant === "full" && (
         <aside className="civic-map-side">
@@ -352,7 +357,7 @@ export function CivicMap({
                       : "Distances use the center of " + (locale?.shortName ?? "your community") + ". Location is optional."}
             </p>
           </div>
-          {card && <div className="civic-map-card">{card}</div>}
+          {card && <div className="civic-map-card" key={selected}>{card}</div>}
           <h2 className="sr-only">Places on the map</h2>
           <ul className="civic-map-list">
             {listed.map(({ pin, miles }) => (

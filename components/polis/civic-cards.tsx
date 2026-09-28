@@ -170,6 +170,7 @@ export function EntityChip({
   return (
     <button
       className={"entity-chip tone-" + kindTone[entity.kind]}
+      data-morph
       onClick={() => navigate(entityRoute(entity.id))}
     >
       <Icon size={13} aria-hidden="true" />
@@ -187,7 +188,7 @@ export function EntityRow({
   meta?: string;
 }) {
   return (
-    <button className="entity-row" onClick={() => navigate(entityRoute(entity.id))}>
+    <button className="entity-row" data-morph onClick={() => navigate(entityRoute(entity.id))}>
       <EntityVisual entity={entity} size="md" />
       <span>
         <KindLine entity={entity} />
@@ -221,7 +222,7 @@ export function FollowButton({
   return (
     <button
       className={compact ? "icon-btn follow-toggle" : "btn " + (following ? "secondary" : "primary") + " small-btn"}
-      aria-pressed={following}
+      data-pop aria-pressed={following}
       aria-label={compact ? label : undefined}
       disabled={pending || data.status !== "ready"}
       onClick={async () => {
@@ -334,7 +335,7 @@ export function EntitySummaryCard({
     return r?.kind === "news" ? [r] : [];
   });
   return (
-    <article className="entity-summary" aria-label={entity.name}>
+    <article className="entity-summary" aria-label={entity.name} data-morph>
       <header>
         <EntityVisual entity={entity} size="lg" />
         <span className="entity-summary-title">

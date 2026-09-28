@@ -1137,6 +1137,7 @@ export function EditProfile({
   );
 }
 export function Conversation({
+  pending = false,
   data,
   run,
   navigate,
@@ -1144,6 +1145,7 @@ export function Conversation({
   onReport,
   busy,
 }: {
+  pending?: boolean;
   data: Snapshot;
   run: Run;
   navigate: Navigate;
@@ -1221,10 +1223,22 @@ export function Conversation({
             ))}
         </div>
       )}
+      {pending && !rows.length && p.replyCount > 0 && (
+        <div className="skeleton-list" role="status">
+          <span className="sr-only">Loading replies…</span>
+          {Array.from({ length: Math.min(3, p.replyCount) }, (_, i) => (
+            <div key={i} className="skeleton-card reply" aria-hidden="true">
+              <i />
+              <i />
+            </div>
+          ))}
+        </div>
+      )}
       {rows.map((c) => (
         <div
           className={"comment-row " + (c.parentId ? "nested" : "")}
           id={"comment-" + c.id}
+          data-arrive-id={c.id}
           key={c.id}
         >
           <Avatar

@@ -79,7 +79,7 @@ export function QuestionCard({
     return e && e.kind !== "news" && e.kind !== "question" ? [e] : [];
   });
   return (
-    <article className="question-card">
+    <article className="question-card" data-morph>
       <KindLine entity={entity} />
       <h3>
         <button onClick={() => navigate(entityRoute(entity.id))}>{entity.name}</button>
