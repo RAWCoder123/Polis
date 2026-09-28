@@ -71,7 +71,10 @@ const event = {
   registrationUrl: "https://example.test/fixture", sample: true, status: "published",
 };
 await act("a", { action: "event.save", event });
-assert.equal((await read("a")).events.filter((e) => !e.sample).length, 17);
+// Other suites may add their own listings to this database; each official
+// listing must still be imported exactly once, however often it is saved.
+const imported = (await read("a")).events.filter((e) => officialEvents.some((o) => o.id === e.id));
+assert.equal(imported.length, officialEvents.length);
 await act("b", {
   action: "event.preferences",
   city: "Ithaca",
@@ -171,5 +174,5 @@ assert.ok(
   ),
 );
 console.log(
-  "PASS local D1 HTTP: 17 repeatable official imports; independent synthetic identities; persistent interests, saves, private/friends RSVP, exact replies and notification links, ownership denial, suggestions and moderation. No hosted identities verified.",
+  "PASS local D1 HTTP: " + officialEvents.length + " repeatable official imports; independent synthetic identities; persistent interests, saves, private/friends RSVP, exact replies and notification links, ownership denial, suggestions and moderation. No hosted identities verified.",
 );

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { clickMapPlace, launchBrowser } from './browser.mjs';
 import { expect as baseExpect } from 'playwright/test';
 import { checkedEventsFor } from '../lib/social/campus-events.ts';
 
@@ -10,7 +10,7 @@ assert.match(origin, /^http:\/\/(localhost|127\.0\.0\.1):\d+$/);
 const expect = baseExpect.configure({ timeout: 15000 });
 const output = '/tmp/polis-milestone-qa';
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const errors = [], checks = [];
 const stamp = Date.now().toString(36);
 async function actor(account, width) {
@@ -85,11 +85,12 @@ try {
   await expect(a.page.locator('.event-plan-confirmed')).toContainText('Friends');
   assert.ok(!(await state(c)).venuePlans.some(p => p.eventId === event.id));
   await ready(b, 'explore/events?scope=campus&mode=map');
-  await expect(b.page.locator('.leaflet-marker-icon .map-plan-faces').first()).toBeVisible();
-  await b.page.locator('.leaflet-marker-icon[title^="Robert Purcell"]').dispatchEvent('click');
+  // A friend's shared plan shows as initials on its venue, or on the bubble holding it.
+  await expect(b.page.locator('.venue-map-shell .map-plan-faces').first()).toBeVisible();
+  await clickMapPlace(b.page, '.venue-map-shell', 'Robert Purcell');
   await b.page.getByLabel('Occurrence at this venue').selectOption(event.id);
   await expect(b.page.locator('.venue-preview .map-shared-plan')).toContainText('Going');
-  await expect.poll(async () => { const box = await b.page.locator('.leaflet-popup').boundingBox(), map = await b.page.locator('.venue-map').boundingBox(); return box.y >= map.y - 2 && box.y + box.height <= map.y + map.height + 2; }).toBe(true);
+  await expect.poll(async () => { const box = await b.page.locator('.maplibregl-popup').boundingBox(), map = await b.page.locator('.venue-map').boundingBox(); return box.y >= map.y - 2 && box.y + box.height <= map.y + map.height + 2; }).toBe(true);
   await shot(b, 'desktop-shared-plan-map');
   await ready(b, 'event/' + event.id + '?community=ithaca');
   await expect(b.page.locator('.community-event-detail')).toContainText('Test ithaca_a');
@@ -126,13 +127,13 @@ try {
   await shot(a, 'mobile-event-conversation');
   checks.push('Interest selection → campus discovery → private save → private plan → friends visibility → friend map icon → conversation → exact notification → reload; third identity denied.');
   await ready(b, 'home');
-  await b.page.locator('.civic-map.preview .leaflet-marker-icon').first().dispatchEvent('click');
+  await clickMapPlace(b.page, '.civic-map.preview', ''); // any place
   await expect(b.page).toHaveURL(/#home\?selected=/);
   await expect(b.page.locator('.venue-preview')).toBeVisible();
   checks.push('Home map pins select an anchored preview without leaving Home.');
   for (const view of ['home', 'explore?layer=events']) {
     await ready(b, view);
-    await b.page.locator('.civic-map .leaflet-marker-icon[title^="North Campus Retail Food Show"]').dispatchEvent('click');
+    await clickMapPlace(b.page, '.civic-map', 'North Campus Retail Food Show');
     await b.page.getByLabel('Occurrence at this venue').selectOption(event.id);
     await expect(b.page.locator('.venue-preview .map-shared-plan')).toContainText('Going');
     if (view.startsWith('explore')) await expect(b.page.locator('.civic-map-card')).toContainText(event.title);

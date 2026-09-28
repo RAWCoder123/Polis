@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { chromium } from "playwright";
+import { clickMapPlace, launchBrowser } from "./browser.mjs";
 import { expect as baseExpect } from "playwright/test";
 
 // Synthetic, isolated LOCAL accounts only. No hosted identity verification claim.
@@ -9,7 +9,7 @@ assert.ok(/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin));
 const expect = baseExpect.configure({ timeout: 20000 });
 const output = "/tmp/polis-commons-qa";
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const errors = [];
 const stamp = Date.now().toString(36);
 async function actor(account, width = 1440) {
@@ -137,11 +137,12 @@ try {
     await a.page.locator(".entity-events .entity-row").filter({ hasText: event.title }).click();
     await expect(a.page.getByRole("heading", { name: event.title, exact: true })).toBeVisible();
     await a.page.getByRole("button", { name: "Explore the related issue" }).click();
-    await a.page.route("**/maps/*.geojson", route => route.abort());
+    // Neither map tiles nor the bundled outline load: venues and the list still work.
+    await a.page.route(/tiles\.openfreemap\.org|\/maps\/.*\.geojson/, route => route.abort());
     await a.page.getByRole("button", { name: "Explore the local map and event list" }).click();
     await expect(a.page.getByRole("textbox", { name: "Discovery city" })).toHaveValue(event.city);
-    await expect(a.page.getByText("The local outline could not load. Venues and the complete event list remain available.", { exact: true })).toBeVisible();
-    await a.page.locator('.leaflet-marker-icon[title^="Synthetic venue"]').first().dispatchEvent("click"); // nearby sample listings can overlap this pin
+    await expect(a.page.getByText("The map could not load. Venues and the complete event list remain available.", { exact: true })).toBeVisible({ timeout: 20000 });
+    await clickMapPlace(a.page, ".venue-map-shell", "Synthetic venue");
     await expect(a.page).toHaveURL(new RegExp("selected=" + eventId));
     await a.page.getByRole("button", { name: "Use my location", exact: true }).click();
     await expect(a.page.getByText("Location was not shared. You can still browse by city.", { exact: true })).toBeVisible();

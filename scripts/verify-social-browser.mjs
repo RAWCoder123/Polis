@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { officialEvents } from "../lib/social/official-events.ts";
+import { launchBrowser } from "./browser.mjs";
 
 // This writes synthetic records in local D1. It must never run against a host.
 // A, B and C are new run-scoped synthetic accounts, so the journey needs no
@@ -14,11 +15,11 @@ const url = new URL(origin);
 assert.ok(url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname));
 const require = createRequire(process.env.POLIS_BROWSER_PACKAGE_ROOT
   ? path.join(process.env.POLIS_BROWSER_PACKAGE_ROOT, "package.json") : import.meta.url);
-const { chromium, expect: baseExpect } = require("playwright/test");
+const { expect: baseExpect } = require("playwright/test");
 const expect = baseExpect.configure({ timeout: 10000 });
 const output = path.resolve("outputs/social-cycle");
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch({ headless: true });
+const browser = await launchBrowser();
 const errors = [], failedTiles = [], checks = [];
 const runLabel = "SYNTHETIC BROWSER TEST " + Date.now();
 const run = Date.now().toString(36);
@@ -186,13 +187,13 @@ try {
   await expect(card).toContainText(text);
   await card.getByRole("button", { name: /^Agree(?: \d+)?$/ }).click();
   await expect(card.getByRole("button", { name: /^Agree(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "true");
-  await card.getByRole("button", { name: /^Interesting(?: \d+)?$/ }).click();
+  await card.getByRole("button", { name: /^Thought-provoking(?: \d+)?$/ }).click();
   await expect(card.getByRole("button", { name: /^Agree(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "false");
-  await expect(card.getByRole("button", { name: /^Interesting(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(card.getByRole("button", { name: /^Thought-provoking(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "true");
   await a.page.reload();
-  await expect(card.getByRole("button", { name: /^Interesting(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "true");
-  await card.getByRole("button", { name: /^Interesting(?: \d+)?$/ }).click();
-  await expect(card.getByRole("button", { name: /^Interesting(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "false");
+  await expect(card.getByRole("button", { name: /^Thought-provoking(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "true");
+  await card.getByRole("button", { name: /^Thought-provoking(?: \d+)?$/ }).click();
+  await expect(card.getByRole("button", { name: /^Thought-provoking(?: \d+)?$/ })).toHaveAttribute("aria-pressed", "false");
   const post = (await read(b, { post: committedPost })).posts[0];
   assert.equal(post.reactions.reduce((n, r) => n + r.count, 0), 0);
   await card.getByRole("button", { name: /^Open conversation/ }).click();
@@ -238,8 +239,8 @@ try {
   await expect(b.page.getByText("Location was not shared. You can still browse by city.")).toBeVisible();
   await b.page.getByRole("combobox", { name: "Category", exact: true }).selectOption("food_markets");
   await b.page.locator(".event-mode-switch").getByRole("button", { name: "Map", exact: true }).click();
-  await expect(b.page.locator(".polis-venue-pin")).toHaveCount(1);
-  await b.page.locator(".polis-venue-pin").click();
+  await expect(b.page.locator(".venue-pin-button").first()).toBeVisible(); // other suites may add listings
+  await b.page.locator(".venue-pin-button").first().click();
   await expect(b.page.locator(".community-event-card.selected")).toHaveCount(1);
   assert.ok(new URL(b.page.url()).hash.includes("selected="));
   const selection = b.page.locator(".community-event-card.selected");

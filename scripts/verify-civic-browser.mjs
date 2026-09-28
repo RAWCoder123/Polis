@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { chromium } from "playwright";
+import { launchBrowser } from "./browser.mjs";
 import { expect as baseExpect } from "playwright/test";
 
 // Journeys A–E for the campus Commons, civic map and entity cards.
@@ -11,7 +11,7 @@ assert.ok(/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin), "Local origins
 const expect = baseExpect.configure({ timeout: 20000 });
 const output = "/tmp/polis-civic-qa";
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const errors = [];
 const stamp = Date.now().toString(36).toUpperCase();
 

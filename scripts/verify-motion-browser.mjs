@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { chromium } from "playwright";
+import { launchBrowser } from "./browser.mjs";
 import { expect as baseExpect } from "playwright/test";
 
 // Motion and perceived speed, matched to the launch film: page transitions by
@@ -13,7 +13,7 @@ assert.ok(/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin), "Local origins
 const expect = baseExpect.configure({ timeout: 15000 });
 const output = "/tmp/polis-motion-qa";
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const errors = [];
 const pages = [];
 // On failure, keep a screenshot of every page so the cause is visible.
@@ -116,8 +116,11 @@ assert.ok((await (await page.waitForFunction(() => window.__arrival)).jsonValue(
 // Back returns to the remembered Commons at once, without placeholders.
 await slowReads(page, 900);
 assert.equal(await kindOf(page, () => page.goBack()), "back");
-await expect(card).toBeVisible({ timeout: 300 });
-assert.equal(await page.locator(".skeleton-card").count(), 0);
+// The old thread can hold the screen for one frame; the Commons that replaces
+// it must arrive complete, without placeholders.
+await expect(page.locator(".commons")).toBeVisible({ timeout: 300 });
+await expect(page.locator(".commons").locator(card)).toBeVisible({ timeout: 300 });
+assert.equal(await page.locator(".commons .skeleton-card").count(), 0);
 await page.unrouteAll({ behavior: "ignoreErrors" });
 
 // A fragment link animates forward even though it fires popstate.
@@ -133,9 +136,9 @@ assert.equal(
   "forward",
 );
 // Tabs within the Commons change in place.
-await page.goto(origin + "/#commons/for-you");
+await page.goto(origin + "/#commons/local");
 await expect.poll(() => vt(page)).toBe("none");
-assert.equal(await kindOf(page, () => page.locator(".commons-tabs button", { hasText: "Trending" }).click()), "none");
+assert.equal(await kindOf(page, () => page.locator(".commons-tabs button", { hasText: "National" }).click()), "none");
 
 // Interrupting a transition (a newer navigation, then a tap) finishes it
 // cleanly: no unhandled rejections from skipped transitions.

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { chromium } from "playwright";
+import { launchBrowser } from "./browser.mjs";
 import { expect as baseExpect } from "playwright/test";
 
 // Polis beyond the configured campuses: find, start and join a town commons,
@@ -15,7 +15,7 @@ assert.ok(/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin), "Local origins
 const expect = baseExpect.configure({ timeout: 30000 });
 const output = "/tmp/polis-anywhere-qa";
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const errors = [];
 const stamp = Date.now().toString(36);
 
@@ -113,25 +113,23 @@ await neighbor.page.goto(origin + "/#commons/local");
 await expect(main(neighbor)).toContainText("When does the council take public comment?");
 await shot(neighbor, "g-town-commons-mobile");
 
-// H: a student whose university has no community yet founds its campus commons.
+// H: a university email is not enough on its own. Sites does not assert that
+// sign-in emails are verified, so campus founding is not offered and the
+// server refuses it; campuses are joined with invitation codes. The verified
+// founding path is covered by tests/anywhere.test.ts.
 const student = await actor("campus_new");
 await ensureProfile(student, "campus_new_" + stamp.slice(-5));
 await student.page.goto(origin + "/#communities");
 const campusState = await state(student);
-if (campusState.unclaimedCampusDomain) {
-  await expect(main(student)).toContainText("Start the campus commons for example.edu");
-  await student.page.getByLabel("University name").fill("Example University");
-  await student.page.getByLabel("Campus town").fill("Burlington, Vermont");
-  await student.page.getByRole("button", { name: "Find", exact: true }).click();
-  await student.page.locator(".find-choices label").first().click();
-  await student.page.getByRole("button", { name: "Start the campus commons" }).click();
-  // Founding opens the new Home; public places import in the background.
-  await expect(main(student)).toContainText("What’s happening around Example University today.");
-}
-await expect.poll(async () => (await state(student)).community?.campus?.university).toBe("Example University");
-await student.page.goto(origin + "/#commons");
-await expect(main(student).locator(".commons-tabs")).toContainText("Campus");
-await shot(student, "h-new-campus-commons-desktop");
+assert.equal(campusState.unclaimedCampusDomain, null);
+await expect(main(student)).toContainText("Polis is a commons for a real place.");
+await expect(main(student)).not.toContainText("Start the campus commons");
+const refused = await student.context.request.post(origin + "/api/polis", {
+  headers: { Origin: origin },
+  data: { requestId: crypto.randomUUID(), data: { action: "community.create", kind: "campus", university: "Example University", city: "Burlington", region: "Vermont", country: "US", latitude: 44.4759, longitude: -73.2121, timezone: "America/New_York" } },
+});
+assert.equal(refused.status(), 403);
+await shot(student, "h-unverified-campus-desktop");
 
 // I: "near me" finds nearby communities from rounded device coordinates.
 const nearby = await actor("qa_anywhere_" + stamp + "_neighbor", 390, { geolocation: { latitude: 44.48, longitude: -73.21 }, permissions: ["geolocation"] });

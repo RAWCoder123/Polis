@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { chromium } from "playwright";
+import { launchBrowser } from "./browser.mjs";
 import { expect } from "playwright/test";
 
 // Run on a migrated, disposable local database with POLIS_TEST_ACCOUNTS=1.
@@ -11,7 +11,7 @@ const url = new URL(origin);
 assert.ok(url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname));
 const output = "/tmp/polis-signup-qa";
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const errors = [];
 const actors = [];
 const run = Date.now().toString(36);

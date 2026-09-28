@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { chromium } from "playwright";
+import { launchBrowser } from "./browser.mjs";
 import { expect as baseExpect } from "playwright/test";
 
 // Synthetic local identities only. Never run fixture writes against a deployed Site.
@@ -14,7 +14,7 @@ assert.ok(target.protocol === "http:" && ["localhost", "127.0.0.1"].includes(tar
 const expect = baseExpect.configure({ timeout: 15000 });
 const output = path.join(tmpdir(), "polis-invitation-qa");
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch({ headless: true });
+const browser = await launchBrowser();
 const errors = [];
 const run = Date.now().toString(36);
 const account = role => "qa_invites_" + run + "_" + role;
