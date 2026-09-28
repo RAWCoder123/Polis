@@ -1,92 +1,87 @@
 # Polis
 
-The motion candidate `codex/polis-motion` builds on it: page transitions, cards that grow into their pages, instant returns and reactions, and arrivals, all matched to the launch film. See [motion](docs/motion.md). It is locally verified and not deployed.
+**Politics starts close to home.** Polis is a social app for local civic life: find your town or campus, see its offices, public places and events on a map, and talk through local questions with neighbors — with room to agree, disagree, or say you're still learning.
 
-The latest candidate is `codex/polis-anywhere`: Polis is no longer limited to configured campuses. Members can find or start the commons for any town, and students can found their university's campus community with its email domain. Every community gets an honest civic scaffold of local issues, offices with official lookups, Sample starter questions and public places from OpenStreetMap. See [Polis anywhere](docs/anywhere.md). It is locally verified and not deployed.
+**Pilot:** [polis-community.raymondaw2006.chatgpt.site](https://polis-community.raymondaw2006.chatgpt.site) — public landing page; members sign in with the OpenAI login (email or Google). The hosted app lags this repository; see [Status](#status).
 
-The previous candidate is `codex/commons-civic-map`, continuing `codex/cornell-uf-commons`: a curated campus Home, a dedicated Commons (For You, Campus, Local, National, Trending, Following), a live civic map with office/building/event cards, reusable entity pages, Cornell and UF email-domain association, and search. See [campus Commons and civic map](docs/campus-civic-map.md) and the underlying [Commons setup, verification and rollout](docs/commons-pilot.md). It is locally verified and has **not** replaced Sites version 2.
+![The Polis map around Cornell and Ithaca: a bright 3D map with places grouped into count bubbles, and a list of nearby offices and places.](docs/images/map.jpg)
 
-Polis is a social app for politics and local civic life: discover an issue, express a view, hear from a friend, and follow what happens next. This repository is its development home.
+| Street level with *Use my location* | On a phone |
+| --- | --- |
+| ![Street-level 3D view in Collegetown with the street name, nearby civic buildings and places sorted by distance.](docs/images/street.jpg) | ![Home and the map in Burlington, Vermont, on a phone.](docs/images/mobile.jpg) |
 
-The `codex/open-signup` candidate separates account creation from invitations. Authenticated people can create a profile in Polis commons without a code; optional codes join protected university/organization communities. Email and Google are offered by the existing OpenAI login, not a separate Polis identity provider. See [signup setup and verification](docs/open-signup.md). This change is not yet deployed.
+Screenshots use synthetic accounts on a local build. Map data © OpenStreetMap contributors, tiles by OpenFreeMap.
 
-The actual Sites application source is preserved, including the white/cobalt/navy design, sidebar, mobile navigation, assets, pairwise and manual rankings, and illustrative event map. The social/event pilot is deployed as Sites version 2. `/demo` retains the original fictional browser-only experience, separate from the persisted social app at `/`.
+## What you can do
 
-The `codex/polis-showcase` candidate adds a public product showcase at `/welcome` and at `/` for signed-out visitors. Existing app hash links and signed-in Home remain available. Its interactive examples do not read or write social data; the demo and generated imagery are explicitly labeled. This showcase has not been deployed. The current network cannot reach the Sites source server. For the separately confirmed Google-through-OpenAI login path, see [authentication assessment](docs/authentication-path.md).
+- **Find your community, anywhere.** Search any town or university (OpenStreetMap), or list communities near you. Start the first commons for a town; nearby duplicates are joined instead of created. Campus and organization communities are joined with invitation codes.
+- **See it on the map.** A bright, Snap-style 3D map of offices, public buildings, campus places, proposals and events. Nearby places group into count bubbles until you zoom in. *Use my location* glides to street level and names the street you're on — your location never leaves the device.
+- **Talk it through in the Commons.** Local and national questions, debates and sourced updates about real places and decisions. Replies can carry a perspective; reactions are *Agree*, *Thought-provoking* and *Want to understand more*. Polis never assigns anyone a political identity.
+- **Show up.** Discover events, save them privately, mark Interested or Going with an audience you choose, and see friends' shared plans (never anyone's live location).
+- **Keep your own priorities.** Order the issues you care about and rate proposals privately; share a snapshot only when you choose.
+- **Stay in control.** Posts default to Friends. Mute, block and report are always available. Private notes, saves and plans stay private.
 
-The community-event release is a locally verified candidate with persistent conversations, private issue priorities, chosen event interests, and private saves/attendance. It has not yet passed hosted acceptance with real ChatGPT identities. Start with [event pilot setup](docs/event-pilot.md), [social-cycle verification](docs/social-cycle-verification.md), and the [event verification record](docs/event-verification.md).
+## Status
 
-## Prerequisites
+| | |
+| --- | --- |
+| Hosted pilot | Public landing and member sign-in are live. The member app there predates this branch; publishing needs the Sites workflow from a network that can reach the Sites source host (it times out from the Cornell network). See [deployment](docs/deployment.md). |
+| This branch | Consolidates every candidate branch (communities anywhere, Commons, civic map, events, invitations, motion) plus the new map. |
+| Verified locally | 91 unit and service tests on real migrations; 8 real-browser suites (social cycle, signup, invitations, Commons, civic, anywhere, milestone, motion) and 3 HTTP-boundary suites, at desktop and phone widths. |
+| Not yet verified | Hosted acceptance with three real accounts, real-device gestures and a screen-reader pass, and production capacity of the public OpenStreetMap services. |
 
-- Node **24.14.0** (`.nvmrc`) and npm **11.9.0** (`packageManager`). Tests use Node's built-in SQLite and TypeScript support.
-- Git and a supported macOS or Linux environment. Network access to the public npm registry is required for installation. GitHub CI targets Ubuntu; Windows has not been verified.
-- No cloud account, API key, or production database is needed for local development or CI.
+Campus association by email domain is switched off until a sign-in adapter can assert that an email is verified; until then campuses use invitation codes. Sample civic records are labeled *Sample*. See the [roadmap](docs/roadmap.md) for what is next.
 
 ## Run locally
 
-While the release pull request awaits merge, check out `codex/community-events-pilot` after cloning. GitHub `main` and the hosted prototype do not yet contain this candidate.
+Requires Node **24.14.0** (`.nvmrc`) and npm **11.9.0**. No cloud account, API key or production database is needed.
 
 ```sh
 git clone https://github.com/RAWCoder123/Polis.git
 cd Polis
-git switch --track origin/codex/community-events-pilot
-nvm install
-nvm use
+nvm install && nvm use
 npm ci
 cp .env.example .dev.vars
 npm run db:migrate:local
 npm run dev
 ```
 
-If you do not use nvm, install the specified Node version with your preferred version manager. Verify `node --version` and `npm --version`; select npm 11.9.0 before `npm ci`. Keep `package-lock.json`; do not replace it with another package manager's lockfile.
-
-Open **http://localhost:5173/**. Local sign-in uses the starter's explicitly labeled synthetic identity, Seedy. Create a local profile after sign-in. This exercises the local Worker and persistent local D1 storage; it is **not** real ChatGPT OAuth or hosted multi-user verification. Production uses trusted Sites authentication and its own D1 database.
-
-`.dev.vars`, `.wrangler/state`, and `.sites-runtime` are ignored and must stay local. Rerunning migrations applies only pending files and does not seed social users. Use a separate checkout to start a fresh test database without deleting existing local activity.
-
-## Configuration
+Open **http://localhost:5173/**. Local sign-in uses a visibly synthetic identity (Seedy, the local pilot owner). Set `POLIS_TEST_ACCOUNTS=1` to sign in as other synthetic accounts with `/signin-with-chatgpt?test_account=beta_b` or a run-scoped `qa_<suite>_<run>_<role>` name; unknown names are refused. This is **not** hosted authentication. `.dev.vars`, `.wrangler/state` and `.sites-runtime` stay local and out of Git.
 
 | Setting | Where | Purpose |
 | --- | --- | --- |
-| `POLIS_OWNER_EMAIL` | `.dev.vars` locally; Sites runtime setting in production | Server-only owner bootstrap identity. The example is synthetic; keep the real value out of source and client bundles. |
-| `DB` | Logical D1 binding in `.openai/hosting.json` and local Wrangler config | Managed database binding, not a password or connection URL. Production is provisioned by Sites. |
-| `SITES_RUNTIME_ROOT`, Wrangler/Miniflare paths | Optional local tool environment | Nonsecret scratch paths; defaults are checkout-local. Normally leave unset. |
+| `POLIS_OWNER_EMAIL` | `.dev.vars` locally; Sites runtime setting in production | Server-only owner bootstrap identity. The example is synthetic. |
+| `DB` | `.openai/hosting.json` and local Wrangler config | Logical D1 binding, not a password or URL. |
 
-No `NEXT_PUBLIC_*` or `VITE_*` application variables are required. Such prefixes expose values to client code and must never contain secrets. No OpenAI API key is required. `.openai/hosting.json` contains the existing nonsecret project identity and logical bindings; preserve it.
+No `NEXT_PUBLIC_*` or `VITE_*` variables are needed; never put secrets in them.
 
 ## Validate
 
 ```sh
-npm run lint
+npm run lint        # 0 errors; 7 inherited warnings in the original demo
 npm run typecheck
-npm test
+npm test            # 91 tests
 npm run build
 ```
 
-With the development server running in another terminal:
+With `npm run dev` running (set `POLIS_TEST_ORIGIN` if not on port 5173), `npm run test:http`, `test:social-http` and `test:events-http` check the Worker boundary, and `npm run test:browser` plus the other `test:*-browser` suites drive real Chromium sessions. Browser suites need `POLIS_TEST_ACCOUNTS=1` on the dev server.
 
-```sh
-npm run test:http
-```
+GitHub Actions is prepared in [docs/ci.yml](docs/ci.yml) but not active until the repository grants workflow permission.
 
-Tests run the real service and migrations against isolated SQLite fixtures, including three-user access checks. `npm test` currently runs 79 tests; per-feature documents under `docs/` record the counts measured when they were written. The HTTP smoke test creates no user data and checks the local Worker's authentication boundary and rejected writes. Lint has seven inherited warnings in preserved MVP components and no errors. `npm run test:browser` exercises the real UI with three isolated synthetic browser sessions; follow its [local-only setup](docs/social-cycle-verification.md) first.
+## How it's built
 
-The [CI definition](docs/ci.yml) is prepared for pull requests and pushes to `main`: installation, lint, types, tests, build, and a local Worker smoke check, with read-only permissions and no production credentials or deployment steps. **Remote CI is not active yet:** both available GitHub integrations rejected writing `.github/workflows/ci.yml`. After the owner grants the CLI `workflow` scope or the GitHub app Workflows write permission, move `docs/ci.yml` to `.github/workflows/ci.yml`, push the setup branch, and verify its Actions result. See [setup verification](docs/VERIFICATION.md).
+React 19 with Next.js App Router conventions on Vinext/Vite, TypeScript and Tailwind, deployed as a Cloudflare Worker with D1 on OpenAI Sites. Every social read and write goes through one API route and a server-side service that enforces membership, audience, ownership, blocking and muting; Drizzle defines the schema and versioned migrations. Maps use MapLibre GL with OpenFreeMap vector tiles and a custom Polis style.
 
-`npm start` runs the built Worker locally on port 8787. It is an artifact smoke command, not a replacement for the trusted Sites dispatcher or development sign-in. Use `npm run dev` for normal interactive development.
+## Documentation
 
-## Architecture and development
+| Topic | Read |
+| --- | --- |
+| How the code fits together | [Architecture](docs/architecture.md) · [Design system](DESIGN.md) · [Motion](docs/motion.md) · [Map](docs/map.md) |
+| Working on Polis | [Contributing](CONTRIBUTING.md) · [Agent guidance](AGENTS.md) · [Roadmap](docs/roadmap.md) |
+| Features | [Communities anywhere](docs/anywhere.md) · [Campus Commons and civic map](docs/campus-civic-map.md) · [Commons pilot](docs/commons-pilot.md) · [Events](docs/event-pilot.md) · [Event sources](docs/event-sources.md) · [Invitation codes](docs/invitation-codes.md) · [Open signup](docs/open-signup.md) |
+| Hosting and pilot | [Deployment](docs/deployment.md) · [Pilot setup](docs/PILOT_SETUP.md) · [Authentication path](docs/authentication-path.md) · [Hosted verification](docs/hosted-pilot-verification.md) |
+| Verification records | [Verification](docs/VERIFICATION.md) · [Social cycle](docs/social-cycle-verification.md) · [Events](docs/event-verification.md) · [Civic milestone review](docs/claude-review-and-milestone.md) |
 
-React 19, Next.js App Router conventions through Vinext/Vite, TypeScript, Tailwind/CSS, and existing shadcn/Radix components power the interface. A Cloudflare Worker and D1 back the social service; Drizzle defines the schema and versioned SQL migrations. This repository setup does not migrate frameworks or upgrade dependencies.
+## License
 
-See [architecture](docs/architecture.md), [contributing](CONTRIBUTING.md), [agent guidance](AGENTS.md), [roadmap](docs/roadmap.md), and the [verification record](docs/VERIFICATION.md).
-
-## Deployment relationship
-
-The [Polis pilot](https://polis-community.raymondaw2006.chatgpt.site) is deployed on Sites with public site access, explicitly selected by the owner on September 17, 2026. Community membership still requires an invitation. **Pushing to GitHub does not deploy it.** See the [hosted verification record](docs/hosted-pilot-verification.md) for the deployed revision, owner persistence checks and outstanding multi-user acceptance.
-
-GitHub is the development remote; Sites retains its separate source repository and saved-version deployment workflow. See [deployment and source provenance](docs/deployment.md) and [pilot configuration](docs/PILOT_SETUP.md). Hosted acceptance still requires three isolated ChatGPT identities with Sites viewing access and Polis invitations.
-
-The next invitation release adds community-specific reusable codes, optional use limits, pre-login confirmation, and separate Cornell/Ithaca and Emory memberships. It is locally verified and awaiting publication; see [invitation setup and verification](docs/invitation-codes.md). This does not claim local event/official coverage for Emory.
-
-No project-wide open-source license has been selected. Existing third-party notices in `build/` and `vendor/` are preserved; public source visibility does not itself grant an application license.
+No project-wide open-source license has been chosen; public source does not by itself grant one. Third-party notices in `build/` and `vendor/` are preserved, and the bundled map outlines in `public/maps` are ODbL (see their README).

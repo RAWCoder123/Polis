@@ -40,11 +40,31 @@ See [Claude review and milestone evidence](claude-review-and-milestone.md) for a
 
 ## Polis anywhere additions
 
-- Find your community: search any town, city or university, or list communities near you. Start the first commons for a town, or found a campus community with a plain institutional email domain; later students with that domain are associated automatically.
+- Find your community: search any town, city or university, or list communities near you. Start the first commons for a town. Founding a campus by email domain (with later students associated automatically) is built but only works for sign-in emails asserted as verified, which Sites does not provide yet.
 - Every located community without a curated catalog gets a civic scaffold: local issues, offices described by role with official lookup links, Sample starter questions, and up to 60 civic places from OpenStreetMap.
 - Server rules: duplicate towns within 25 miles are joined instead of created, a limit of three new communities a day, open town membership, campus domains taken only from the trusted sign-in email, and weekly place imports. See [Polis anywhere](anywhere.md).
 
+## Map and consolidation (September 28)
+
+- One branch, `codex/polis-public-mvp`, merges the reviewed civic milestone with the anywhere and motion line, and the independent local suites. Campus founding, joining and domain association now all require the verified-email assertion the milestone introduced.
+- A Snap-style 3D map replaces Leaflet raster tiles on the civic and venue maps: simplified pastel basemap, hill shading, 3D buildings, count bubbles, street-level *Use my location* with the street name, tilt-aware framing, layer chips only for layers present, and an outline or list fallback. See [map](map.md).
+- `#map` opens the Map tab; unknown local test accounts are refused instead of signing in as the owner; phones get a map-first Map tab and a single glance row on Home.
+- Browser suites launch Chromium with software WebGL (`scripts/browser.mjs`) and follow the reviewed Commons.
+
+## Usability review (September 28)
+
+A first-time walkthrough (sign up, find a town, Home, Map, Commons, ask a question, events, profile) at desktop and 390 px passes without errors or overflow. What still feels convoluted or crowded, most important first:
+
+1. **Too many ways to express a view.** Reactions, reply perspectives, issue positions, private priorities, scored rankings and daily questions are separate concepts. Each is defensible; together they are a lot to learn. Recommendation: keep reactions and perspectives in the Commons, and fold Rankings into the profile's Priorities (it is already hidden from the phone tab bar). Decide before inviting the Cornell cohort.
+2. **Community types.** Polis commons, towns, invite-only campuses, private organizations and Across Polis all appear in one switcher. Searching "Ithaca" returns an invite-only campus next to separate "Town of" and "City of" results. Recommendation: group the switcher (Your places / Campus / Groups) and merge same-name municipalities in search.
+3. **Two event maps.** The Map tab's Events layer and the Events explorer's map both show venues. They now share one engine; next, make the explorer's map mode open the Map tab's Events layer so there is one map.
+4. **Placeholder civic content.** New towns show offices by role ("Mayor or local executive") with lookup links and Sample questions. Honest, but thin; the first curated sources for a town matter more than new features.
+5. **Demo inside the member app.** The member sidebar links to the original browser-only demo, which confuses real members. Recommendation: keep `/demo` for the public landing page only.
+6. **Large files.** `lib/social/service.ts` (about 2,700 lines), `social-app.tsx` and `social-views.tsx` carry most of the product. Split by domain (communities, Commons, events) in focused maintenance, with the existing tests as the safety net.
+
 ## Known gaps
+
+The hosted pilot at https://polis-community.raymondaw2006.chatgpt.site serves the public landing page added on September 25, so a version newer than the September 17 version 2 recorded below has been published; confirm the exact deployed revision in Sites before the next release. This consolidated branch is not published. The Sites source host (`git.chatgpt-team.site`) still times out from the Cornell network on September 28.
 
 Sites management remains available, but its source host timed out on September 27. Version 2 remains live. The exact reviewed source and pending migrations must reach Sites before three real hosted identities can verify invitations, privacy, replies and plan persistence. Cornell release is gated on that acceptance; UF follows afterward.
 
@@ -76,13 +96,13 @@ The local social-cycle browser journey now passes with independent synthetic ses
 - Three isolated ChatGPT identities, invited site access, and production D1/authentication have not been exercised together.
 - GitHub does not deploy production. Sites source synchronization and saved-version deployment are separate. A network restriction blocked the first publication attempt; Sites version 2 (source `0c42b64`) deployed on 2026-09-17, and every later revision in this repository remains undeployed until a new authorized Sites publication.
 - GitHub Actions is not active: the available integrations lack permission to write workflow files. The reviewed workflow remains in `docs/ci.yml`; local checks are the current verification evidence.
-- The original demo map remains schematic. The new social map uses supplied venue coordinates and locally bundled attributed outlines with a list alternative. Real-device pinch gestures, a full assistive-technology audit, load testing and production migration/restore drills remain.
+- The original demo map remains schematic. The social maps depend on OpenFreeMap and the public AWS terrain tiles in the browser, with bundled outlines for Ithaca and Gainesville and the list as fallbacks. Real-device pinch and tilt gestures, performance on older phones, a full assistive-technology audit, load testing and production migration/restore drills remain.
 - No automated metric dashboard or retention/deletion scheduler exists. Agree operational retention before a live pilot.
 - Seven inherited lint warnings remain in original MVP components; address them in focused maintenance work. Organizer images intentionally use a native element with an explicit lint exemption.
 
 ## Next three milestones
 
-1. **Verify the hosted social flow.** Use the deployed pilot to exercise A/B friendship/conversation with C denied private content. Record identity, persistence, revocation, blocking, and retry evidence.
+1. **Publish and verify the hosted social flow.** Merge the consolidated branch, publish it through Sites from a network that reaches the Sites source host, then exercise A/B friendship/conversation with C denied private content. Record identity, persistence, revocation, blocking, and retry evidence.
 2. **Replace samples with sourced local content.** Maintain the sourced event seed and curate Ithaca/Cornell issues, sources, registration requirements, and timelines; agree owner review responsibilities and freshness before inviting participants.
 3. **Finish pilot usability and operations.** Activate the reviewed GitHub workflow after workflow permission is granted, validate map gestures and assistive-technology journeys on target devices, and establish retention, moderation, and minimal activation/reciprocity/return reporting.
 

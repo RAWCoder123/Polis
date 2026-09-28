@@ -59,3 +59,13 @@ Motion follows the launch film and extends, not replaces, the system above. See 
 Preserve the existing white/cobalt/navy system. Commons uses title-first rows, Local/National scopes, explicit Following and recency controls, and compact contribution buttons. Topics and introductory guidance sit below conversations on mobile. Existing tab routes remain compatible.
 
 Maps use bundled OSM-derived outlines, with ODbL attribution, original geographic venue coordinates, anchored previews and an independent list. Initials indicate permitted friends’ shared plans at event venues, never present location. Several occurrences at one venue remain individually selectable. Photos identify sourced events and verified officials; source credits are visible and missing images fall back to icons or initials.
+
+## Map (September 28, 2026)
+
+Supersedes the desaturated raster basemap above; pin colors by layer are unchanged. See [docs/map.md](docs/map.md).
+
+- **Basemap.** Bright and simplified, in the spirit of Snap Map: warm paper land `#f6f3ec`, pastel parks `#c6ecb0`, water `#8ecff5`, white streets with butter-yellow main roads, soft lavender 3D buildings (`#efeaf5`–`#c8d2f5` by height), hill shading. Labels in navy and slate with white halos; neighbourhoods in spaced capitals; civic buildings in muted violet. No POI icons or shields.
+- **Camera.** Opens tilted (about 60° on the Map tab, 52° in previews) and turned slightly; street level for *Use my location* is zoom 16.4.
+- **Markers.** White discs with the layer ring and a small pointer; count bubbles are white pills with layer dots; friends' initials are cobalt discs. Markers drop in on the film's bouncy spring, lift on hover, and shrink slightly toward the horizon. The location dot is cobalt with a soft pulse.
+- **Phones.** The Map tab drops its description and gives the map most of the screen; Home's glance cards become one swipeable row. Credits fold into the ⓘ button after a few seconds.
+
