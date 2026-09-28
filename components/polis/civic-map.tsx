@@ -1,15 +1,15 @@
 "use client";
-import "leaflet/dist/leaflet.css";
 import "./civic.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { LayerGroup, Map as LeafletMap, Marker, Popup } from "leaflet";
+import type { Marker } from "maplibre-gl";
 import { CalendarDays, LocateFixed, MapPin } from "lucide-react";
 import type { CivicEntity, CommunityEvent, EntityKind, Snapshot } from "@/lib/social/types";
 import { catalogOf } from "@/lib/social/civic";
 import { distanceMiles, eventExpired, eventCategories, eventTime } from "@/lib/social/events";
 import { localeOf } from "@/lib/social/communities";
 import { useDeviceLocation } from "@/lib/social/use-device-location";
+import { listPlaces, nearestNamed, type NamedGeometry } from "@/lib/map-geometry";
 import { reducedMotion } from "@/lib/motion";
 import {
   categoryIcons,
@@ -18,6 +18,16 @@ import {
   initialsFor,
   kindIcons,
 } from "./civic-cards";
+import {
+  addMarkerSource,
+  alive,
+  createBasemap,
+  moveCamera,
+  useAnchoredPopup,
+  useClusteredMarkers,
+  type Basemap,
+  type BasemapState,
+} from "./polis-map";
 import type { Navigate, Run } from "./social-post";
 
 export type MapLayer = "all" | "people" | "government" | "campus" | "issues" | "community" | "events";
@@ -87,28 +97,6 @@ export function mapPins(data: Snapshot, now = new Date()): MapPinData[] {
   }
   return pins;
 }
-// Pins closer than a marker's width fan out in a small ring so every place
-// stays visible and tappable. Positions are approximate to begin with.
-function declutterPins(map: LeafletMap, markers: Map<string, Marker>, hosts: Map<string, HTMLElement>) {
-  const points = [...markers].map(([id, m]) => ({ id, p: map.latLngToLayerPoint(m.getLatLng()) }));
-  const placed = new Set<string>();
-  for (const a of points) {
-    if (placed.has(a.id)) continue;
-    const group = points.filter((b) => !placed.has(b.id) && a.p.distanceTo(b.p) < 30);
-    group.forEach((b, i) => {
-      placed.add(b.id);
-      const host = hosts.get(b.id);
-      if (!host) return;
-      if (group.length === 1) {
-        host.style.transform = "";
-        return;
-      }
-      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / group.length;
-      const radius = 18 + group.length * 3;
-      host.style.transform = `translate(${Math.round(Math.cos(angle) * radius)}px, ${Math.round(Math.sin(angle) * radius)}px)`;
-    });
-  }
-}
 function PinFace({ pin, selected, plans = [] }: { pin: MapPinData; selected: boolean; plans?: Snapshot["venuePlans"] }) {
   if (pin.events) {
     const friends = (plans ?? []).filter(p => pin.events!.some(e => e.id === p.eventId));
@@ -134,6 +122,60 @@ function PinFace({ pin, selected, plans = [] }: { pin: MapPinData; selected: boo
     </span>
   );
 }
+type ClusterLayer = Exclude<MapLayer, "all">;
+const layerColors: Record<ClusterLayer, string> = {
+  people: "#17233b",
+  government: "#334861",
+  campus: "#3659e3",
+  issues: "#a86222",
+  community: "#3f7a58",
+  events: "#c05a28",
+};
+const clusterLayers = Object.keys(layerColors) as ClusterLayer[];
+// A bubble for places that sit close together at this zoom, like Snap Map's
+// groups: the count, and a dot for each kind of place inside.
+function ClusterFace({ count, layers, friends = [] }: { count: number; layers: ClusterLayer[]; friends?: string[] }) {
+  return (
+    <span className="civic-cluster">
+      <b>{count}</b>
+      <span className="cluster-dots" aria-hidden="true">
+        {layers.slice(0, 4).map((l) => (
+          <i key={l} style={{ background: layerColors[l] }} />
+        ))}
+      </span>
+      {friends.length > 0 && (
+        <span className="map-plan-faces" aria-hidden="true">
+          {friends.slice(0, 2).map((name) => (
+            <b key={name}>{initialsFor(name)}</b>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+type Camera = { center: [number, number]; zoom: number; pitch: number; bearing: number };
+// Tilted and turned a little so buildings read as 3D; flat for a whole country.
+function cameraFor(center: [number, number] | undefined, zoom: number | undefined, variant: "full" | "preview"): Camera {
+  if (!center) return { center: [-98.35, 39.5], zoom: 3.4, pitch: 0, bearing: 0 };
+  return variant === "full"
+    ? { center: [center[1], center[0]], zoom: Math.max(zoom ?? 14, 15), pitch: 60, bearing: -18 }
+    : { center: [center[1], center[0]], zoom: Math.max(zoom ?? 14, 14.6), pitch: 52, bearing: -12 };
+}
+const street = { zoom: 16.4, pitch: 60 };
+// Fit the places within a few miles of the camera's center (outliers such as
+// an airport office would zoom the whole town out), keeping tilt and turn.
+function frameCore(basemap: Basemap, pins: MapPinData[], camera: Camera): Camera {
+  const [lng, lat] = camera.center;
+  const core = pins.filter((p) => distanceMiles([lat, lng], [p.lat, p.lng]) < 3);
+  if (core.length < 2) return camera;
+  const bounds = new basemap.maplibregl.LngLatBounds();
+  for (const p of core) bounds.extend([p.lng, p.lat]);
+  const fit = basemap.map.cameraForBounds(bounds, { padding: 50, maxZoom: camera.zoom + 0.6 });
+  if (!fit?.center || fit.zoom === undefined) return camera;
+  const center = basemap.maplibregl.LngLat.convert(fit.center).toArray() as [number, number];
+  return { ...camera, center, zoom: Math.max(fit.zoom, camera.zoom - 1.6) };
+}
+
 export function CivicMap({
   data,
   run,
@@ -157,172 +199,141 @@ export function CivicMap({
 }) {
   const locale = localeOf(data.community);
   const element = useRef<HTMLDivElement>(null);
-  const map = useRef<LeafletMap | null>(null);
-  const group = useRef<LayerGroup | null>(null);
-  const markers = useRef(new Map<string, Marker>());
-  const hostEls = useRef(new Map<string, HTMLElement>());
-  const you = useRef<Marker | null>(null);
-  const popup = useRef<Popup | null>(null);
-  const [popupHost, setPopupHost] = useState<HTMLElement | null>(null);
+  const [basemap, setBasemap] = useState<Basemap | null>(null);
+  const [tiles, setTiles] = useState<BasemapState>("loading");
   const [occurrence, setOccurrence] = useState("");
+  const [here, setHere] = useState("");
+  const you = useRef<Marker | null>(null);
+  const flyToFix = useRef(false);
   const selectRef = useRef(onSelect);
-  const fitted = useRef("");
-  const [ready, setReady] = useState(false);
-  const [tiles, setTiles] = useState<"loading" | "loaded" | "failed">("loading");
-  const [hosts, setHosts] = useState<[string, HTMLElement][]>([]);
+  const selectedRef = useRef(selected);
   const location = useDeviceLocation();
   useEffect(() => {
     selectRef.current = onSelect;
-  }, [onSelect]);
+    selectedRef.current = selected;
+  }, [onSelect, selected]);
   const allPins = useMemo(() => mapPins(data), [data]);
-  // The preview keeps the most civic places so a busy town stays readable.
-  const pins = useMemo(() => {
-    const visible = allPins.filter((p) => layer === "all" || p.layer === layer);
-    if (variant !== "preview" || visible.length <= 30) return visible;
-    const order: MapLayer[] = ["people", "government", "events", "campus", "issues", "community"];
-    return [...visible].sort((a, b) => order.indexOf(a.layer) - order.indexOf(b.layer)).slice(0, 30);
-  }, [allPins, layer, variant]);
-  const pinKey = pins.map((p) => p.id + ":" + p.lat + ":" + p.lng).join("|");
+  const pins = useMemo(() => allPins.filter((p) => layer === "all" || p.layer === layer), [allPins, layer]);
+  const byId = useMemo(() => new Map(pins.map((p) => [p.id, p])), [pins]);
+  const items = useMemo(() => pins.map((p) => ({ id: p.id, lat: p.lat, lng: p.lng, group: p.layer })), [pins]);
+  const { shown, offsets, zoomInto, standing } = useClusteredMarkers(basemap, items, clusterLayers, selected);
+  const active = byId.get(selected);
+  const preview = useAnchoredPopup(basemap, active, { offset: active ? offsets.get(active.id) : undefined, standing, className: "civic-popup" });
   const near = location.coords && locale && distanceMiles(location.coords, locale.center) < 25 ? location.coords : undefined;
   const origin: [number, number] | undefined = near ?? locale?.center;
+  const nearKey = near ? near.join(",") : "";
+  const live = useRef({ pins });
+  useEffect(() => {
+    live.current = { pins };
+  }, [pins]);
 
+  // One map per community; places, selection and location update it in place.
   useEffect(() => {
     let canceled = false;
-    const controller = new AbortController();
-    void import("leaflet")
-      .then((L) => {
-        if (canceled || !element.current) return;
-        // Smooth zooming, tile fades and pans, unless reduced motion is preferred.
-        const motion = !reducedMotion();
-        element.current.classList.toggle("motion", motion);
-        map.current = L.map(element.current, {
-          scrollWheelZoom: false,
-          zoomAnimation: motion,
-          markerZoomAnimation: motion,
-          fadeAnimation: motion,
-          zoomControl: variant === "full",
-          attributionControl: true,
-        }).setView(locale?.center ?? [39.5, -98.35], locale?.zoom ?? 4);
-        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          maxZoom: 19,
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        })
-          .on("tileerror", () => setTiles((t) => (t === "loaded" ? t : "failed")))
-          .on("load", () => setTiles("loaded"))
-          .addTo(map.current);
-        group.current = L.layerGroup().addTo(map.current);
-        setReady(true);
+    let created: Basemap | null = null;
+    const container = element.current;
+    if (!container) return;
+    const target = cameraFor(locale?.center, locale?.zoom, variant);
+    const intro = variant === "full" && !!locale && !reducedMotion();
+    void createBasemap(container, {
+      center: [target.center[1], target.center[0]],
+      zoom: intro ? target.zoom - 1.4 : target.zoom,
+      pitch: intro ? 10 : target.pitch,
+      bearing: intro ? 0 : target.bearing,
+      communityId: data.community?.id,
+      preview: variant === "preview",
+      onState: (state) => {
+        if (!canceled) setTiles(state);
+      },
+    })
+      .then((next) => {
+        created = next;
+        if (canceled) return next.map.remove();
+        next.map.on("load", () => {
+          if (canceled) return;
+          addMarkerSource(next.map, clusterLayers);
+          setBasemap(next);
+          // Open framed on the places near the center, tilted for 3D.
+          const framed = frameCore(next, live.current.pins, target);
+          if (intro) moveCamera(next.map, framed, 1800);
+          else next.map.jumpTo(framed);
+        });
+        // Tapping the map itself closes a preview, as in Snap Map.
+        next.map.on("click", () => {
+          if (selectedRef.current) selectRef.current("");
+        });
       })
-      .catch(() => setTiles("failed"));
+      .catch(() => {
+        if (!canceled) setTiles("failed");
+      });
     return () => {
       canceled = true;
-      controller.abort();
-      map.current?.remove();
-      map.current = null;
+      setBasemap(null);
+      created?.map.remove();
     };
-    // The map is created once per community; pins update separately.
+    // The map is created once per community; everything else updates in place.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.community?.id]);
 
+  // Changing layers frames the places of that kind closest to the center.
+  const framedLayer = useRef(layer);
   useEffect(() => {
-    if (!ready) return;
-    let canceled = false;
-    void import("leaflet").then((L) => {
-      if (canceled || !map.current || !group.current) return;
-      group.current.clearLayers();
-      markers.current.clear();
-      hostEls.current.clear();
-      const next: [string, HTMLElement][] = [];
-      for (const [index, pin] of pins.entries()) {
-        const host = document.createElement("span");
-        host.className = "civic-pin-root";
-        host.style.setProperty("--i", String(index));
-        const marker = L.marker([pin.lat, pin.lng], {
-          icon: L.divIcon({ html: host, className: "civic-pin-host", iconSize: [40, 46], iconAnchor: [20, 44] }),
-          keyboard: true,
-          title: pin.label,
-          alt: pin.label,
-          riseOnHover: true,
-        })
-          .on("click", () => selectRef.current(pin.id))
-          .addTo(group.current);
-        markers.current.set(pin.id, marker);
-        hostEls.current.set(pin.id, host);
-        next.push([pin.id, host]);
-      }
-      setHosts(next);
-      if (pins.length && fitted.current !== pinKey) {
-        fitted.current = pinKey;
-        map.current.fitBounds(L.latLngBounds(pins.map((p) => [p.lat, p.lng])), {
-          padding: variant === "preview" ? [26, 26] : [46, 46],
-          maxZoom: 16,
-          animate: false,
-        });
-      }
-      declutterPins(map.current, markers.current, hostEls.current);
-    });
-    return () => {
-      canceled = true;
-    };
-    // pinKey captures the pin set; `pins` identity changes on every snapshot.
+    if (!alive(basemap) || framedLayer.current === layer) return;
+    framedLayer.current = layer;
+    if (!pins.length) return;
+    const { map } = basemap;
+    moveCamera(map, frameCore(basemap, pins, { center: map.getCenter().toArray() as [number, number], zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() }), 900);
+    // Only a change of layer reframes the map.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, pinKey, variant]);
+  }, [basemap, layer]);
 
+  // Your position: a dot on this device only, the street you're on, and a
+  // glide down to street level when you ask for it.
   useEffect(() => {
-    if (!ready || !map.current) return;
-    const current = map.current;
-    const declutter = () => declutterPins(current, markers.current, hostEls.current);
-    current.on("zoomend", declutter);
-    return () => {
-      current.off("zoomend", declutter);
+    if (!alive(basemap)) return;
+    const { map, maplibregl } = basemap;
+    you.current?.remove();
+    you.current = null;
+    if (!near) return;
+    const point: [number, number] = [near[1], near[0]];
+    const dot = document.createElement("div");
+    dot.className = "civic-you";
+    dot.innerHTML = "<span></span>";
+    you.current = new maplibregl.Marker({ element: dot, anchor: "center" }).setLngLat(point).addTo(map);
+    const describe = () => {
+      const road = nearestNamed(point, map.querySourceFeatures("openmaptiles", { sourceLayer: "transportation_name" }) as NamedGeometry[], 150);
+      const area = nearestNamed(
+        point,
+        map.querySourceFeatures("openmaptiles", {
+          sourceLayer: "place",
+          filter: ["match", ["get", "class"], ["neighbourhood", "suburb", "quarter"], true, false],
+        }) as NamedGeometry[],
+        2000,
+      );
+      setHere([road?.name, area?.name].filter(Boolean).join(" · "));
     };
-  }, [ready]);
-  useEffect(() => {
-    for (const [id, m] of markers.current) m.setZIndexOffset(id === selected ? 1000 : 0);
-    const pin = pins.find((p) => p.id === selected);
-    if (pin && map.current && !map.current.getBounds().contains([pin.lat, pin.lng]))
-      map.current.panTo([pin.lat, pin.lng], { animate: !reducedMotion(), duration: 0.7, easeLinearity: 0.2 });
-  }, [selected, pins]);
-
-  useEffect(() => {
-    let canceled = false;
-    const pin = pins.find(p => p.id === selected);
-    if (!ready || !map.current || !pin) {
-      popup.current?.remove();
-      return;
+    if (flyToFix.current) {
+      flyToFix.current = false;
+      moveCamera(map, { center: point, zoom: street.zoom, pitch: street.pitch, bearing: map.getBearing() - 25 }, 2400);
     }
-    void import("leaflet").then(L => {
-      if (canceled || !map.current) return;
-      popup.current?.remove();
-      const host = document.createElement("div");
-      const next = L.popup({ closeButton: false, maxWidth: 270, minWidth: 180, maxHeight: variant === "preview" ? 145 : 230, offset: [0, -35], autoPan: true })
-        .setLatLng([pin.lat, pin.lng]).setContent(host).openOn(map.current);
-      popup.current = next;
-      setPopupHost(host);
-    });
-    return () => { canceled = true; popup.current?.remove(); };
-    // Marker geometry is encoded in pinKey; snapshot refreshes keep the popup in place.
+    map.once("idle", describe);
+    return () => {
+      map.off("idle", describe);
+    };
+    // nearKey captures the rounded coordinates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, selected, pinKey]);
-  useEffect(() => { popup.current?.update(); }, [popupHost, selected, occurrence, data.venuePlans]);
+  }, [basemap, nearKey]);
+  function locate() {
+    if (near && alive(basemap)) moveCamera(basemap.map, { center: [near[1], near[0]], zoom: street.zoom, pitch: street.pitch }, 1800);
+    else {
+      flyToFix.current = true;
+      location.locate();
+    }
+  }
+  const { remeasure } = preview;
+  useEffect(remeasure, [preview.host, selected, occurrence, data.venuePlans, shown, remeasure]);
 
-  useEffect(() => {
-    if (!ready) return;
-    void import("leaflet").then((L) => {
-      if (!map.current) return;
-      you.current?.remove();
-      you.current = null;
-      if (near)
-        you.current = L.marker(near, {
-          icon: L.divIcon({ className: "civic-you", html: "<span></span>", iconSize: [18, 18], iconAnchor: [9, 9] }),
-          interactive: false,
-          keyboard: false,
-        }).addTo(map.current);
-    });
-  }, [ready, near]);
-
-  const active = pins.find((p) => p.id === selected);
-  const activeEvent = active?.events?.find(e => e.id === occurrence) ?? active?.events?.[0];
+  const activeEvent = active?.events?.find((e) => e.id === occurrence) ?? active?.events?.[0];
   const listed = [...pins]
     .map((p) => ({ pin: p, miles: origin ? distanceMiles(origin, [p.lat, p.lng]) : null }))
     .sort((a, b) => (a.miles ?? 0) - (b.miles ?? 0));
@@ -348,6 +359,7 @@ export function CivicMap({
   ) : null;
   return (
     <div className={"civic-map " + variant}>
+      <div className="civic-map-main">
       <div className="civic-map-frame">
         <div
           ref={element}
@@ -355,18 +367,75 @@ export function CivicMap({
           role="region"
           aria-label={"Map of " + (locale?.label ?? "your community") + ". Use Tab to reach places and Enter to open one."}
         />
-        {hosts.map(([id, host]) => {
-          const pin = pins.find((p) => p.id === id);
-          return pin ? createPortal(<PinFace pin={pin} selected={id === selected} plans={data.venuePlans} />, host, id) : null;
+        {shown.map((s) => {
+          if (s.kind === "cluster") {
+            const inside = (s.ids ?? []).map((id) => byId.get(id)).filter((p) => !!p);
+            const friends = [
+              ...new Set(
+                (data.venuePlans ?? [])
+                  .filter((plan) => inside.some((p) => p.events?.some((e) => e.id === plan.eventId)))
+                  .map((plan) => plan.name),
+              ),
+            ];
+            const name = inside.length ? listPlaces(inside.map((p) => p.label)) : s.count + " places";
+            return createPortal(
+              <button
+                type="button"
+                className="civic-cluster-button"
+                title={name}
+                aria-label={name + ". Zoom in to see them."}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  zoomInto(s);
+                }}
+              >
+                <ClusterFace count={s.count} layers={s.groups as ClusterLayer[]} friends={friends} />
+              </button>,
+              s.host,
+              s.key,
+            );
+          }
+          const pin = byId.get(s.id);
+          return pin
+            ? createPortal(
+                <button
+                  type="button"
+                  className="civic-pin-button"
+                  title={pin.label}
+                  aria-label={pin.label}
+                  aria-pressed={pin.id === selected}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelect(pin.id === selected ? "" : pin.id);
+                  }}
+                >
+                  <PinFace pin={pin} selected={pin.id === selected} plans={data.venuePlans} />
+                </button>,
+                s.host,
+                s.key,
+              )
+            : null;
         })}
         {tiles !== "loaded" && (
           <p className="civic-map-status" role="status">
             {tiles === "failed"
-              ? "The local outline could not load. Places remain available in the list."
-              : "Loading the local outline…"}
+              ? "The map could not load. Places remain available in the list."
+              : tiles === "outline"
+                ? "Showing a simplified outline; the detailed map could not load."
+                : "Loading the map…"}
           </p>
         )}
-        {active && popupHost && createPortal(<div className="venue-preview">
+        {near && here && (
+          <p className="civic-map-here">
+            <LocateFixed size={13} aria-hidden="true" /> Near {here}
+          </p>
+        )}
+        {variant === "full" && (
+          <button type="button" className="civic-map-locate-button" onClick={locate} disabled={location.status === "locating"} aria-label="Show my location on the map" title="Show my location on the map">
+            <LocateFixed size={18} />
+          </button>
+        )}
+        {active && preview.host && createPortal(<div className="venue-preview">
           <strong>{activeEvent?.title ?? active.entity?.name}</strong>
           <p>{activeEvent?.venue ?? active.entity?.subtitle}</p>
           {activeEvent && <p>{eventTime(activeEvent)}</p>}
@@ -375,13 +444,22 @@ export function CivicMap({
           {(data.venuePlans ?? []).filter(p => p.eventId !== activeEvent?.id && active.events?.some(e => e.id === p.eventId)).map(p => <button className="text-button" key={p.userId + p.eventId} onClick={() => setOccurrence(p.eventId)}>{p.name} · {p.status === "attending" ? "Going" : "Interested"} · {eventTime(active.events!.find(e => e.id === p.eventId)!)}</button>)}
           <button className="text-button" onClick={() => navigate(activeEvent ? "event/" + activeEvent.id : "entity/" + active.entity!.id)}>{activeEvent ? "View event" : "View details"}</button>
           <button className="text-button" onClick={() => onSelect("")}>Close preview</button>
-        </div>, popupHost)}
-        <p className="map-caption">Venue plans are shared intentions, never a person’s current location.</p>
+        </div>, preview.host)}
+      </div>
+      <p className="map-caption">
+        {variant === "full" && (
+          <>
+            <span className="hint-pointer">Drag to move · right-drag to tilt and turn · ⌘/Ctrl + scroll to zoom. </span>
+            <span className="hint-touch">Drag to move · pinch to zoom · two fingers to tilt and turn. </span>
+          </>
+        )}
+        Venue plans are shared intentions, never a person’s current location.
+      </p>
       </div>
       {variant === "full" && (
         <aside className="civic-map-side">
           <div className="civic-map-locate">
-            <button className="text-button" onClick={location.locate} disabled={location.status === "locating"}>
+            <button className="text-button" onClick={locate} disabled={location.status === "locating"}>
               <LocateFixed size={16} />
               {near ? "Using your location" : "Use my location"}
             </button>
@@ -389,13 +467,19 @@ export function CivicMap({
               {location.status === "locating"
                 ? "Finding your location…"
                 : near
-                  ? "Sorted by distance from you. Your location stays on this device."
+                  ? (here ? "You’re near " + here + ". " : "") +
+                    "Sorted by distance from you. Your location stays on this device; map tiles load from OpenFreeMap."
                   : location.status === "granted"
                     ? "You seem to be away from " + (locale?.shortName ?? "here") + ", so distances use its center."
                     : location.status === "denied" || location.status === "unavailable"
                       ? "Location is off. Distances use the center of " + (locale?.shortName ?? "your community") + "."
                       : "Distances use the center of " + (locale?.shortName ?? "your community") + ". Location is optional."}
             </p>
+            {location.status === "granted" && !near && (
+              <button className="text-button" onClick={() => navigate("communities")}>
+                Find the commons where you are
+              </button>
+            )}
           </div>
           {card && <div className="civic-map-card" key={selected}>{card}</div>}
           <h2 className="sr-only">Places on the map</h2>

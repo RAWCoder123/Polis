@@ -247,31 +247,6 @@
   color: #596a83;
   margin-top: 10px;
 }
-.polis-venue-pin {
-  background: var(--primary);
-  border: 3px solid white;
-  border-radius: 18px 18px 18px 4px;
-  box-shadow: 0 2px 8px #17233b45;
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font-size: 24px;
-}
-.polis-venue-pin.selected {
-  background: #17233b;
-  outline: 3px solid #8ba5ff;
-}
-.leaflet-container {
-  font-family: Arial, Helvetica, sans-serif;
-}
-.leaflet-control-zoom a {
-  width: 36px !important;
-  height: 36px !important;
-  line-height: 36px !important;
-}
-.leaflet-control-attribution {
-  font-size: 11px !important;
-}
 .event-empty {
   text-align: center;
   padding: 48px 24px;
@@ -664,10 +639,6 @@
   .community-event-card {
     transition: none;
   }
-  .leaflet-pan-anim .leaflet-tile,
-  .leaflet-zoom-animated {
-    transition: none !important;
-  }
 }
 /* Safari's native compact menu ignores padding unless its appearance is reset. */
 .event-discovery-toolbar select {
@@ -702,8 +673,8 @@
 .upcoming-row { flex-wrap: wrap; }
 .upcoming-row > .event-image { width: 100%; height: 138px; border-radius: 9px; margin-bottom: 10px; }
 .venue-map-frame { position: relative; }
-.venue-map, .civic-map-canvas { background: #eef2eb !important; }
-.map-fit { position: absolute; z-index: 500; top: 10px; right: 10px; min-height: 38px; font-size: 12px; }
+.venue-map, .civic-map-canvas { background: #f6f3ec !important; }
+.map-fit { position: absolute; z-index: 5; top: 10px; left: 10px; min-height: 38px; font-size: 12px; }
 .map-plan-faces { display: flex; position: absolute; bottom: -8px; left: 25px; white-space: nowrap; z-index: 2; }
 .map-plan-faces b { width: 29px; height: 29px; margin-left: -6px; display: grid; place-items: center; border-radius: 50%; background: #3659e3; color: white; border: 2px solid white; font: 600 10px/1 sans-serif; box-shadow: 0 1px 5px #17233b26; }
 .venue-preview { font-family: Arial, sans-serif; color: #17233b; }
@@ -711,9 +682,6 @@
 .venue-preview .btn { min-height: 40px; margin-top: 10px; }
 .venue-preview p { margin: 8px 0; line-height: 1.4; }
 .map-shared-plan { color: #3659e3; }
-.venue-pin-face { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border: 3px solid white; border-radius: 50%; background: #3659e3; color: white; box-shadow: 0 3px 8px #17233b33; }
-.polis-venue-pin { background: transparent !important; border: none !important; }
-.polis-venue-pin.selected .venue-pin-face { outline: 3px solid #91a5f2; }
 @media (max-width: 520px) { .map-fit { font-size: 11px; padding: 7px; } .venue-preview h3 { font-size: 17px; } }
 
 .venue-preview select { width: 100%; max-width: 100%; min-width: 0; font-size: 12px; }

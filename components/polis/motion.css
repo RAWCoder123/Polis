@@ -172,11 +172,10 @@ html[data-vt="morph"]::view-transition-old(root) {
 
 /* ---- Map ------------------------------------------------------------------- */
 
-/* Pins drop in on a spring, one after another. */
-.civic-map-canvas.motion .civic-pin-root {
-  display: inline-block;
-  animation: polis-pin-drop 0.82s var(--ease-spring-bouncy) both;
-  animation-delay: calc(min(var(--i, 0), 24) * 28ms);
+/* Pins drop in on a spring as bubbles open; MapLibre positions the marker
+   root with a transform, so the button inside it animates. */
+.polis-marker-root > button {
+  animation: polis-pin-drop 0.82s var(--ease-spring-bouncy) backwards;
   transform-origin: 50% 100%;
 }
 @keyframes polis-pin-drop {
@@ -247,7 +246,7 @@ html[data-vt="morph"]::view-transition-old(root) {
   .notification-bell > span,
   .skeleton-card i,
   .reveal-words .w,
-  .civic-map-canvas.motion .civic-pin-root,
+  .polis-marker-root > button,
   .civic-pin.selected::before,
   .civic-map-card > * {
     animation: none !important;
