@@ -211,3 +211,5 @@
 .priority-intro .metadata {display:flex;gap:7px;align-items:flex-start;}
 .priority-intro .metadata svg {flex-shrink:0;margin-top:3px;}
 @media(max-width:767px){.social-post .reaction{min-height:44px;font-size:12px;padding:10px 4px}.comment-actions{flex-wrap:wrap}.comment-actions button{min-height:44px;min-width:44px}.social-post .count-disclosure{min-height:44px;padding-block:10px}.priority-list .rank-controls .icon-btn{min-height:44px;min-width:44px}}
+/* The demo sidebar is fixed on wider screens; keep the fictional-content notice beside it. */
+.demo-page-notice{border-radius:0;margin-bottom:0}@media(min-width:768px){.demo-page-notice{margin-left:232px}}
