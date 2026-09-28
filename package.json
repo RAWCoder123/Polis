@@ -23,7 +23,8 @@
     "test:invitations-browser": "node scripts/verify-invitations-browser.mjs",
     "test:civic-browser": "node scripts/verify-civic-browser.mjs",
     "test:anywhere-browser": "node scripts/verify-anywhere-browser.mjs",
-    "test:motion-browser": "node scripts/verify-motion-browser.mjs"
+    "test:motion-browser": "node scripts/verify-motion-browser.mjs",
+    "test:milestone-browser": "node scripts/verify-milestone-browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

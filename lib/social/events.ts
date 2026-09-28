@@ -49,6 +49,13 @@ const https = z
   }, "Use an HTTPS link without credentials.");
 const optionalLink = z.union([https, z.literal("")]).default("");
 export const eventRecord = z.object({
+  campusId: z.string().max(100).default(""),
+  organizationName: z.string().trim().max(180).default(""),
+  scope: z.enum(["campus", "town"]).default("town"),
+  imageAlt: z.string().trim().max(300).default(""),
+  imageCredit: z.string().trim().max(300).default(""),
+  imageSourceUrl: optionalLink,
+  imageNote: z.string().trim().max(400).default(""),
   id: slug,
   seriesId: slug,
   title: z.string().trim().min(3).max(180),
@@ -141,6 +148,8 @@ export function distanceMiles(a: [number, number], b: [number, number]) {
   return 3958.8 * 2 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 export type EventFilters = {
+  scope?: string;
+  campusId?: string;
   q?: string;
   city?: string;
   period?: string;
@@ -184,6 +193,7 @@ export function discoverEvents(
   const city = (filters.city ?? preferences.city).trim().toLowerCase();
   const result = events
     .filter((e) => e.status === "published" && !eventExpired(e, now))
+    .filter(e => filters.scope === "campus" ? e.scope === "campus" && e.campusId === filters.campusId : filters.scope === "town" ? e.scope !== "campus" : true)
     .map((e) => ({
       event: e,
       distance:

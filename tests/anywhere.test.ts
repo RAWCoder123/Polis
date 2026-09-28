@@ -83,14 +83,29 @@ test("every community gets an honest civic scaffold the service accepts as subje
   assert.ok(catalogFor(s.communities.find((c) => c.id === "polis")).length === 0);
 });
 
-test("students found a campus community with their own domain; later students join it automatically", async () => {
-  const f = fixture({ founder: "fixture.a@umich.edu", classmate: "fixture.b@umich.edu", alum: "fixture@alumni.umich.edu", other: "fixture@gmail.com" });
+const michiganCampus = { action: "community.create" as const, kind: "campus" as const, university: "University of Michigan", city: "Ann Arbor", region: "Michigan", country: "US", latitude: 42.278, longitude: -83.7382, timezone: "America/Detroit" };
+
+test("an unverified university email can neither found nor join a campus", async () => {
+  const f = fixture({ founder: "fixture.a@umich.edu" });
+  const before = await f.snap("founder");
+  assert.equal(before.unclaimedCampusDomain, null);
+  assert.equal(before.eligibleCommunity, null);
+  await f.act("founder", { action: "account.create", name: "Founder", username: "founder_fx" });
+  await denied(f.act("founder", michiganCampus), 403);
+  assert.equal((await f.snap("founder")).community!.id, "polis");
+});
+
+test("students found a campus community with their own verified domain; later students join it automatically", async () => {
+  const f = fixture(
+    { founder: "fixture.a@umich.edu", classmate: "fixture.b@umich.edu", alum: "fixture@alumni.umich.edu", other: "fixture@gmail.com" },
+    { verifiedCampusEmail: true },
+  );
   const before = await f.snap("founder");
   assert.equal(before.unclaimedCampusDomain, "umich.edu");
   assert.equal(before.eligibleCommunity, null);
   await f.act("founder", { action: "account.create", name: "Founder", username: "founder_fx" });
   assert.equal((await f.snap("founder")).community!.id, "polis");
-  const campus = { action: "community.create" as const, kind: "campus" as const, university: "University of Michigan", city: "Ann Arbor", region: "Michigan", country: "US", latitude: 42.278, longitude: -83.7382, timezone: "America/Detroit" };
+  const campus = michiganCampus;
   await denied(f.act("founder", { ...campus, university: undefined }), 400);
   const made = await f.act("founder", campus);
   assert.equal(made.created, true);

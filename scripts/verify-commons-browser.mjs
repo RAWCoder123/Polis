@@ -70,7 +70,7 @@ try {
     await command(owner, { action: "community.manage", communityId: campus });
     await owner.page.goto(origin + "/#event-manager"); await owner.page.reload();
     await expect(owner.page.getByRole("heading", { name: "Events worth showing up for." })).toBeVisible();
-    await expect(owner.page.getByRole("button", { name: /Import .* checked pilot listings/ })).toHaveCount(campus === "ithaca" ? 1 : 0);
+    await expect(owner.page.getByRole("button", { name: /Import .* checked pilot listings/ })).toHaveCount(1);
     await owner.page.getByRole("button", { name: "Add an occurrence" }).click();
     await expect(owner.page.getByRole("dialog").getByRole("textbox", { name: "City", exact: true })).toHaveValue(campus === "uf" ? "Gainesville" : "Ithaca");
     await owner.page.keyboard.press("Escape");
@@ -83,12 +83,13 @@ try {
     }
     const [a, b, c] = people;
     await a.page.goto(origin + "/#commons");
-    await expect(a.page.getByRole("button", { name: "Question Ask your community" })).toBeVisible();
+    await expect(a.page.getByRole("button", { name: "Question", exact: true })).toBeVisible();
+    await a.page.getByText("Topics, groups & notifications", { exact: true }).click();
     const optin = a.page.getByRole("button", { name: "Enable in-app reply notifications" });
     // Wait for the opt-in to save: a second command while one is in flight is refused.
     if (await optin.isVisible()) { await optin.click(); await expect(optin).toHaveCount(0); }
     await command(b, { action: "preferences", replies: true, reactions: true, issues: false, events: false });
-    await a.page.getByRole("button", { name: "Question Ask your community" }).click();
+    await a.page.getByRole("button", { name: "Question", exact: true }).click();
     const dialog = a.page.getByRole("dialog");
     await dialog.getByRole("combobox", { name: "Subject", exact: true }).selectOption(topic);
     const text = "Local QA " + stamp + ": how could getting to campus be easier?";
@@ -130,10 +131,10 @@ try {
     await a.page.locator(".entity-events .entity-row").filter({ hasText: event.title }).click();
     await expect(a.page.getByRole("heading", { name: event.title, exact: true })).toBeVisible();
     await a.page.getByRole("button", { name: "Explore the related issue" }).click();
-    await a.page.route("https://tile.openstreetmap.org/**", route => route.abort());
+    await a.page.route("**/maps/*.geojson", route => route.abort());
     await a.page.getByRole("button", { name: "Explore the local map and event list" }).click();
     await expect(a.page.getByRole("textbox", { name: "Discovery city" })).toHaveValue(event.city);
-    await expect(a.page.getByText("Map tiles could not load. All events remain available in the list.", { exact: true })).toBeVisible();
+    await expect(a.page.getByText("The local outline could not load. Venues and the complete event list remain available.", { exact: true })).toBeVisible();
     await a.page.locator('.leaflet-marker-icon[title^="Synthetic venue"]').first().dispatchEvent("click"); // nearby sample listings can overlap this pin
     await expect(a.page).toHaveURL(new RegExp("selected=" + eventId));
     await a.page.getByRole("button", { name: "Use my location", exact: true }).click();
@@ -142,7 +143,7 @@ try {
     await a.page.getByRole("button", { name: "List", exact: true }).click();
     await expect(a.page.getByRole("region", { name: "Event venues map" })).toHaveCount(0);
     await a.page.goto(origin + "/#commons");
-    await a.page.locator(".commons-tabs").getByRole("button", { name: "Following", exact: true }).click();
+    await a.page.locator(".forum-filters").getByRole("button", { name: "Following", exact: true }).click();
     await expect(a.page.getByText(text, { exact: true })).toBeVisible();
     await a.page.setViewportSize({ width: 320, height: 740 }); await shot(a, campus + "-small-home");
     await a.page.setViewportSize({ width: 390, height: 844 });

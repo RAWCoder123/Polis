@@ -1,5 +1,30 @@
 # Source provenance and deployment
 
+## Current release handoff — September 27, 2026
+
+GitHub is the development source; Sites remains the existing host. PR #10
+(`codex/civic-milestone-review`) contains the consolidated PR #8 foundation and
+the reviewed campus civic milestone. PR #9 (`codex/polis-anywhere`) and Claude's
+motion work are separate candidates, not automatically included in that release.
+Merging the anywhere candidate must preserve the review's explicit verified-campus-email
+boundary rather than restore admission from an email string.
+
+Sites management and fresh repository credentials are available in Codex. The
+remaining publication blocker is the network: on September 27, the system resolver
+returned `128.253.129.105` for `git.chatgpt-team.site`, consistent with the Cornell
+blocking destination reported in Claude's audit, and an HTTPS connection timed
+out after eight seconds. An earlier authenticated Git read with a fresh scoped
+credential also timed out. No DNS override, security-warning bypass, alternate
+hosting origin, or tunnel was used.
+
+Minimum action: retry on a network that can reach the Sites source host, or have
+the network operator resolve the block. No plugin reinstall is indicated. Then
+synchronize the exact reviewed GitHub release to the existing Sites repository,
+package/save/deploy it, and verify the published revision and real accounts.
+GitHub pushes alone do not update the website, and no automatic integration has
+been configured. Sites still reports public version 2, updated September 17.
+The audience, database and runtime settings remain unchanged.
+
 ## Verified relationship at import
 
 The source was recovered from the existing Sites project, not reconstructed from a scraped page. The original application commit is `a414d45386b64f8ba99d88cb7dd0133f983a34e4`. Sites metadata inspected on 2026-09-13 reports version 1 at that commit and the existing URL:
@@ -34,6 +59,6 @@ When a later task explicitly authorizes publication:
 3. Build/package that exact source with the Sites workflow, including assets, Worker, manifest, and migrations. Save a version and deploy through the operation matching the existing audience.
 4. Verify deployment, trusted sign-in, migrations, and three-identity acceptance before claiming pilot readiness.
 
-The prior publication attempt encountered a network restriction reaching the Sites Git server, recorded in [VERIFICATION.md](VERIFICATION.md). This import does not retry or bypass it. GitHub development works independently.
+The import originally encountered a network restriction reaching the Sites Git server, recorded in [VERIFICATION.md](VERIFICATION.md). The current retry is recorded above. GitHub development works independently.
 
 Production needs server-only `POLIS_OWNER_EMAIL`, Sites authentication/access, and managed `DB`. No real runtime value belongs in `.env.example` or GitHub Actions. Hosting access and Polis invitations are separate gates; see [PILOT_SETUP.md](PILOT_SETUP.md).

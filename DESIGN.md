@@ -53,3 +53,9 @@ Motion follows the launch film and extends, not replaces, the system above. See 
 - **Curves.** smooth `cubic-bezier(.45,.05,.25,1)` for general UI; out `(.16,1,.3,1)` for arrivals; in `(.55,0,.85,.35)` for departures; in-out `(.65,0,.35,1)` for swipes; container `(.45,0,.15,1)` for card-to-page transforms. Springs are sampled into CSS `linear()`.
 - **Durations.** 0.18 s for touch feedback, 0.34–0.56 s for page changes, 0.74 s for container transforms, 0.6 s for phone back swipes.
 - **Rules.** The rail, header and tab bar never move during page changes. Only transform, opacity, clip-path and arrival height animate. A tap finishes a running transition. Reduced motion removes all of it.
+
+## Reviewed social milestone (September 27, 2026)
+
+Preserve the existing white/cobalt/navy system. Commons uses title-first rows, Local/National scopes, explicit Following and recency controls, and compact contribution buttons. Topics and introductory guidance sit below conversations on mobile. Existing tab routes remain compatible.
+
+Maps use bundled OSM-derived outlines, with ODbL attribution, original geographic venue coordinates, anchored previews and an independent list. Initials indicate permitted friends’ shared plans at event venues, never present location. Several occurrences at one venue remain individually selectable. Photos identify sourced events and verified officials; source credits are visible and missing images fall back to icons or initials.

@@ -11,7 +11,10 @@ import {
 // Real migration SQL and service code; only the D1 transport is adapted to SQLite.
 // Identities default to reserved example.test emails; `emails` overrides one to
 // exercise sign-in email-domain behavior.
-export function fixture(emails: Record<string, string> = {}, options: ServiceOptions = {}) {
+export function fixture(
+  emails: Record<string, string> = {},
+  { verifiedCampusEmail = false, ...options }: ServiceOptions & { verifiedCampusEmail?: boolean } = {},
+) {
   const raw = new DatabaseSync(":memory:");
   for (const file of readdirSync("drizzle")
     .filter((x) => x.endsWith(".sql"))
@@ -58,7 +61,7 @@ export function fixture(emails: Record<string, string> = {}, options: ServiceOpt
   const service = (id: string | null, email = (id && emails[id]) || id + "@example.test") =>
     socialService(
       db,
-      id ? { userId: id, email, displayName: id } : null,
+      id ? { userId: id, email, displayName: id, verifiedCampusEmail } : null,
       "owner@example.test",
       options,
     );

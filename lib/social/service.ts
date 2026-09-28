@@ -38,7 +38,10 @@ import {
   type CommunitySearchResult,
   type InvitationPreview,
 } from "./types.ts";
-export type Identity = { userId: string; email: string; displayName: string };
+// Campus admission needs an explicit assertion from an approved university
+// verification adapter. Sites currently supplies no such assertion; an email
+// string alone is insufficient. Never accept this flag in a client command.
+export type Identity = { userId: string; email: string; displayName: string; verifiedCampusEmail?: boolean };
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -370,6 +373,12 @@ export function socialService(
     const row = await one<PlaceCommunityRow>("SELECT * FROM place_communities WHERE domain=? AND status='active'", domain);
     return row ? communityFromRow(row) : undefined;
   };
+  // Email domains only associate a campus when the sign-in provider asserts the
+  // address is verified. Sites supplies no such assertion yet, so campuses are
+  // joined with invitation codes until an approved adapter provides one.
+  const verifiedCampusFor = async (who: Identity) =>
+    who.verifiedCampusEmail ? campusForEmail(who.email) : undefined;
+  const verifiedCampusDomain = (who: Identity) => (who.verifiedCampusEmail ? campusDomainOf(who.email) : null);
   const resolveCommunity = async (requested?: string | null) => {
     const profile = uid ? await one<{ activeCommunityId: string }>("SELECT activeCommunityId FROM profiles WHERE id=?", uid) : null;
     communityId = requested ?? profile?.activeCommunityId ?? defaultCommunityId;
@@ -485,16 +494,18 @@ export function socialService(
             uid,
           ),
           one<{ count: number; latest: string | null }>(
-            `SELECT COUNT(*) count,MAX(c.createdAt) latest FROM comments c WHERE c.postId=? AND c.deletedAt IS NULL AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?))`,
+            `SELECT COUNT(*) count,MAX(c.createdAt) latest FROM comments c WHERE c.postId=? AND c.deletedAt IS NULL AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?)) AND NOT EXISTS(SELECT 1 FROM mutes mu WHERE mu.ownerId=? AND mu.targetId=c.authorId)`,
             p.id,
+            uid,
             uid,
             uid,
           ),
           one("SELECT 1 FROM saves WHERE userId=? AND targetId=?", uid, p.id),
           one<{ count: number }>(
-            `SELECT COUNT(DISTINCT c.authorId) count FROM comments c WHERE c.postId=? AND c.deletedAt IS NULL AND c.authorId<>? AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?))`,
+            `SELECT COUNT(DISTINCT c.authorId) count FROM comments c WHERE c.postId=? AND c.deletedAt IS NULL AND c.authorId<>? AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?)) AND NOT EXISTS(SELECT 1 FROM mutes mu WHERE mu.ownerId=? AND mu.targetId=c.authorId)`,
             p.id,
             p.authorId,
+            uid,
             uid,
             uid,
           ),
@@ -529,14 +540,14 @@ export function socialService(
     const since = new Date(Date.now() - 14 * 86400000).toISOString();
     const notMuted = "NOT EXISTS(SELECT 1 FROM mutes WHERE ownerId=? AND targetId=p.authorId)";
     const replyVisible =
-      "c.deletedAt IS NULL AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?))";
+      "c.deletedAt IS NULL AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?)) AND NOT EXISTS(SELECT 1 FROM mutes mu WHERE mu.ownerId=? AND mu.targetId=c.authorId)";
     const recentPosts = await all<{ subjectId: string; authorId: string }>(
       `SELECT p.subjectId,p.authorId FROM posts p WHERE ${v.sql} AND p.audience<>'only_me' AND p.organizationId IS NULL AND ${notMuted} AND p.createdAt>=? LIMIT 1000`,
       ...v.args, uid, since,
     );
     const recentReplies = await all<{ subjectId: string; authorId: string }>(
       `SELECT p.subjectId,c.authorId FROM comments c JOIN posts p ON p.id=c.postId WHERE ${v.sql} AND p.audience<>'only_me' AND p.organizationId IS NULL AND ${notMuted} AND ${replyVisible} AND c.createdAt>=? LIMIT 3000`,
-      ...v.args, uid, uid, uid, since,
+      ...v.args, uid, uid, uid, uid, since,
     );
     const topics = new Map<string, { posts: number; replies: number; people: Set<string> }>();
     const topic = (id: string) => {
@@ -563,7 +574,7 @@ export function socialService(
           )),
           ...(await all<{ subjectId: string; authorId: string; position: string | null; createdAt: string; response: number }>(
             `SELECT p.subjectId,c.authorId,c.position,c.createdAt,0 response FROM comments c JOIN posts p ON p.id=c.postId WHERE ${v.sql} AND p.audience<>'only_me' AND p.organizationId IS NULL AND ${notMuted} AND ${replyVisible} AND p.subjectId IN (${marks})`,
-            ...v.args, uid, uid, uid, ...questionIds,
+            ...v.args, uid, uid, uid, uid, ...questionIds,
           )),
         ].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       : [];
@@ -601,8 +612,8 @@ export function socialService(
       return {
         ...emptySnapshot,
         status: "onboarding",
-        eligibleCommunity: (await campusForEmail(identity.email)) ?? null,
-        unclaimedCampusDomain: (await campusForEmail(identity.email)) ? null : campusDomainOf(identity.email),
+        eligibleCommunity: (await verifiedCampusFor(identity)) ?? null,
+        unclaimedCampusDomain: (await verifiedCampusFor(identity)) ? null : verifiedCampusDomain(identity),
         me: {
           id: uid,
           name: identity.displayName,
@@ -645,14 +656,13 @@ export function socialService(
       ...((scope === "campus") === !!currentCommunity!.campus ? ["community"] : []),
       ...(scope === "city" && communityId === defaultCommunityId ? Object.keys(itemById) : []),
       ...events
-        .filter((e) => (e.category === "campus_life") === (scope === "campus"))
+        .filter((e) => (e.scope === "campus" && e.campusId === communityId) === (scope === "campus"))
         .map((e) => e.id),
     ];
     const userFollows = await all<Snapshot["follows"][number]>(
       "SELECT * FROM follows WHERE userId=?",
       uid,
     );
-    const ranked = !params.get("post") && ["for_you", "trending"].includes(params.get("filter") ?? "");
     const activeSort = params.get("sort") === "active";
     const activitySql = `MAX(COALESCE(p.editedAt,p.createdAt),COALESCE((SELECT MAX(c.createdAt) FROM comments c WHERE c.postId=p.id AND c.deletedAt IS NULL AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?)) AND NOT EXISTS(SELECT 1 FROM mutes m WHERE m.ownerId=? AND m.targetId=c.authorId)),p.createdAt))`;
     let sql = `SELECT p.*,u.name,u.username,${activitySql} activitySort FROM posts p JOIN profiles u ON u.id=p.authorId WHERE ${v.sql}`;
@@ -746,84 +756,19 @@ export function socialService(
         );
       }
       const cursor = params.get("cursor");
-      if (cursor && !ranked) {
+      if (cursor) {
         const parts = cursor.split("|");
         if (parts.length !== 2) fail(400, "Invalid page cursor.");
         sql += activeSort ? " AND (activitySort<? OR (activitySort=? AND p.id<?))" : " AND (p.createdAt<? OR (p.createdAt=? AND p.id<?))";
         args.push(parts[0], parts[0], parts[1]);
       }
     }
-    let rows: Post[];
-    let nextCursor: string | null = null;
-    if (ranked) {
-      // Ranked feeds are a curated first page, not an infinite scroll. Activity
-      // counts distinct people, so a pile-on of reactions cannot dominate.
-      const windowDays = filter === "trending" ? 7 : 45;
-      const since = new Date(Date.now() - windowDays * 86400000).toISOString();
-      const rankedSql = sql.replace(
-        " activitySort FROM posts p",
-        " activitySort,(SELECT COUNT(DISTINCT c.authorId) FROM comments c WHERE c.postId=p.id AND c.deletedAt IS NULL AND c.authorId<>p.authorId AND c.createdAt>=?) repliers,(SELECT COUNT(*) FROM comments c WHERE c.postId=p.id AND c.deletedAt IS NULL AND c.createdAt>=?) recentReplies,(SELECT COUNT(DISTINCT r.userId) FROM reactions r WHERE r.postId=p.id AND r.userId<>p.authorId) reactors,EXISTS(SELECT 1 FROM conversation_follows cf WHERE cf.userId=? AND cf.postId=p.id) threadFollowed FROM posts p",
-      );
-      const candidates = await all<
-        Post & { repliers: number; recentReplies: number; reactors: number; threadFollowed: number }
-      >(
-        rankedSql + " ORDER BY activitySort DESC,p.id DESC LIMIT 200",
-        ...args.slice(0, 3),
-        since,
-        since,
-        uid,
-        ...args.slice(3),
-      );
-      const followed = new Set(userFollows.map((f) => f.issueId));
-      const friendIds = new Set(
-        (
-          await all<{ id: string }>(
-            "SELECT CASE WHEN a=? THEN b ELSE a END id FROM friendships WHERE status='accepted' AND (a=? OR b=?)",
-            uid,
-            uid,
-            uid,
-          )
-        ).map((r) => r.id),
-      );
-      const now = Date.now();
-      rows = candidates
-        .filter(
-          (c) =>
-            (c.activitySort ?? c.createdAt) >= since &&
-            (filter !== "trending" || c.repliers + c.reactors > 0),
-        )
-        .map((c) => {
-          const hours = Math.max(0, (now - Date.parse(c.activitySort ?? c.createdAt)) / 3600000);
-          const recency = 1 / (1 + hours / 36);
-          const activity = Math.log2(1 + c.repliers * 2 + c.recentReplies + c.reactors * 0.5);
-          const personal =
-            (followed.has(c.subjectId) || followed.has(c.issueId) || c.threadFollowed ? 1.5 : 0) +
-            (friendIds.has(c.authorId) ? 1 : 0);
-          return {
-            c,
-            score:
-              filter === "trending"
-                ? activity * (0.5 + recency)
-                : recency * 2 + activity + personal,
-          };
-        })
-        .sort((a, b) => b.score - a.score || b.c.createdAt.localeCompare(a.c.createdAt))
-        .slice(0, 20)
-        .map(({ c }) => {
-          const post: Partial<typeof c> = { ...c };
-          delete post.repliers;
-          delete post.recentReplies;
-          delete post.reactors;
-          delete post.threadFollowed;
-          return post as Post;
-        });
-    } else {
-      sql += activeSort ? " ORDER BY activitySort DESC,p.id DESC LIMIT 21" : " ORDER BY p.createdAt DESC,p.id DESC LIMIT 21";
-      rows = await all<Post>(sql, ...args);
-      if (postId && !rows.length) fail(404, "This conversation is unavailable.");
-      nextCursor =
-        rows.length > 20 ? (activeSort ? rows[19].activitySort : rows[19].createdAt) + "|" + rows[19].id : null;
-    }
+    sql += activeSort ? " ORDER BY activitySort DESC,p.id DESC LIMIT 21" : " ORDER BY p.createdAt DESC,p.id DESC LIMIT 21";
+    const rows = await all<Post>(sql, ...args);
+    if (postId && !rows.length) fail(404, "This conversation is unavailable.");
+    const nextCursor = rows.length > 20
+      ? (activeSort ? rows[19].activitySort : rows[19].createdAt) + "|" + rows[19].id
+      : null;
     const people = await all<Person>(
       `SELECT p.*,CASE WHEN f.status='accepted' THEN 'friends' WHEN f.requester=? THEN 'outgoing' WHEN f.status='pending' THEN 'incoming' ELSE 'none' END relationship,EXISTS(SELECT 1 FROM mutes WHERE ownerId=? AND targetId=p.id) muted,EXISTS(SELECT 1 FROM blocks WHERE ownerId=? AND targetId=p.id) blocked FROM profiles p JOIN pilot_memberships m ON m.userId=p.id LEFT JOIN friendships f ON (f.a=? AND f.b=p.id) OR (f.b=? AND f.a=p.id) WHERE p.id<>? AND m.communityId=? AND NOT EXISTS(SELECT 1 FROM blocks b WHERE b.ownerId=p.id AND b.targetId=?) ORDER BY p.name`,
       uid,
@@ -969,9 +914,9 @@ export function socialService(
       `SELECT l.*,u.name FROM lists l JOIN posts p ON p.id=l.postId JOIN profiles u ON u.id=l.userId WHERE ${v.sql} ORDER BY p.createdAt DESC LIMIT 100`,
       ...v.args,
     );
-    const commentWhere = `c.postId=? AND c.deletedAt IS NULL AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?))`;
+    const commentWhere = `c.postId=? AND c.deletedAt IS NULL AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?)) AND NOT EXISTS(SELECT 1 FROM mutes mu WHERE mu.ownerId=? AND mu.targetId=c.authorId)`;
     let commentAfter = "";
-    const commentArgs: unknown[] = [postId, uid, uid];
+    const commentArgs: unknown[] = [postId, uid, uid, uid];
     if (params.get("commentsAfter")) {
       const parts = params.get("commentsAfter")!.split("|");
       if (parts.length !== 2) fail(400, "Invalid reply cursor.");
@@ -994,6 +939,7 @@ export function socialService(
       const extra = await all<NonNullable<Snapshot["comments"]>[number]>(
         `SELECT c.*,u.name FROM comments c JOIN profiles u ON u.id=c.authorId WHERE ${commentWhere} AND (c.id=? OR c.id=(SELECT parentId FROM comments WHERE id=? AND postId=?))`,
         postId,
+        uid,
         uid,
         uid,
         target,
@@ -1034,7 +980,7 @@ export function socialService(
           }
         : undefined;
     const memberOf = (await all<{ communityId: string }>("SELECT communityId FROM pilot_memberships WHERE userId=?", uid)).map((m) => m.communityId);
-    const emailCampus = await campusForEmail(identity.email);
+    const emailCampus = await verifiedCampusFor(identity);
     const locale = localeOf(currentCommunity);
     // A saved discovery city only applies where that city has listings; otherwise
     // each community starts from its own city rather than another's.
@@ -1048,7 +994,7 @@ export function socialService(
     );
     return {
       eligibleCommunity: emailCampus && !memberOf.includes(emailCampus.id) ? emailCampus : null,
-      unclaimedCampusDomain: emailCampus ? null : campusDomainOf(identity.email),
+      unclaimedCampusDomain: emailCampus ? null : verifiedCampusDomain(identity),
       places: currentPlaces,
       commons: params.get("commons") ? await commonsSummary(v, catalog) : undefined,
       nationalJoined,
@@ -1084,6 +1030,7 @@ export function socialService(
         uid,
       )).filter((p) => findEntity(p.issueId)?.kind === "issue"),
       follows: follows.filter((f) => !!findEntity(f.issueId) || (communityId === defaultCommunityId && !!issueFor(f.issueId))),
+      venuePlans: plans.filter(p => p.userId !== uid && people.some(u => u.id === p.userId && u.relationship === "friends" && !u.blocked && !u.muted) && p.audience !== "only_me" && events.some(e => e.id === p.eventId && e.status === "published" && !eventExpired(e))).map(({ userId, name, eventId, status }) => ({ userId, name, eventId, status })),
       plans: plans.filter(
         (p) =>
           (p.userId === uid || visibleUsers.includes(p.userId)) &&
@@ -1263,9 +1210,9 @@ export function socialService(
     };
     if (data.action === "account.create") {
       const existing = await one<Person>("SELECT * FROM profiles WHERE id=?", uid);
-      // The trusted sign-in email, never a submitted field, selects a campus.
+      // Only a verified sign-in email, never a submitted field, selects a campus.
       // Association is community membership, not student-status verification.
-      const campus = await campusForEmail(identity!.email);
+      const campus = await verifiedCampusFor(identity!);
       if (!existing) {
         if (await one("SELECT 1 FROM profiles WHERE username=? AND id<>?", data.username, uid)) fail(409, "That username is taken. Choose another one.");
         add("INSERT INTO profiles(id,name,username,communityLabel,activeCommunityId,createdAt) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING", uid, data.name, data.username, campus?.locationLabel ?? "", campus?.id ?? openCommunityId, now);
@@ -1285,10 +1232,10 @@ export function socialService(
       );
       let target: PilotCommunity | null = null;
       if (data.kind === "campus") {
-        // Only the member's own plain institutional domain can found a campus.
-        const domain = campusDomainOf(identity!.email);
-        if (!domain) fail(403, "Sign in with your university email (for example name@school.edu) to start its campus community.");
-        const existing = await campusForEmail(identity!.email);
+        // Only the member's own verified institutional domain can found or join a campus.
+        const domain = verifiedCampusDomain(identity!);
+        if (!domain) fail(403, "Starting a campus community needs a verified university email, which sign-in does not provide yet. Start your town's commons or use an invitation code.");
+        const existing = await verifiedCampusFor(identity!);
         if (existing) target = existing;
         else if (!data.university) fail(400, "Enter your university's name.");
       } else {
@@ -1325,7 +1272,7 @@ export function socialService(
           Math.round(data.latitude * 10000) / 10000,
           Math.round(data.longitude * 10000) / 10000,
           data.timezone,
-          data.kind === "campus" ? campusDomainOf(identity!.email) : null,
+          data.kind === "campus" ? verifiedCampusDomain(identity!) : null,
           data.kind === "campus" ? data.university! : null,
           uid,
           now,
@@ -1499,10 +1446,10 @@ export function socialService(
           const target = await communityRecord(data.communityId);
           if (!target?.campus && !target?.locality) fail(404, "This community is unavailable.");
           // City and town communities are open to anyone and never assert
-          // residence. Campus admission comes from the trusted email domain,
-          // never from location or submitted text; otherwise use a code.
-          if (target!.campus && (await campusForEmail(identity!.email))?.id !== target!.id)
-            fail(403, "Use your " + target!.campus!.university + " email or an invitation code to join.");
+          // residence. Campus admission needs a verified university email from
+          // an approved sign-in adapter, never location or submitted text.
+          if (target!.campus && (await verifiedCampusFor(identity!))?.id !== target!.id)
+            fail(403, "Join " + target!.campus!.university + " with a community invitation code. University email verification is not connected yet.");
           add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) SELECT ?,?,'member' WHERE NOT EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", uid, target!.id, uid, target!.id);
           add("UPDATE profiles SET activeCommunityId=? WHERE id=?", target!.id, uid);
           result = { ok: true, communityId: target!.id };
@@ -1575,6 +1522,8 @@ export function socialService(
             uid, communityId,
           );
           const e = data.event;
+          if (e.campusId && e.campusId !== communityId) fail(400, "Event campus must match the community being curated.");
+          if (e.scope === "campus" && e.campusId !== communityId) fail(400, "Select this community as the event campus.");
           if (e.endsAt && e.endsAt <= e.startsAt)
             fail(400, "End time must follow the start.");
           if ((e.latitude === null) !== (e.longitude === null))

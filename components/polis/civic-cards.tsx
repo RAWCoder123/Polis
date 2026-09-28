@@ -114,6 +114,7 @@ export function EntityVisual({
       <img
         className={"entity-visual photo " + size + (entity.kind === "official" ? " round" : "")}
         src={entity.imageUrl}
+        style={{ objectPosition: entity.imagePosition ?? "center" }}
         alt={entity.imageAlt ?? ""}
         loading="lazy"
         referrerPolicy="no-referrer"
@@ -154,7 +155,7 @@ export function KindLine({ entity }: { entity: CivicEntity }) {
   return (
     <span className="entity-kind">
       {entityKinds[entity.kind].label}
-      {entity.scope === "campus" ? " · Campus" : " · Local"}
+      {entity.scope === "campus" ? " · Campus" : entity.scope === "national" ? " · National" : " · Local"}
       {entity.sample && <span className="sample-tag">Sample</span>}
     </span>
   );

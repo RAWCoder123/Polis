@@ -120,7 +120,8 @@ export default function SocialApp() {
   const params =
     view === "commons" ? commonsParams(tab, exploreParams) : new URLSearchParams({ filter: "all" });
   if (view === "home") {
-    params.set("filter", "for_you");
+    params.set("filter", "all");
+    params.set("sort", "active");
     params.set("commons", "1");
   }
   if (view === "explore" && !id) params.set("commons", "1");
@@ -134,7 +135,7 @@ export default function SocialApp() {
     if (query) params.set("q", query);
   }
   if (view === "commons" && searchQuery) params.set("q", searchQuery);
-  if (exploreParams.has("community") && ["post", "list", "profile", "official", "news", "event"].includes(view)) params.set("community", exploreParams.get("community")!);
+  if (exploreParams.has("community") && ["post", "list", "profile", "official", "news", "event", "entity"].includes(view)) params.set("community", exploreParams.get("community")!);
   if (view === "post" || view === "list") params.set("post", id ?? "");
   if (view === "post" && commentId) params.set("comment", commentId);
   if (view === "issue") params.set("issue", id ?? "");
@@ -220,12 +221,13 @@ export default function SocialApp() {
   const scrollPositions = useRef(new Map<string, number>());
   const restoreLocation = useRef("");
   const committedLocation = useRef(browserLocation);
+  const replyRequested = exploreParams.get("reply") === "1";
   useLayoutEffect(() => {
     committedLocation.current = browserLocation;
     restoreLocation.current = browserLocation;
     // A view already on screen (returning to it) is restored before the page
     // transition captures it, so it slides back in at the place you left.
-    if (pending && data.posts.length && !commentId && exploreParams.get("reply") !== "1") {
+    if (pending && data.posts.length && !commentId && !replyRequested) {
       const top = scrollPositions.current.get(browserLocation);
       if (top) window.scrollTo({ top, behavior: "instant" });
       restoreLocation.current = "";
@@ -240,20 +242,25 @@ export default function SocialApp() {
   }, []);
   useEffect(() => {
     if (loading || restoreLocation.current !== browserLocation) return;
-    restoreLocation.current = "";
     const frame = requestAnimationFrame(() => {
-      if (view === "post" && exploreParams.get("reply") === "1") {
-        document.querySelector<HTMLTextAreaElement>("#discussion-reply textarea")?.focus();
+      if (view === "post" && replyRequested) {
+        const input = document.querySelector<HTMLTextAreaElement>("#discussion-reply textarea");
+        if (!input) return;
+        input.focus();
       } else if (!commentId) window.scrollTo({ top: scrollPositions.current.get(browserLocation) ?? 0, behavior: "instant" });
+      // Consume only after the frame runs. A loading render can cancel a frame
+      // before the thread mounts; its next ready render must retry restoration.
+      restoreLocation.current = "";
     });
     return () => cancelAnimationFrame(frame);
-  }, [browserLocation, loading, view, commentId, exploreParams]);
+  }, [browserLocation, loading, view, commentId, replyRequested, data.posts]);
   function navigate(next: string, options: { preserveScroll?: boolean } = {}) {
     const destination = new URL(next, "https://polis.invalid/");
-    if (["post", "list", "profile", "event", "official", "news"].includes(destination.pathname.split("/")[1]) && data.community && !destination.searchParams.has("community")) {
+    if (["post", "list", "profile", "event", "official", "news", "entity", "topic"].includes(destination.pathname.split("/")[1]) && data.community && !destination.searchParams.has("community")) {
       destination.searchParams.set("community", data.community.id);
       next = destination.pathname.slice(1) + destination.search;
     }
+    if (destination.pathname.slice(1) === route) options = { ...options, preserveScroll: true };
     scrollPositions.current.set(location.href, window.scrollY);
     if (options.preserveScroll) scrollPositions.current.set(location.origin + location.pathname + location.search + "#" + next, window.scrollY);
     if (location.hash === "#" + next) {
@@ -273,8 +280,11 @@ export default function SocialApp() {
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
   function compose(o: ComposeOptions = {}) {
+    if (view === "commons" && tab === "national" && exploreParams.get("scope") === "polis" && !data.nationalJoined) {
+      toast.error("Join Across Polis before starting a wider conversation."); return;
+    }
     if (data.status !== "ready") {
-      location.href = signin;
+      location.assign(signin);
       return;
     }
     setComposer({
@@ -289,7 +299,7 @@ export default function SocialApp() {
   // The bridge from a place, office or event into The Commons.
   function discuss(entity: CivicEntity) {
     if (entity.kind === "question") navigate(entityRoute(entity.id));
-    else compose({ subjectId: entity.id, kind: "debate", audience: "community", coverage: "local" });
+    else compose({ subjectId: entity.id, kind: "debate", audience: "community", coverage: entity.scope === "national" ? "national" : "local" });
   }
   function discussEvent(event: CommunityEvent) {
     compose({ subjectId: event.id, kind: "question", audience: "community", coverage: "local" });
@@ -662,7 +672,7 @@ export default function SocialApp() {
             ) : (
               <>
                 {view === "home" && (
-                  <HomeDashboard data={data} run={run} navigate={navigate} discuss={discuss} discussEvent={discussEvent}>
+                  <HomeDashboard selected={exploreParams.get("selected") ?? ""} data={data} run={run} navigate={navigate} discuss={discuss} discussEvent={discussEvent}>
                     {data.eligibleCommunity && (
                       <div className="campus-eligible">
                         <GraduationCap size={20} aria-hidden="true" />

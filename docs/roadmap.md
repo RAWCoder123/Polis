@@ -28,12 +28,15 @@ These describe the source implementation. Sites reports public version 2; later 
 - Curator listing lifecycle, member suggestion queue, existing owner reports, additive import of 17 organizer-verified occurrences.
 - Privacy, date/filter, duplicate, transactional cancellation and three-session HTTP regression checks. See [event pilot setup](event-pilot.md) and [source record](event-sources.md).
 
-## Campus Commons and civic map additions
+## Reviewed community-platform candidate (September 27)
 
-- Home dashboard (map preview, Commons highlights, today and this week, upcoming, people & institutions) and a dedicated Commons with For You, Campus, Local, National, Trending and Following.
-- Campus configuration with exact email-domain association for Cornell and UF (community membership, not student verification), memorable and non-expiring invitation codes.
-- Civic catalog of offices, institutions, buildings, places, organizations, meetings, voting, sample proposals, briefs and structured starter questions; live typed map with compact cards and a Commons bridge; reusable entity cards and pages; unified search; guidelines; optional tab-local device location.
-- Reply perspectives, four reactions and participant counts; trending by distinct people. See [campus Commons and civic map](campus-civic-map.md).
+- Retains Claude's Home dashboard, reusable civic cards, entity pages, search, structured questions and additive Commons migration.
+- Compact title-led Local / National discussions with New, Recently active and Following; private campus threads and explicit Across Polis discussions remain separate.
+- Campus/town event associations, organizer-sourced photography, six additional dated campus/town listings, four real official portraits with new IDs, and one attributed national source note.
+- Bundled OSM outlines replace external tiles. Venue icons show only server-permitted friends' plans and distinguish dated occurrences. Home pins open in place; browser Back restores discovery filters and scroll.
+- Campus admission requires a code until an approved provider supplies verified university-email claims. An email string or editable location alone cannot grant membership.
+
+See [Claude review and milestone evidence](claude-review-and-milestone.md) for assessment, changes, setup and the exact release gate. The source passes local synthetic-account verification; it is not yet published.
 
 ## Polis anywhere additions
 
@@ -43,6 +46,8 @@ These describe the source implementation. Sites reports public version 2; later 
 
 ## Known gaps
 
+Sites management remains available, but its source host timed out on September 27. Version 2 remains live. The exact reviewed source and pending migrations must reach Sites before three real hosted identities can verify invitations, privacy, replies and plan persistence. Cornell release is gated on that acceptance; UF follows afterward.
+
 The September 27 motion candidate is locally verified only. View Transitions need Chrome/Edge 111+, Safari 18+ or Firefox 144+; other browsers change views instantly. Real-device swipe-back, a screen-reader pass on transitions, and hosted performance remain untested. See [motion](motion.md).
 
 The September 27 anywhere candidate is locally verified only:
@@ -51,10 +56,11 @@ The September 27 anywhere candidate is locally verified only:
 - Founder-created communities have no community-level moderators, rename, merge or archive UI; reports go to the pilot owner.
 - Non-US civic structure is generic.
 - Town membership does not verify residence.
+- Campus founding and email-domain association require a verified-email assertion that Sites does not supply yet, so campuses are joined with invitation codes.
 
-The civic catalog names offices, not officeholders, and has no licensed headshots or building photos yet; a checked source is required before adding them. Campus sample proposals, briefs, questions and event listings are labeled Sample. UF has no checked event bundle. Email-domain association awaits hosted confirmation that Sites forwards only verified emails.
+Apart from four reviewed officials with official portraits, the civic catalog names offices rather than officeholders; a checked source is required before adding more. Campus sample proposals, briefs, questions and event listings are labeled Sample. UF has no checked event bundle.
 
-The September 26 Commons candidate adds Cornell/Ithaca and UF/Gainesville scopes, Question/Debate/Update conversations, thread follows, opt-in notifications for new accounts, four sourced topic documents, and private tester-circle spaces using existing posts/replies and secure reusable codes. Six local browser identities and the service suite verify the two-campus loop. See [Commons pilot](commons-pilot.md) for exact migrations, source coverage, verification, rollout and rollback. Sites publication remains blocked by connectivity to its source server; real hosted multi-user acceptance has not been exercised. UF has no verified upcoming-event bundle. Campus SSO/email verification, licensed map/official imagery, richer civic-map subjects and retention evidence remain explicit follow-ons. Existing account signup is preserved; protected campus admission still requires a matching invitation.
+Both cohorts now have at least two checked campus and two checked town occurrences as of September 27. Coverage is date-sensitive and needs curator refresh before invitations. Some listings have no public coordinates and remain list-only. Existing civic sample proposals, briefs and starter questions stay labeled Sample. The four real officials have source credits; no image licensing guarantee is implied. University SSO/email verification and a broad automated news/content pipeline remain outside this milestone.
 
 The open-signup candidate separates normal profile creation in Polis commons from optional university/organization codes. It preserves existing private-community memberships and the trusted Sites identity boundary. Direct Google-only sessions and email/password authentication owned by Polis remain unimplemented; email/Google use OpenAI's existing login. Source and local verification are documented in [open signup](open-signup.md); hosted acceptance remains pending.
 
@@ -70,7 +76,7 @@ The local social-cycle browser journey now passes with independent synthetic ses
 - Three isolated ChatGPT identities, invited site access, and production D1/authentication have not been exercised together.
 - GitHub does not deploy production. Sites source synchronization and saved-version deployment are separate. A network restriction blocked the first publication attempt; Sites version 2 (source `0c42b64`) deployed on 2026-09-17, and every later revision in this repository remains undeployed until a new authorized Sites publication.
 - GitHub Actions is not active: the available integrations lack permission to write workflow files. The reviewed workflow remains in `docs/ci.yml`; local checks are the current verification evidence.
-- The demo map remains schematic; the new map uses supplied coordinates, but live basemap access was blocked during local testing. Real-device pinch gestures, a full accessibility audit, load testing, and production migration/restore drills remain.
+- The original demo map remains schematic. The new social map uses supplied venue coordinates and locally bundled attributed outlines with a list alternative. Real-device pinch gestures, a full assistive-technology audit, load testing and production migration/restore drills remain.
 - No automated metric dashboard or retention/deletion scheduler exists. Agree operational retention before a live pilot.
 - Seven inherited lint warnings remain in original MVP components; address them in focused maintenance work. Organizer images intentionally use a native element with an explicit lint exemption.
 

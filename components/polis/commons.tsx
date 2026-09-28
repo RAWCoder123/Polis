@@ -28,20 +28,20 @@ export const commonsTabs: {
   campusOnly?: boolean;
   sortable?: boolean;
 }[] = [
-  { id: "for-you", label: "For You", filter: "for_you" },
+  { id: "for-you", label: "Recent", filter: "all", sortable: true },
   { id: "campus", label: "Campus", filter: "campus", campusOnly: true, sortable: true },
-  { id: "local", label: "Local", filter: "city", campusOnly: true, sortable: true },
-  { id: "national", label: "National", filter: "community", sortable: true },
-  { id: "trending", label: "Trending", filter: "trending" },
+  { id: "local", label: "Local", filter: "all", sortable: true },
+  { id: "national", label: "National", filter: "all", sortable: true },
+
   { id: "following", label: "Following", filter: "followed", sortable: true },
 ];
 export const commonsTab = (id?: string): CommonsTab =>
-  commonsTabs.some((t) => t.id === id) ? (id as CommonsTab) : "for-you";
+  commonsTabs.some((t) => t.id === id) ? (id as CommonsTab) : "local";
 // Query parameters for a Commons tab. Campus and Local are local coverage by
 // subject; National keeps Codex's campus / Across Polis scope.
 export function commonsParams(tab: CommonsTab, hash: URLSearchParams) {
-  const t = commonsTabs.find((x) => x.id === tab)!;
-  const p = new URLSearchParams({ filter: t.filter, commons: "1" });
+  const t = commonsTabs.find((x) => x.id === tab) ?? commonsTabs.find(x => x.id === "local")!;
+  const p = new URLSearchParams({ filter: hash.get("filter") === "followed" ? "followed" : hash.get("filter") === "all" ? "all" : t.filter, commons: "1" });
   if (tab === "campus" || tab === "local") p.set("coverage", "local");
   if (tab === "national") {
     p.set("coverage", "national");
@@ -138,19 +138,21 @@ export function CommonsIntro({
   navigate,
   run,
   coverage = "local",
+  extrasOnly = false,
 }: {
   data: Snapshot;
   compose: (o: ComposeOptions) => void;
   navigate: Navigate;
   run: Run;
   coverage?: "local" | "national";
+  extrasOnly?: boolean;
 }) {
   const topics = topicsFor(data.community?.id ?? "");
   const start = (kind: ComposeOptions["kind"]) =>
     compose({ kind, subjectId: "community", audience: "community", coverage });
   return (
     <section className="commons-intro">
-      <div className="commons-formats">
+      {!extrasOnly && <div className="commons-formats">
         <button onClick={() => start("question")}>
           <MessageCircle size={20} />
           <strong>Question</strong>
@@ -166,8 +168,8 @@ export function CommonsIntro({
           <strong>Update</strong>
           <span>Share a sourced development</span>
         </button>
-      </div>
-      {topics.length > 0 && (
+      </div>}
+      {extrasOnly && topics.length > 0 && (
         <div className="commons-topics" aria-label="Local topics">
           {topics.map((t) => (
             <button key={t.id} className="btn secondary small-btn" onClick={() => navigate(entityRoute(t.id))}>
@@ -177,7 +179,7 @@ export function CommonsIntro({
           ))}
         </div>
       )}
-      <div className="commons-links">
+      {extrasOnly && <div className="commons-links">
       {data.organizations?.map((o) => (
         <button
           key={o.id}
@@ -204,7 +206,7 @@ export function CommonsIntro({
           <Bell size={16} /> Enable in-app reply notifications
         </button>
       )}
-      </div>
+      </div>}
     </section>
   );
 }
@@ -253,15 +255,13 @@ export function CommonsView({
 }) {
   const campus = data.community?.campus;
   const locale = localeOf(data.community);
-  // Campus appears for university communities; Local for any located community.
-  const tabs = commonsTabs.filter((t) => (t.id === "campus" ? !!campus : t.id === "local" ? !!locale : true));
+  const tabs = commonsTabs.filter((t) => t.id === "local" || t.id === "national");
   const current = commonsTabs.find((t) => t.id === tab)!;
   const scope = tab === "campus" ? "campus" : tab === "local" ? "local" : undefined;
   const questions = ["for-you", "campus", "local"].includes(tab) ? rankedQuestions(data, scope).slice(0, 2) : [];
   const place = locale?.shortName ?? data.community?.name ?? "your community";
   const nationalScope = params.get("scope") === "polis" ? "polis" : "campus";
-  // On a busy day conversations come first; when it is quiet, questions lead.
-  const busyFeed = data.posts.length >= 3;
+  // Member conversations precede optional starter questions.
   const openQuestions = questions.length > 0 && (
     <section className="commons-questions" aria-label="Starter questions">
       <h2>
@@ -285,20 +285,16 @@ export function CommonsView({
         <p className="social-section-label">THE COMMONS · {(data.community?.name ?? "").toUpperCase()}</p>
         <h1>What {place} is talking about.</h1>
         <p>
-          Questions, debates and sourced updates about real places, issues and decisions
-          {campus ? " on campus and around " + campus.city : locale ? " around " + locale.city : ""}. Disagree with ideas, not people.{" "}
-          <button className="text-button inline" onClick={() => navigate("guidelines")}>
-            <ShieldCheck size={14} /> Commons guidelines
-          </button>
+          Local life. National questions. Your community’s perspectives.
         </p>
       </header>
-      <CommonsIntro data={data} compose={compose} navigate={navigate} run={run} coverage={tab === "national" ? "national" : "local"} />
+      {!(tab === "national" && nationalScope === "polis" && !data.nationalJoined) && <CommonsIntro data={data} compose={compose} navigate={navigate} run={run} coverage={tab === "national" ? "national" : "local"} />}
       <nav className="social-tabs commons-tabs" aria-label="Commons sections">
         {tabs.map((t) => (
           <button
             key={t.id}
-            aria-current={t.id === tab ? "page" : undefined}
-            className={t.id === tab ? "active" : ""}
+            aria-current={(tab === "national" ? t.id === "national" : t.id === "local") ? "page" : undefined}
+            className={(tab === "national" ? t.id === "national" : t.id === "local") ? "active" : ""}
             onClick={() => navigate("commons/" + t.id)}
           >
             {t.label}
@@ -324,17 +320,18 @@ export function CommonsView({
       )}
       {current.sortable && (
         <div className="forum-filters" aria-label="Conversation order">
-          <button aria-pressed={params.get("sort") !== "active"} onClick={() => update("sort", "new")}>
+          <button aria-pressed={params.get("sort") !== "active" && params.get("filter") !== "followed" && tab !== "following"} onClick={() => navigate("commons/" + tab + "?" + new URLSearchParams({ ...Object.fromEntries(params), sort: "new", filter: "all" }))}>
             New
           </button>
-          <button aria-pressed={params.get("sort") === "active"} onClick={() => update("sort", "active")}>
+          <button aria-pressed={params.get("sort") === "active" && params.get("filter") !== "followed" && tab !== "following"} onClick={() => navigate("commons/" + tab + "?" + new URLSearchParams({ ...Object.fromEntries(params), sort: "active", filter: "all" }))}>
             Recently active
           </button>
+          <button aria-pressed={params.get("filter") === "followed" || tab === "following"} onClick={() => update("filter", "followed")}>Following</button>
         </div>
       )}
       <p className="feed-context">
         {tab === "for-you"
-          ? "Recent conversations ranked by what you follow, your friends and how many people are taking part."
+          ? "Recent visible conversations, newest first."
           : tab === "campus"
             ? "About " + (campus?.shortName ?? "campus") + ": buildings, offices, student government and campus life."
             : tab === "local"
@@ -346,7 +343,6 @@ export function CommonsView({
                   : "Threads you follow, topics and places you follow, and your friends."}
       </p>
       {tab === "trending" && <TrendingTopics data={data} navigate={navigate} />}
-      {!busyFeed && openQuestions}
       {tab === "national" && nationalScope === "polis" && !data.nationalJoined ? (
         <section className="commons-background">
           <h2>Join the wider conversation</h2>
@@ -361,7 +357,9 @@ export function CommonsView({
       ) : (
         children
       )}
-      {busyFeed && openQuestions}
+      <section className="commons-source-shelf"><h2>{tab === "national" ? "National source notes" : "Local source notes"}</h2><p className="metadata">Curator-checked background, separate from member opinions.</p>{entitiesFor(data.community?.id ?? "").filter(e => !e.sample && (tab === "national" ? e.scope === "national" && e.kind === "news" : !!e.background)).slice(0, 3).map(e => <button key={e.id} className="entity-row" onClick={() => navigate(entityRoute(e.id))}><FileText size={20}/><span><strong>{e.name}</strong><small>{e.sourceLabel} · Checked {e.checkedAt ?? e.background?.checkedAt}</small></span><ArrowUpRight size={16}/></button>)}</section>
+      {openQuestions}
+      <details className="commons-extras"><summary>Topics, groups & notifications</summary><CommonsIntro data={data} compose={compose} navigate={navigate} run={run} extrasOnly /><button className="text-button" onClick={() => navigate("guidelines")}><ShieldCheck size={14} /> Commons guidelines</button></details>
       <p className="metadata commons-footnote">
         Conversations within {data.community?.name}. Participation does not represent campus opinion, and campus
         membership does not verify student status.

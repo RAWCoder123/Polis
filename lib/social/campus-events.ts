@@ -1,5 +1,6 @@
 import type { CommunityEvent } from "./types.ts";
 import { officialEvents } from "./official-events.ts";
+import { verifiedCampusEvents } from "./verified-campus-events.ts";
 
 // Sample listings let curators exercise a campus before organizer-verified
 // occurrences are collected. Every record is marked `sample` and its copy says
@@ -289,6 +290,9 @@ export const cornellSampleEvents: CommunityEvent[] = [
 const samples: Record<string, CommunityEvent[]> = { ithaca: cornellSampleEvents, uf: ufSampleEvents };
 export const sampleEventsFor = (communityId: string) => samples[communityId] ?? [];
 // Everything importable into a community, checked listings first.
-export function curatedEventsFor(communityId: string): CommunityEvent[] {
-  return [...(communityId === "ithaca" ? officialEvents : []), ...sampleEventsFor(communityId)];
+export function checkedEventsFor(communityId: string): CommunityEvent[] {
+  const legacy = communityId === "ithaca" ? officialEvents.map(e => ({ ...e, scope: e.organizer === "Cornell Botanic Gardens" ? "campus" as const : "town" as const, campusId: e.organizer === "Cornell Botanic Gardens" ? "ithaca" : "", organizationName: e.organizer, imageCredit: e.imageUrl ? e.organizer : "", imageSourceUrl: e.sourceUrl, imageAlt: e.imageUrl ? e.title + " · organizer image" : "" })) : [];
+  return [...legacy, ...verifiedCampusEvents.filter(e => e.city === (communityId === "ithaca" ? "Ithaca" : communityId === "uf" ? "Gainesville" : ""))];
 }
+// Curator import defaults to sourced records. Fiction remains a separate test bundle.
+export const curatedEventsFor = checkedEventsFor;
