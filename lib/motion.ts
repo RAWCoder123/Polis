@@ -44,7 +44,7 @@ export function settle(target: Element | null | undefined) {
 // Page transitions
 
 export type TransitionKind = "forward" | "back" | "morph";
-type ViewTransitionLike = { finished: Promise<void>; updateCallbackDone: Promise<void>; skipTransition(): void };
+type ViewTransitionLike = { finished: Promise<void>; ready: Promise<void>; updateCallbackDone: Promise<void>; skipTransition(): void };
 type StartViewTransition = (update: () => void) => ViewTransitionLike;
 
 let active: ViewTransitionLike | null = null;
@@ -140,6 +140,9 @@ export function transition(kind: TransitionKind, update: () => void, from?: HTML
     update();
   });
   active = vt;
+  // Skipping (a tap or a newer navigation interrupting) rejects `ready`; that is
+  // expected. A failing update still surfaces through updateCallbackDone.
+  vt.ready.catch(() => {});
   vt.finished.then(cleanup, cleanup);
   // A tap or key press during a transition finishes it at once, so the page is
   // never unresponsive while it animates.

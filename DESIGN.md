@@ -45,3 +45,11 @@ Extends, not replaces, the system above. Styles live in `components/polis/civic.
 - **Perspectives.** Teal, sage, ochre, slate and pale gray — never red versus blue. Party affiliation appears only when supplied from a checked source.
 - **Commons cards.** Georgia titles, an "About" row of rounded entity chips, four compact reactions (icon-only below 520 px), participant counts. Starter questions use a pale-cobalt card with a perspective bar.
 - **Layout.** Home and Map use a 1240 px wide layout; Home has a 330 px side column that stacks under 1100 px. Mobile navigation: Home, Commons, Map, Friends, Profile (Rankings is on the profile and desktop sidebar).
+
+## Motion (September 27, 2026)
+
+Motion follows the launch film and extends, not replaces, the system above. See [docs/motion.md](docs/motion.md).
+
+- **Curves.** smooth `cubic-bezier(.45,.05,.25,1)` for general UI; out `(.16,1,.3,1)` for arrivals; in `(.55,0,.85,.35)` for departures; in-out `(.65,0,.35,1)` for swipes; container `(.45,0,.15,1)` for card-to-page transforms. Springs are sampled into CSS `linear()`.
+- **Durations.** 0.18 s for touch feedback, 0.34–0.56 s for page changes, 0.74 s for container transforms, 0.6 s for phone back swipes.
+- **Rules.** The rail, header and tab bar never move during page changes. Only transform, opacity, clip-path and arrival height animate. A tap finishes a running transition. Reduced motion removes all of it.

@@ -1,5 +1,7 @@
 # Polis
 
+The motion candidate `codex/polis-motion` builds on it: page transitions, cards that grow into their pages, instant returns and reactions, and arrivals, all matched to the launch film. See [motion](docs/motion.md). It is locally verified and not deployed.
+
 The latest candidate is `codex/polis-anywhere`: Polis is no longer limited to configured campuses. Members can find or start the commons for any town, and students can found their university's campus community with its email domain. Every community gets an honest civic scaffold of local issues, offices with official lookups, Sample starter questions and public places from OpenStreetMap. See [Polis anywhere](docs/anywhere.md). It is locally verified and not deployed.
 
 The previous candidate is `codex/commons-civic-map`, continuing `codex/cornell-uf-commons`: a curated campus Home, a dedicated Commons (For You, Campus, Local, National, Trending, Following), a live civic map with office/building/event cards, reusable entity pages, Cornell and UF email-domain association, and search. See [campus Commons and civic map](docs/campus-civic-map.md) and the underlying [Commons setup, verification and rollout](docs/commons-pilot.md). It is locally verified and has **not** replaced Sites version 2.

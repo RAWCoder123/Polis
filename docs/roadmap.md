@@ -43,6 +43,8 @@ These describe the source implementation. Sites reports public version 2; later 
 
 ## Known gaps
 
+The September 27 motion candidate is locally verified only. View Transitions need Chrome/Edge 111+, Safari 18+ or Firefox 144+; other browsers change views instantly. Real-device swipe-back, a screen-reader pass on transitions, and hosted performance remain untested. See [motion](motion.md).
+
 The September 27 anywhere candidate is locally verified only:
 
 - Production reachability and fair-use capacity of the public Nominatim and Overpass services from the Sites Worker are unconfirmed.

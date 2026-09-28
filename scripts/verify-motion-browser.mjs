@@ -20,7 +20,10 @@ const stamp = Date.now().toString(36);
 async function actor(account, width, options = {}) {
   const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 900 }, ...options });
   const page = await context.newPage();
-  page.on("pageerror", (e) => errors.push(account + ": " + e.message));
+  page.on("pageerror", (e) => {
+    errors.push(account + ": " + e.message);
+    console.error("Page error (" + account + "):", e.name, e.message);
+  });
   await page.goto(origin + "/signin-with-chatgpt?test_account=" + account + "&return_to=" + encodeURIComponent("/#home"));
   const a = { context, page };
   const state = await snapshot(a);
@@ -125,6 +128,18 @@ assert.equal(
 await page.goto(origin + "/#commons/for-you");
 await expect.poll(() => vt(page)).toBe("none");
 assert.equal(await kindOf(page, () => page.locator(".commons-tabs button", { hasText: "Trending" }).click()), "none");
+
+// Interrupting a transition (a newer navigation, then a tap) finishes it
+// cleanly: no unhandled rejections from skipped transitions.
+await page.evaluate(() => {
+  // A tap in the same moment as a navigation skips it before its first frame.
+  [...document.querySelectorAll(".social-sidebar nav button")].find((b) => b.textContent.includes("Friends")).click();
+  dispatchEvent(new PointerEvent("pointerdown"));
+});
+await expect.poll(() => vt(page)).toBe("none");
+await expect(page).toHaveURL(/#friends$/);
+await page.waitForTimeout(300);
+assert.deepEqual(errors, [], "skipped transitions are not errors");
 
 // Reactions show immediately; other controls do not dim during the request;
 // a failed request rolls the reaction back.
