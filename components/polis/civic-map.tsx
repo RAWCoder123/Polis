@@ -164,16 +164,28 @@ function cameraFor(center: [number, number] | undefined, zoom: number | undefine
 const street = { zoom: 16.4, pitch: 60 };
 // Fit the places within a few miles of the camera's center (outliers such as
 // an airport office would zoom the whole town out), keeping tilt and turn.
-function frameCore(basemap: Basemap, pins: MapPinData[], camera: Camera): Camera {
+// MapLibre fits bounds as if the map were flat; on a tilted map the near half
+// shows less ground, so the fit zooms out a little and the places' center
+// sits above the middle of the screen (`lift`, in pixels).
+function frameCore(basemap: Basemap, pins: MapPinData[], camera: Camera): Camera & { lift: number } {
   const [lng, lat] = camera.center;
   const core = pins.filter((p) => distanceMiles([lat, lng], [p.lat, p.lng]) < 3);
-  if (core.length < 2) return camera;
+  if (core.length < 2) return { ...camera, lift: 0 };
   const bounds = new basemap.maplibregl.LngLatBounds();
   for (const p of core) bounds.extend([p.lng, p.lat]);
   const fit = basemap.map.cameraForBounds(bounds, { padding: 50, maxZoom: camera.zoom + 0.6 });
-  if (!fit?.center || fit.zoom === undefined) return camera;
+  if (!fit?.center || fit.zoom === undefined) return { ...camera, lift: 0 };
+  const tilt = Math.min(1, camera.pitch / 60);
   const center = basemap.maplibregl.LngLat.convert(fit.center).toArray() as [number, number];
-  return { ...camera, center, zoom: Math.max(fit.zoom, camera.zoom - 1.6) };
+  const lift = Math.round(basemap.map.getContainer().clientHeight * 0.14 * tilt);
+  return { ...camera, center, zoom: Math.max(fit.zoom - 0.4 * tilt, camera.zoom - 1.8), lift };
+}
+function applyFrame(map: Basemap["map"], { lift, ...camera }: Camera & { lift: number }, duration: number) {
+  if (duration) moveCamera(map, { ...camera, offset: [0, -lift] }, duration);
+  else {
+    map.jumpTo(camera);
+    if (lift) map.panBy([0, lift], { duration: 0 });
+  }
 }
 
 export function CivicMap({
@@ -254,9 +266,7 @@ export function CivicMap({
           addMarkerSource(next.map, clusterLayers);
           setBasemap(next);
           // Open framed on the places near the center, tilted for 3D.
-          const framed = frameCore(next, live.current.pins, target);
-          if (intro) moveCamera(next.map, framed, 1800);
-          else next.map.jumpTo(framed);
+          applyFrame(next.map, frameCore(next, live.current.pins, target), intro ? 1800 : 0);
         });
         // Tapping the map itself closes a preview, as in Snap Map.
         next.map.on("click", () => {
@@ -282,7 +292,8 @@ export function CivicMap({
     framedLayer.current = layer;
     if (!pins.length) return;
     const { map } = basemap;
-    moveCamera(map, frameCore(basemap, pins, { center: map.getCenter().toArray() as [number, number], zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() }), 900);
+    const home = cameraFor(locale?.center, locale?.zoom, variant);
+    applyFrame(map, frameCore(basemap, pins, { ...home, pitch: map.getPitch(), bearing: map.getBearing() }), 900);
     // Only a change of layer reframes the map.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basemap, layer]);
