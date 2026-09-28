@@ -43,10 +43,12 @@ test("run-scoped synthetic accounts sign in as separate local identities only wi
   // Only loopback requests receive a synthetic identity.
   assert.equal(request("/api/polis", signIn.cookie, "10.0.0.2").user, undefined);
 
-  // Anything outside the strict pattern signs in as the example owner and is
-  // never accepted as a session cookie.
-  for (const account of ["qa_signup", "qa_signup_mg2k3x9a_b_extra", "QA_signup_mg2k3x9a_b", "qa_s_mg2k3x9a_b", "qa_signup_mg2k3x9a_toolongrole", "constructor"]) {
-    assert.equal(request("/signin-with-chatgpt?test_account=" + account).cookie, "__sites_local_auth=1", account);
+  // Anything outside the strict pattern is refused rather than quietly signing
+  // in as the pilot owner, and is never accepted as a session cookie.
+  for (const account of ["qa_signup", "qa_signup_mg2k3x9a_b_extra", "QA_signup_mg2k3x9a_b", "qa_s_mg2k3x9a_b", "qa_signup_mg2k3x9a_toolongrole", "qa_usab_r1a_a", "constructor"]) {
+    const refused = request("/signin-with-chatgpt?test_account=" + account);
+    assert.equal(refused.status, 400, account);
+    assert.equal(refused.cookie, undefined, account);
     assert.equal(request("/api/polis", "__sites_local_auth=" + account).user, undefined, account);
   }
 });

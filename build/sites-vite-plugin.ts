@@ -199,6 +199,11 @@ export function sites({ mockAuth = true } = {}): Plugin {
         }
 
         const requestedAccount = url.searchParams.get("test_account");
+        // A mistyped test account must not quietly become the pilot owner.
+        if (signIn && testAccounts && requestedAccount && !identityFor(requestedAccount)) {
+          respond(response, 400);
+          return;
+        }
         const account =
           testAccounts && requestedAccount && identityFor(requestedAccount)
             ? requestedAccount
