@@ -324,7 +324,8 @@ export function polisMapStyle({ terrain = false, hillshade = true }: PolisStyleO
       type: "symbol",
       source: "openmaptiles",
       "source-layer": "place",
-      maxzoom: 15,
+      // Inside a town its name is already on the page; neighbourhoods take over.
+      maxzoom: 13.6,
       filter: classIs("city", "town", "village", "hamlet"),
       layout: {
         "text-field": name,

@@ -7,7 +7,7 @@ import { topicsFor } from "@/lib/social/commons";
 import { catalogOf, inCatalog } from "@/lib/social/civic";
 import { localeOf } from "@/lib/social/communities";
 import { FindCommunity } from "./find-community";
-import { CivicMap, mapLayers, type MapLayer } from "./civic-map";
+import { CivicMap, mapLayers, mapPins, type MapLayer } from "./civic-map";
 import { EntityPage } from "./entity-page";
 import { HomeDashboard } from "./home-dashboard";
 import { SearchView } from "./search-view";
@@ -333,6 +333,7 @@ export default function SocialApp() {
     { id: "profile", label: "Profile", Icon: UserRound },
   ];
   const mapLayer = (mapLayers.some((l) => l.id === exploreParams.get("layer")) ? exploreParams.get("layer") : "all") as MapLayer;
+  const layersPresent = new Set(view === "explore" ? mapPins(data).map((p) => p.layer) : []);
   const selectMapPin = (pin: string) => {
     const next = new URLSearchParams(exploreParams);
     if (pin) next.set("selected", pin);
@@ -709,7 +710,9 @@ export default function SocialApp() {
                       <p>Offices, public buildings, campus places, proposals and upcoming events. Choose any marker to see why it matters and discuss it in The Commons.</p>
                     </header>
                     <div className="map-layer-chips" role="group" aria-label="Map layers">
-                      {mapLayers.map((l) => (
+                      {/* Only kinds this community has on the map, so a town without
+                          campus places is not offered an empty Campus layer. */}
+                      {mapLayers.filter((l) => l.id === "all" || l.id === mapLayer || layersPresent.has(l.id)).map((l) => (
                         <button
                           key={l.id}
                           aria-pressed={mapLayer === l.id}

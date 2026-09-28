@@ -403,3 +403,15 @@
 .social-post.forum-row > header .plain-name { font-size: 12px; }
 .social-post.forum-row > header span { font-size: 11px; }
 .social-post.forum-row .forum-title { margin-bottom: 9px; }
+
+/* Phones: the map is the point of the Map tab, and Home's glance row is one
+   swipeable line instead of three stacked cards above everything else. */
+@media (max-width: 767px) {
+  .home-pulse { display: flex; overflow-x: auto; gap: 8px; margin-inline: -20px; padding: 2px 20px 4px; scroll-snap-type: x proximity; scrollbar-width: none; }
+  .home-pulse::-webkit-scrollbar { display: none; }
+  .social-shell .home-pulse button { flex: 0 0 auto; max-width: 78%; padding: 9px 12px; scroll-snap-align: start; }
+  .home-pulse small { display: none; }
+  .civic-map-page .commons-header > p:not(.social-section-label) { display: none; }
+  .civic-map-page .commons-header { padding-bottom: 8px; }
+  .civic-map.full .civic-map-canvas { height: min(68dvh, 560px); }
+}
