@@ -15,11 +15,19 @@ const output = "/tmp/polis-motion-qa";
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch();
 const errors = [];
+const pages = [];
+// On failure, keep a screenshot of every page so the cause is visible.
+process.on("uncaughtException", async (e) => {
+  await Promise.all(pages.map((p, i) => p.screenshot({ path: output + "/failure-" + i + ".png" }).catch(() => {})));
+  console.error(e);
+  process.exit(1);
+});
 const stamp = Date.now().toString(36);
 
 async function actor(account, width, options = {}) {
   const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 900 }, ...options });
   const page = await context.newPage();
+  pages.push(page);
   page.on("pageerror", (e) => {
     errors.push(account + ": " + e.message);
     console.error("Page error (" + account + "):", e.name, e.message);
@@ -140,6 +148,15 @@ await expect.poll(() => vt(page)).toBe("none");
 await expect(page).toHaveURL(/#friends$/);
 await page.waitForTimeout(300);
 assert.deepEqual(errors, [], "skipped transitions are not errors");
+// A newer navigation during a transition wins; the older one never lands late.
+await page.evaluate(() => {
+  [...document.querySelectorAll(".social-sidebar nav button")].find((b) => b.textContent.includes("Home")).click();
+  location.hash = "#commons/for-you";
+});
+await expect.poll(() => vt(page)).toBe("none");
+await page.waitForTimeout(300);
+await expect(page).toHaveURL(/#commons\/for-you$/);
+await expect(page.locator(".commons-tabs")).toBeVisible();
 
 // Reactions show immediately; other controls do not dim during the request;
 // a failed request rolls the reaction back.

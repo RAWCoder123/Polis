@@ -74,20 +74,23 @@ export function subscribeRoute(listener: () => void) {
 export const routeHref = () => href || location.href;
 
 // Navigates to a hash route. A tapped card or chip marked [data-morph] grows
-// into the new page; other navigations cross-fade forward.
+// into the new page; other navigations cross-fade forward. The URL changes at
+// once, so a newer navigation always wins; the view commits inside the
+// transition from whatever the URL is by then.
 export function navigateTo(hash: string, onCommit?: () => void, options: { preserveScroll?: boolean } = {}) {
   const from = morphSource();
   const oldURL = location.href;
+  history.pushState({ polisIndex: ++position }, "", hash);
+  const newURL = location.href;
   const apply = () => {
     if (!options.preserveScroll) scrollTo({ top: 0, behavior: "instant" });
-    history.pushState({ polisIndex: ++position }, "", hash);
     flushSync(() => {
       commit();
       onCommit?.();
     });
     // Other listeners (the signed-out home) still hear about the new hash.
-    dispatchEvent(new HashChangeEvent("hashchange", { oldURL, newURL: location.href }));
+    dispatchEvent(new HashChangeEvent("hashchange", { oldURL, newURL }));
   };
-  if (pageKey(new URL(hash, location.href).href) === pageKey(href || oldURL)) apply();
+  if (pageKey(newURL) === pageKey(href || oldURL)) apply();
   else transition(from ? "morph" : "forward", apply, from);
 }

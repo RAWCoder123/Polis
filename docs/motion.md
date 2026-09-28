@@ -39,13 +39,18 @@ Only `transform`, `opacity`, `clip-path` and (for arrivals) layout height animat
   - back returning to the remembered Commons within 300 ms without skeletons;
   - fragment links animating forward, and in-page tabs not transitioning;
   - a reaction showing within 80 ms, other controls not dimming, and rollback on a synthetic 500;
-  - interrupting a transition, which must not raise errors (this step fails without the fix below);
+  - interrupting a transition, which must not raise errors, and a newer navigation winning over an older one (both steps fail without the fixes below);
   - the phone back swipe;
   - reduced motion: no transitions and no pops;
   - no page errors or horizontal overflow at 1280 px and 390 px.
 - Frames were captured mid-transition in headless Chromium at 1280 and 390 px and inspected. Frame pacing during transitions had at most two frames over 34 ms, both coinciding with screenshot capture.
 
-Verification found and fixed an intermittent failure. A tap or newer navigation that skipped a transition before its first frame left `AbortError: Transition was skipped` unhandled. That opened the dev error overlay locally and would log a console error in production. Skipped transitions are now expected, while a failing update still surfaces.
+Verification found and fixed two intermittent failures:
+
+- A tap or newer navigation that skipped a transition before its first frame left `AbortError: Transition was skipped` unhandled. That opened the dev error overlay locally and would log a console error in production. Skipped transitions are now expected, while a failing update still surfaces.
+- A navigation started just before another one (for example right after sign-up) could land late and overwrite the newer URL, because its URL change waited for the transition. The URL now changes at once, and the view commits from whatever the URL is when the transition runs.
+
+Both have steps in `test:motion-browser` that fail without their fix.
 
 ## Known limits
 
