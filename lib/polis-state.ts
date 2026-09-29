@@ -3,7 +3,7 @@ import {useEffect,useState} from "react";
 import {itemById, friends, type Audience, type Kind} from "./polis-data";
 export type Ranking={itemId:string;score:number;note:string;audience:Audience};
 export type DemoState={rankings:Ranking[];saved:string[];plans:string[];following:string[];read:string[];explored:boolean;showFriendRsvps:boolean;profileName:string;bio:string};
-const initial:DemoState={rankings:[],saved:[],plans:[],following:["maya","oliver","sofia"],read:[],explored:false,showFriendRsvps:true,profileName:"Raymond",bio:"Getting to know my community, one perspective at a time."};
+const initial:DemoState={rankings:[],saved:[],plans:[],following:["maya","oliver","sofia"],read:[],explored:false,showFriendRsvps:true,profileName:"Jordan",bio:"Getting to know my community, one perspective at a time."};
 const KEY="polis-demo-v1";
 function validIds(value:unknown){return Array.isArray(value)?value.filter((id):id is string=>typeof id==="string"&&!!itemById[id]):[];}
 export function useDemoState(){
@@ -12,7 +12,8 @@ export function useDemoState(){
   const [state,setState]=useState<DemoState>(initial);
   const [ready,setReady]=useState(false);
   const [storageError,setStorageError]=useState(false);
-  useEffect(()=>{try{const raw=localStorage.getItem(KEY);if(raw){const s=JSON.parse(raw);setState({...initial,rankings:Array.isArray(s.rankings)?s.rankings.filter((r:Ranking)=>itemById[r.itemId]&&Number.isFinite(r.score)&&r.score>=0&&r.score<=10&&typeof r.note==="string"&&["Private","Friends","Public"].includes(r.audience)):[],saved:validIds(s.saved),plans:validIds(s.plans).filter(id=>itemById[id].kind==="Events"),read:validIds(s.read),following:Array.isArray(s.following)?s.following.filter((id:string)=>friends.some(f=>f.id===id)):initial.following,explored:s.explored===true,showFriendRsvps:s.showFriendRsvps!==false,profileName:typeof s.profileName==="string"?s.profileName.slice(0,40):initial.profileName,bio:typeof s.bio==="string"?s.bio.slice(0,160):initial.bio});}}catch{setStorageError(true);}setReady(true);},[]);
+  // "Raymond" was the earlier default name; visitors who never changed it get the new one.
+  useEffect(()=>{try{const raw=localStorage.getItem(KEY);if(raw){const s=JSON.parse(raw);setState({...initial,rankings:Array.isArray(s.rankings)?s.rankings.filter((r:Ranking)=>itemById[r.itemId]&&Number.isFinite(r.score)&&r.score>=0&&r.score<=10&&typeof r.note==="string"&&["Private","Friends","Public"].includes(r.audience)):[],saved:validIds(s.saved),plans:validIds(s.plans).filter(id=>itemById[id].kind==="Events"),read:validIds(s.read),following:Array.isArray(s.following)?s.following.filter((id:string)=>friends.some(f=>f.id===id)):initial.following,explored:s.explored===true,showFriendRsvps:s.showFriendRsvps!==false,profileName:typeof s.profileName==="string"&&s.profileName!=="Raymond"?s.profileName.slice(0,40):initial.profileName,bio:typeof s.bio==="string"?s.bio.slice(0,160):initial.bio});}}catch{setStorageError(true);}setReady(true);},[]);
   useEffect(()=>{if(!ready)return;try{localStorage.setItem(KEY,JSON.stringify(state));setStorageError(false);}catch{setStorageError(true);}},[state,ready]);
   const toggle=(key:"saved"|"plans"|"following",id:string)=>setState(s=>({...s,[key]:s[key].includes(id)?s[key].filter(x=>x!==id):[...s[key],id]}));
   const saveRanking=(ranking:Ranking)=>setState(s=>({...s,rankings:s.rankings.some(r=>r.itemId===ranking.itemId)?s.rankings.map(r=>r.itemId===ranking.itemId?ranking:r):[...s.rankings,ranking]}));
