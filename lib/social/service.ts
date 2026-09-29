@@ -15,6 +15,8 @@ import {
   type PlaceCommunityRow,
 } from "./communities.ts";
 import { civicPlacesNear, reversePlace, searchPlaces, type Fetcher } from "./geo.ts";
+import { groupStories, rankStories, type NewsArticle, type NewsStory, type StoryEngagement } from "./local-news.ts";
+import { fetchCommunityNews, newsProfileFor } from "./news-sources.ts";
 import { distanceMiles } from "./events.ts";
 import { topicFor, pilotOrganizations, organizationFor } from "./commons.ts";
 import {
@@ -112,6 +114,7 @@ const action = z.discriminatedUnion("action", [
     university: z.string().trim().min(3).max(120).optional(),
   }),
   z.object({ action: z.literal("places.import") }),
+  z.object({ action: z.literal("news.import") }),
   z.object({ action: z.literal("conversation.follow"), postId: id, enabled: z.boolean() }),
   z.object({ action: z.literal("conversation.visit"), postId: id }),
   z.object({ action: z.literal("organization.member"), organizationId: id, userId: id, role: z.enum(["member", "organizer", "remove"]) }),
@@ -338,6 +341,7 @@ export function socialService(
   let communityId = defaultCommunityId;
   let currentCommunity: PilotCommunity | null = null;
   let currentPlaces: CommunityPlace[] = [];
+  let currentNews: NewsStory[] = [];
   // The active community's civic catalog: curated for configured campuses,
   // generated plus imported public places everywhere else.
   let catalog: CivicEntity[] = [];
@@ -392,7 +396,21 @@ export function socialService(
           communityId,
         )
       : [];
-    catalog = catalogFor(currentCommunity, currentPlaces);
+    // Local news stories from the last three weeks become discussable subjects.
+    const newsProfile = newsProfileFor(currentCommunity);
+    currentNews = newsProfile
+      ? groupStories(
+          (
+            await all<Omit<NewsArticle, "sections"> & { sectionsJson: string }>(
+              "SELECT id,url,title,source,domain,publishedAt,imageUrl,summary,origin,sectionsJson FROM community_news WHERE communityId=? AND publishedAt>=? ORDER BY publishedAt DESC LIMIT 300",
+              communityId,
+              new Date(Date.now() - 21 * 86400000).toISOString(),
+            )
+          ).map(({ sectionsJson, ...a }) => ({ ...a, sections: JSON.parse(sectionsJson) as string[] })),
+          newsProfile,
+        )
+      : [];
+    catalog = catalogFor(currentCommunity, currentPlaces, currentNews);
   };
   const pilotOwner = () => !!identity && !!ownerEmail && identity.email.toLowerCase() === ownerEmail.toLowerCase();
   const normalizeCode = (value: string) => value.replace(/[\s-]/g, "").toUpperCase();
@@ -532,15 +550,13 @@ export function socialService(
       }),
     );
   }
-  // What people in this community are discussing, counted as distinct people.
-  async function commonsSummary(
-    v: { sql: string; args: unknown[] },
-    catalog: CivicEntity[],
-  ): Promise<CommonsSummary> {
+  const notMuted = "NOT EXISTS(SELECT 1 FROM mutes WHERE ownerId=? AND targetId=p.authorId)";
+  const replyVisible =
+    "c.deletedAt IS NULL AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?)) AND NOT EXISTS(SELECT 1 FROM mutes mu WHERE mu.ownerId=? AND mu.targetId=c.authorId)";
+  // Conversations the viewer can see from the last two weeks, by subject,
+  // counted as distinct people. Shared by the Commons and local news.
+  async function discussionTopics(v: { sql: string; args: unknown[] }) {
     const since = new Date(Date.now() - 14 * 86400000).toISOString();
-    const notMuted = "NOT EXISTS(SELECT 1 FROM mutes WHERE ownerId=? AND targetId=p.authorId)";
-    const replyVisible =
-      "c.deletedAt IS NULL AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=c.authorId) OR (b.ownerId=c.authorId AND b.targetId=?)) AND NOT EXISTS(SELECT 1 FROM mutes mu WHERE mu.ownerId=? AND mu.targetId=c.authorId)";
     const recentPosts = await all<{ subjectId: string; authorId: string }>(
       `SELECT p.subjectId,p.authorId FROM posts p WHERE ${v.sql} AND p.audience<>'only_me' AND p.organizationId IS NULL AND ${notMuted} AND p.createdAt>=? LIMIT 1000`,
       ...v.args, uid, since,
@@ -564,6 +580,14 @@ export function socialService(
       topic(r.subjectId).replies++;
       topic(r.subjectId).people.add(r.authorId);
     }
+    return topics;
+  }
+  // What people in this community are discussing, counted as distinct people.
+  async function commonsSummary(
+    v: { sql: string; args: unknown[] },
+    catalog: CivicEntity[],
+    topics: Awaited<ReturnType<typeof discussionTopics>>,
+  ): Promise<CommonsSummary> {
     const questionIds = catalog.filter((e) => e.kind === "question").map((e) => e.id);
     const marks = questionIds.map(() => "?").join(",");
     const stances = questionIds.length
@@ -992,11 +1016,22 @@ export function socialService(
     const memberCommunities = (await Promise.all(memberOf.map(communityRecord))).filter(
       (c): c is PilotCommunity => !!c,
     );
+    const topics = params.get("commons") || currentNews.length ? await discussionTopics(v) : null;
     return {
       eligibleCommunity: emailCampus && !memberOf.includes(emailCampus.id) ? emailCampus : null,
       unclaimedCampusDomain: emailCampus ? null : verifiedCampusDomain(identity),
       places: currentPlaces,
-      commons: params.get("commons") ? await commonsSummary(v, catalog) : undefined,
+      commons: topics ? await commonsSummary(v, catalog, topics) : undefined,
+      // Ranked with what members here are actually discussing.
+      news: rankStories(
+        currentNews,
+        Object.fromEntries(
+          [...(topics ?? new Map())].map(([subjectId, t]): [string, StoryEngagement] => [subjectId, { participants: t.people.size, replies: t.replies, reactions: 0 }]),
+        ),
+        new Date(),
+        localeOf(currentCommunity)?.shortName ?? currentCommunity!.name,
+      ).slice(0, 40),
+      newsUpdatedAt: (await one<{ importedAt: string }>("SELECT importedAt FROM community_news_imports WHERE communityId=?", communityId))?.importedAt ?? null,
       nationalJoined,
       organizations: await Promise.all(pilotOrganizations.filter(o => o.communityId === communityId).map(async o => ({ ...o, role: (await one<{ role: string }>("SELECT role FROM organization_memberships WHERE userId=? AND organizationId=?", uid, o.id))?.role ?? null }))),
       organizationMembers: orgMembership ? await all("SELECT p.id,p.name,m.role FROM organization_memberships m JOIN profiles p ON p.id=m.userId WHERE m.organizationId=? AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.ownerId=? AND b.targetId=p.id) OR (b.targetId=? AND b.ownerId=p.id)) ORDER BY p.name", org!.id, uid, uid) : undefined,
@@ -1487,6 +1522,31 @@ export function socialService(
             );
           add("UPDATE place_communities SET placesImportedAt=? WHERE id=?", now, communityId);
           result = { ok: true, imported: places.length };
+          break;
+        }
+        case "news.import": {
+          // Anyone here may refresh, at most every three hours per community.
+          const last = await one<{ importedAt: string }>("SELECT importedAt FROM community_news_imports WHERE communityId=?", communityId);
+          if (last && Date.parse(now) - Date.parse(last.importedAt) < 3 * 3600000) {
+            result = { ok: true, imported: 0, recent: true };
+            break;
+          }
+          if (!newsProfileFor(currentCommunity)) fail(400, "Local news needs a located community.");
+          if (!options.fetch) fail(503, "Local news is not available here.");
+          const { articles, sources } = await fetchCommunityNews(currentCommunity!, options.fetch!, options.contact ?? "polis");
+          if (!sources) fail(503, "Local news sources are unavailable right now. Try again later.");
+          for (const a of articles.slice(0, 250))
+            add(
+              "INSERT INTO community_news(communityId,id,url,title,source,domain,publishedAt,imageUrl,summary,origin,sectionsJson,importedAt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(communityId,id) DO UPDATE SET title=excluded.title,source=CASE WHEN excluded.origin='local' THEN excluded.source ELSE community_news.source END,imageUrl=COALESCE(excluded.imageUrl,community_news.imageUrl),summary=COALESCE(excluded.summary,community_news.summary),origin=CASE WHEN community_news.origin='local' THEN 'local' ELSE excluded.origin END,sectionsJson=excluded.sectionsJson,importedAt=excluded.importedAt",
+              communityId, a.id, a.url, a.title, a.source, a.domain, a.publishedAt, a.imageUrl, a.summary, a.origin, JSON.stringify(a.sections ?? []), now,
+            );
+          // Headlines older than 30 days are no longer kept.
+          add("DELETE FROM community_news WHERE communityId=? AND publishedAt<?", communityId, new Date(Date.parse(now) - 30 * 86400000).toISOString());
+          add(
+            "INSERT INTO community_news_imports(communityId,importedAt,articles) VALUES(?,?,?) ON CONFLICT(communityId) DO UPDATE SET importedAt=excluded.importedAt,articles=excluded.articles",
+            communityId, now, articles.length,
+          );
+          result = { ok: true, imported: articles.length };
           break;
         }
         case "community.joinNational":

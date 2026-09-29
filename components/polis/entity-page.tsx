@@ -20,6 +20,7 @@ import { eventTime } from "@/lib/social/events";
 import { positions, type CivicEntity, type Position, type Snapshot } from "@/lib/social/types";
 import { ItemIcon } from "./common";
 import {
+  toneOf,
   EntityChip,
   EntityRow,
   EntityVisual,
@@ -30,6 +31,7 @@ import {
   SampleNotice,
 } from "./civic-cards";
 import { ExplainerCard } from "./explainer";
+import { NewsStoryHeader } from "./local-news";
 import { Quiet } from "./social-views";
 import type { ComposeOptions } from "./social-forms";
 import type { Navigate, Run } from "./social-post";
@@ -101,14 +103,18 @@ export function EntityPage({
         <ArrowLeft size={15} />
         Back
       </button>
-      <header className="entity-hero">
-        <EntityVisual entity={entity} size="lg" />
-        <div>
-          <KindLine entity={entity} />
-          <h1>{entity.name}</h1>
-          <p>{entity.subtitle}</p>
-        </div>
-      </header>
+      {entity.story ? (
+        <NewsStoryHeader entity={entity} />
+      ) : (
+        <header className="entity-hero banner" style={{ "--tone": toneOf(entity) } as React.CSSProperties}>
+          <EntityVisual entity={entity} size="lg" />
+          <div>
+            <KindLine entity={entity} />
+            <h1>{entity.name}</h1>
+            <p>{entity.subtitle}</p>
+          </div>
+        </header>
+      )}
       <div className="form-actions entity-actions">
         <button className="btn primary" onClick={discuss}>
           <MessagesSquare size={16} />

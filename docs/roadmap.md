@@ -51,6 +51,12 @@ See [Claude review and milestone evidence](claude-review-and-milestone.md) for a
 - `#map` opens the Map tab; unknown local test accounts are refused instead of signing in as the owner; phones get a map-first Map tab and a single glance row on Home.
 - Browser suites launch Chromium with software WebGL (`scripts/browser.mjs`) and follow the reviewed Commons.
 
+## Local news and color (September 29)
+
+- Local news for any community: student papers and town outlets' feeds plus the GDELT index, grouped into stories and ranked by locality, student impact, discussion on Polis and coverage, with reasons shown; a News tab in the Commons, Home tiles and a forum on every story. Sensitive stories carry support resources and forum guidance. See [local news](local-news.md).
+- Color that tells things apart: news by kind, places and offices by type, and officials by party from checked sources (the President and each campus state's U.S. senators added; representatives' parties recorded). Brighter map.
+- Next: personal ranking from what each member follows, more pilot outlets, and an owner control to hide a story.
+
 ## Plain-language explainers (September 28)
 
 - Laws, proposals, documents and local processes explained as: in short, what would change, who it affects, where it stands, what happens next and how to weigh in, words to know, sources. See [explainers](explainers.md).

@@ -78,6 +78,7 @@ export const verifiedPeople: CivicEntity[] = [
       "title": "U.S. Representative",
       "jurisdiction": "New York’s 19th Congressional District",
       "officeholder": "Josh Riley",
+      "party": "Democrat",
       "directoryUrl": "https://clerk.house.gov/members/R000622"
     }
   },
@@ -104,7 +105,43 @@ export const verifiedPeople: CivicEntity[] = [
       "title": "U.S. Representative",
       "jurisdiction": "Florida’s 3rd Congressional District",
       "officeholder": "Kat Cammack",
+      "party": "Republican",
       "directoryUrl": "https://clerk.house.gov/members/C001039"
     }
-  }
+  },
+  ...nationalOfficials(),
 ];
+
+// The President and each campus state's two U.S. senators. Parties are from
+// the Senate's state listings and the FEC's candidate record, checked
+// September 29, 2026; no portraits are shown without a checked image source.
+function nationalOfficials(): CivicEntity[] {
+  const person = (communityId: string, slug: string, name: string, title: string, jurisdiction: string, party: string, sourceUrl: string, sourceLabel: string): CivicEntity => ({
+    id: "official-" + slug + "-" + communityId,
+    communityId,
+    kind: "official",
+    name,
+    subtitle: title + " · " + jurisdiction,
+    summary: name + " serves as " + title + " for " + jurisdiction + ". Read the official listing for contact details.",
+    scope: "national",
+    topics: [],
+    related: [],
+    sourceUrl,
+    sourceLabel,
+    sample: false,
+    checkedAt: "2026-09-29",
+    office: { title, jurisdiction, officeholder: name, party, directoryUrl: sourceUrl },
+  });
+  const president = (communityId: string) =>
+    person(communityId, "president", "Donald J. Trump", "President of the United States", "United States", "Republican", "https://www.whitehouse.gov/administration/donald-j-trump/", "The White House · party per FEC candidate record P80001571");
+  const ny = "https://www.senate.gov/states/NY/intro.htm";
+  const fl = "https://www.senate.gov/states/FL/intro.htm";
+  return [
+    president("ithaca"),
+    person("ithaca", "chuck-schumer", "Charles E. Schumer", "U.S. Senator", "New York", "Democrat", ny, "U.S. Senate"),
+    person("ithaca", "kirsten-gillibrand", "Kirsten E. Gillibrand", "U.S. Senator", "New York", "Democrat", ny, "U.S. Senate"),
+    president("uf"),
+    person("uf", "rick-scott", "Rick Scott", "U.S. Senator", "Florida", "Republican", fl, "U.S. Senate"),
+    person("uf", "ashley-moody", "Ashley Moody", "U.S. Senator", "Florida", "Republican", fl, "U.S. Senate"),
+  ];
+}

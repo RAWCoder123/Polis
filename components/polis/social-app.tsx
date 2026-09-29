@@ -8,6 +8,7 @@ import { catalogOf, inCatalog } from "@/lib/social/civic";
 import { localeOf } from "@/lib/social/communities";
 import { FindCommunity } from "./find-community";
 import { CivicMap, mapLayers, mapPins, type MapLayer } from "./civic-map";
+import { LocalNewsList, useNewsRefresh } from "./local-news";
 import { EntityPage } from "./entity-page";
 import { HomeDashboard } from "./home-dashboard";
 import { SearchView } from "./search-view";
@@ -168,6 +169,7 @@ export default function SocialApp() {
 
   const { data, loading, pending, error, busy, run, refresh, loadMore, loadComments } =
     useSocial(params.toString());
+  useNewsRefresh(data, refresh);
   const content = useRef<HTMLElement>(null);
   useArrivals(content, browserLocation);
   // The first view of a visit comes into focus, like the film's opening feed.
@@ -718,7 +720,7 @@ export default function SocialApp() {
                 )}
                 {view === "commons" && (
                   <CommonsView data={data} run={run} tab={tab} params={exploreParams} navigate={navigate} compose={compose} busy={busy}>
-                    {feed}
+                    {tab === "news" ? <LocalNewsList data={data} navigate={navigate} discuss={discuss} /> : feed}
                   </CommonsView>
                 )}
                 {view === "explore" && !id && (

@@ -16,6 +16,7 @@ Screenshots use synthetic accounts on a local build. Map data © OpenStreetMap c
 
 - **Find your community, anywhere.** Search any town or university (OpenStreetMap), or list communities near you. Start the first commons for a town; nearby duplicates are joined instead of created. Campus and organization communities are joined with invitation codes.
 - **See it on the map.** A bright, Snap-style 3D map of offices, public buildings, campus places, proposals and events. Nearby places group into count bubbles until you zoom in. *Use my location* glides to street level and names the street you're on — your location never leaves the device.
+- **Local news that matters.** Stories from student papers, town outlets and an open news index, ranked by how local they are, how much they touch student life, how many people here are discussing them and how widely they are reported, with the reasons shown. Start a forum on any story; sensitive stories come with support resources.
 - **Understand what is being decided.** Plain-language explainers turn laws, proposals and official documents into what changes, who it affects, where it stands and how to weigh in, with the originals linked. One is featured on Home each day.
 - **Talk it through in the Commons.** Local and national questions, debates and sourced updates about real places and decisions. Replies can carry a perspective; reactions are *Agree*, *Thought-provoking* and *Want to understand more*. Polis never assigns anyone a political identity.
 - **Show up.** Discover events, save them privately, mark Interested or Going with an audience you choose, and see friends' shared plans (never anyone's live location).
@@ -77,7 +78,7 @@ React 19 with Next.js App Router conventions on Vinext/Vite, TypeScript and Tail
 
 | Topic | Read |
 | --- | --- |
-| How the code fits together | [Architecture](docs/architecture.md) · [Design system](DESIGN.md) · [Motion](docs/motion.md) · [Map](docs/map.md) · [Explainers](docs/explainers.md) |
+| How the code fits together | [Architecture](docs/architecture.md) · [Design system](DESIGN.md) · [Motion](docs/motion.md) · [Map](docs/map.md) · [Explainers](docs/explainers.md) · [Local news](docs/local-news.md) |
 | Working on Polis | [Contributing](CONTRIBUTING.md) · [Agent guidance](AGENTS.md) · [Roadmap](docs/roadmap.md) |
 | Features | [Communities anywhere](docs/anywhere.md) · [Campus Commons and civic map](docs/campus-civic-map.md) · [Commons pilot](docs/commons-pilot.md) · [Events](docs/event-pilot.md) · [Event sources](docs/event-sources.md) · [Invitation codes](docs/invitation-codes.md) · [Open signup](docs/open-signup.md) |
 | Hosting and pilot | [Deployment](docs/deployment.md) · [Pilot setup](docs/PILOT_SETUP.md) · [Authentication path](docs/authentication-path.md) · [Hosted verification](docs/hosted-pilot-verification.md) |

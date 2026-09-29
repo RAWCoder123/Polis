@@ -14,6 +14,7 @@ import { EntityRow, EntityVisual, EventVisual, entityRoute } from "./civic-cards
 import { QuestionCard, rankedQuestions } from "./commons";
 import type { Navigate, Run } from "./social-post";
 import { ExplainedToday } from "./explainer";
+import { NewsCard, storyEntity, topStories } from "./local-news";
 import { explainedToday } from "@/lib/social/civic/explainers";
 
 const dayLabel = (e: CommunityEvent) =>
@@ -120,14 +121,16 @@ export function HomeDashboard({
   const now = new Date();
   // One plain-language explainer a day gives members a reason to come back.
   const featured = explainedToday(entities, now);
+  const news = topStories(data, 3);
   const today = eventDay(now.toISOString(), locale?.timezone);
   const upcoming = discoverEvents(data.events, data.eventPreferences).map((r) => r.event);
   const todayEvents = upcoming.filter((e) => eventDay(e.startsAt, e.timezone) === today);
   const meetings = upcoming
     .filter((e) => e.category === "civic_meetings" && Date.parse(e.startsAt) - +now < 8 * 86400000)
     .filter((e) => !todayEvents.includes(e));
+  // Curated briefs; imported local news has its own section above.
   const briefs = entities
-    .filter((e) => e.kind === "news" && e.news)
+    .filter((e) => e.kind === "news" && e.news && !e.story)
     .sort((a, b) => b.news!.publishedAt.localeCompare(a.news!.publishedAt))
     .slice(0, 3);
   const people = [
@@ -222,6 +225,22 @@ export function HomeDashboard({
                 " Location is off, so Polis uses the center of " + locale.shortName + "."}
             </p>
           </section>
+
+          {news.length > 0 && (
+            <section className="home-section">
+              <div className="section-row">
+                <h2>Local news that matters</h2>
+                <button className="text-button" onClick={() => navigate("commons/news")}>
+                  All local news <ArrowUpRight size={15} />
+                </button>
+              </div>
+              <div className="news-tiles">
+                {news.map((s) => (
+                  <NewsCard key={s.id} story={s} entity={storyEntity(data, s.id)} navigate={navigate} discuss={discuss} variant="tile" />
+                ))}
+              </div>
+            </section>
+          )}
 
           <section className="home-section">
             <div className="section-row">

@@ -69,3 +69,12 @@ Supersedes the desaturated raster basemap above; pin colors by layer are unchang
 - **Markers.** White discs with the layer ring and a small pointer; count bubbles are white pills with layer dots; friends' initials are cobalt discs. Markers drop in on the film's bouncy spring, lift on hover, and shrink slightly toward the horizon. The location dot is cobalt with a soft pulse.
 - **Phones.** The Map tab drops its description and gives the map most of the screen; Home's glance cards become one swipeable row. Credits fold into the ⓘ button after a few seconds.
 
+## Color (September 29, 2026)
+
+Extends the system above; cobalt stays the color of actions. See `lib/colors.ts`.
+
+- **News by kind.** Safety red `#e03131`, housing orange `#f76707`, money and jobs green `#2b8a3e`, rights and speech violet `#7048e8`, health pink `#d6336c`, campus cobalt `#3659e3`, getting around teal `#0ca678`, government indigo `#364fc7`, weather blue `#1c7ed6`, culture and sports amber `#f59f00`, opinion and other slate `#5c6b82`. News cards carry a colored band; story pages a colored banner.
+- **Places and offices by type.** Buildings indigo-violet, places green, organizations purple, institutions slate-blue, meetings orange, proposals orange, projects amber, guides teal, issues and questions cobalt. Item pages open with a banner in their color; tiles, chips and rows are tinted to match.
+- **Party.** An official's banner, ring, map pin and badge use Republican red `#d9363e` or Democrat blue `#2563eb` (independents purple) only when a checked source supplies the party. This refines the rule above: members' perspectives still never use red versus blue, and Polis never assigns anyone a political identity.
+- **Map.** Brighter than September 28: stronger water `#62c3f5` and greens, lavender campus land, peach commercial blocks, and buildings shading from pink through lilac to sky blue as they rise.
+

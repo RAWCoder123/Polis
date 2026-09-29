@@ -1,3 +1,4 @@
+import type { RankedStory } from "./local-news.ts";
 import type { PilotCommunity } from "./communities";
 export type InvitationPreview = { community: PilotCommunity; organization?: { id: string; name: string }; expiresAt: string; alreadyJoined: boolean };
 export type Audience = "only_me" | "friends" | "community";
@@ -332,6 +333,11 @@ export type CivicEntity = {
   };
   news?: { source: string; publishedAt: string; url?: string };
   explainer?: Explainer;
+  // Other ids that mean this entity, such as each article in a news story;
+  // conversations about any of them belong here.
+  aliases?: string[];
+  // Imported local news: the ranked story behind a news entity.
+  story?: RankedStory;
   meeting?: { schedule: string; bodyId?: string; calendarUrl?: string };
   debate?: {
     // Open-ended questions collect ideas rather than support or opposition.
@@ -356,6 +362,10 @@ export type CommonsSummary = {
 export type Snapshot = {
   // Public places for a community created anywhere (curated campuses have their own catalog).
   places?: CommunityPlace[];
+  // Local news that matters to students here, best first, and when it was
+  // last refreshed from the community's outlets.
+  news?: RankedStory[];
+  newsUpdatedAt?: string | null;
   // A registrable campus email domain that has no community yet, e.g. "umich.edu".
   unclaimedCampusDomain?: string | null;
   // A campus the signed-in email domain is associated with but not joined yet.
