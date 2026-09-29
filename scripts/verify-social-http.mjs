@@ -10,7 +10,7 @@ for (const [user, account] of [
   ["c", "beta_c"],
 ]) {
   const r = await fetch(
-    origin + "/signin-with-chatgpt?test_account=" + account,
+    origin + "/sign-in?test_account=" + account,
     { redirect: "manual" },
   );
   assert.equal(r.status, 302);
@@ -224,7 +224,7 @@ await act("a", {
   text: "SYNTHETIC TEST · Getting home after an evening library shift, especially in winter.",
 });
 console.log(
-  "PASS local Worker HTTP: three isolated synthetic sessions, invitations, friendship retries, feed, private direct-link denial, ownership, reactions, reply notifications and exact links, read/unread, edits, private saves, mute, block, deletion. Hosted ChatGPT identities remain unverified.",
+  "PASS local HTTP: three isolated synthetic sessions, invitations, friendship retries, feed, private direct-link denial, ownership, reactions, reply notifications and exact links, read/unread, edits, private saves, mute, block, deletion. Hosted identities remain unverified.",
 );
 
 // Reusable-code administration stays on the authenticated owner boundary.
@@ -243,4 +243,4 @@ assert.equal((await snapshot("b")).admin, undefined);
 await act("b", { action: "invite.revoke", codeId: activeCode.id }, 403);
 await act("a", { action: "invite.revoke", codeId: activeCode.id });
 assert.ok((await snapshot("a")).admin.invitationCodes.find(row => row.id === activeCode.id).revokedAt);
-console.log("PASS local Worker HTTP: owner-only code generation/revocation, duplicate creation retry, private code metadata and persisted revocation.");
+console.log("PASS local HTTP: owner-only code generation/revocation, duplicate creation retry, private code metadata and persisted revocation.");

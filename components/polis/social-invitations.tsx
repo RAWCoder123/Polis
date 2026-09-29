@@ -22,7 +22,7 @@ export function InvitationCodes({ data, run }: { data: Snapshot; run: Run }) {
   if (!data.admin) return null;
   return <section>
     <h2>Invite with a code</h2>
-    <p>Anyone you share this code with can join using their own ChatGPT account. No email list needed.</p>
+    <p>Anyone you share this code with can join with their own Polis account. No email list needed.</p>
     <form onSubmit={async e => {
       e.preventDefault(); setBusy(true); setError("");
       try {

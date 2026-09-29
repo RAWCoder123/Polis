@@ -1,5 +1,5 @@
-import { env } from "cloudflare:workers";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { getDatabase } from "@/db";
+import { getSessionUser, pilotOwnerEmail } from "@/lib/auth/session";
 import { socialService, ApiError } from "@/lib/social/service";
 import { invitationCookie, pendingInvitation } from "@/lib/social/invitation-handoff";
 export const dynamic = "force-dynamic";
@@ -27,13 +27,14 @@ async function handle(request: Request, write: boolean) {
       if (Number(request.headers.get("content-length") ?? 0) > 32000)
         return respond({ error: "Submission is too large." }, 413);
     }
-    if (!env.DB)
+    const db = getDatabase();
+    if (!db)
       return respond(
         { error: "The community database is not configured yet." },
         503,
       );
-    const user = await getChatGPTUser();
-    const service = socialService(env.DB, user, env.POLIS_OWNER_EMAIL ?? "", {
+    const user = await getSessionUser();
+    const service = socialService(db, user, pilotOwnerEmail(), {
       fetch: (input, init) => fetch(input, init),
       contact: new URL(request.url).origin,
     });

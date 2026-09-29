@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { launchBrowser } from "./browser.mjs";
+import { appAlert, launchBrowser } from "./browser.mjs";
 import { expect as baseExpect } from "playwright/test";
 
 // Synthetic local identities only. Never run fixture writes against a deployed Site.
@@ -52,7 +52,7 @@ async function checkCode(actor, code) {
 }
 try {
   const owner = await session(1440);
-  await owner.page.goto(origin + "/signin-with-chatgpt?test_account=1&return_to=%2F%23admin");
+  await owner.page.goto(origin + "/sign-in?test_account=1&return_to=%2F%23admin");
   if ((await snapshot(owner)).status === "onboarding")
     await command(owner, { action: "join", name: "Beta Alex", username: "beta_alex" });
   // Other suites move the shared owner between communities; return it to Ithaca.
@@ -78,7 +78,7 @@ try {
   await tester.page.goto(origin + "/#join");
   await tester.page.getByRole("textbox", { name: "Invite code", exact: true }).fill("not-a-code");
   await tester.page.getByRole("button", { name: "Check code", exact: true }).click();
-  await expect(tester.page.getByRole("alert")).toContainText("invalid");
+  await expect(tester.page.locator(appAlert)).toContainText("invalid");
   await tester.page.getByRole("textbox", { name: "Invite code", exact: true }).fill(code.toLowerCase().replaceAll("-", " "));
   await tester.page.getByRole("button", { name: "Check code", exact: true }).click();
   await expect(tester.page.getByRole("heading", { name: "Emory University", exact: true })).toBeVisible();
@@ -89,7 +89,7 @@ try {
   await expect(tester.page.getByRole("link", { name: "Confirm community & sign in" })).toBeVisible();
   await layout(tester, "mobile-confirm-community");
   // Choose an isolated synthetic identity through the local sign-in shim only.
-  await tester.page.route("**/signin-with-chatgpt?**", route => {
+  await tester.page.route("**/sign-in?**", route => {
     const url = new URL(route.request().url()); url.searchParams.set("test_account", account("b"));
     return route.continue({ url: url.href });
   });
@@ -126,7 +126,7 @@ try {
 
   const second = await session(1440);
   await checkCode(second, code);
-  await second.page.route("**/signin-with-chatgpt?**", route => {
+  await second.page.route("**/sign-in?**", route => {
     const url = new URL(route.request().url()); url.searchParams.set("test_account", account("c")); return route.continue({ url: url.href });
   });
   await second.page.getByRole("link", { name: "Confirm community & sign in" }).click();

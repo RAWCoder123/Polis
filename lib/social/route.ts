@@ -11,8 +11,19 @@ const listeners = new Set<() => void>();
 let position = 0;
 const entryIndex = (): number | null =>
   typeof history.state?.polisIndex === "number" ? history.state.polisIndex : null;
+// Next.js marks the history entries it can restore (`__NA` and its page tree)
+// and reloads the page when Back reaches an entry without that mark. Fragment
+// links create unmarked entries; every Polis view is the same Next.js page, so
+// they carry the mark of the entries before them. Marked entries also keep the
+// Next.js router out of hash-only navigation, which it would otherwise replay
+// later, putting an older URL back over a newer one.
+let nextMark: Record<string, unknown> = {};
+function marked(state: Record<string, unknown> | null) {
+  if (state?.__NA) nextMark = { __NA: state.__NA, __PRIVATE_NEXTJS_INTERNALS_TREE: state.__PRIVATE_NEXTJS_INTERNALS_TREE };
+  return { ...nextMark, ...state };
+}
 function stampEntry() {
-  history.replaceState({ ...history.state, polisIndex: ++position }, "");
+  history.replaceState({ ...marked(history.state), polisIndex: ++position }, "");
 }
 
 function commit() {
@@ -60,8 +71,11 @@ export function subscribeRoute(listener: () => void) {
   listeners.add(listener);
   href = location.href;
   const index = entryIndex();
-  if (index === null) history.replaceState({ ...history.state, polisIndex: position }, "");
-  else position = index;
+  if (index === null) history.replaceState({ ...marked(history.state), polisIndex: position }, "");
+  else {
+    marked(history.state);
+    position = index;
+  }
   return () => {
     listeners.delete(listener);
     if (!listeners.size) {
@@ -80,7 +94,7 @@ export const routeHref = () => href || location.href;
 export function navigateTo(hash: string, onCommit?: () => void, options: { preserveScroll?: boolean } = {}) {
   const from = morphSource();
   const oldURL = location.href;
-  history.pushState({ polisIndex: ++position }, "", hash);
+  history.pushState({ ...marked(history.state), polisIndex: ++position }, "", hash);
   const newURL = location.href;
   const apply = () => {
     if (!options.preserveScroll) scrollTo({ top: 0, behavior: "instant" });

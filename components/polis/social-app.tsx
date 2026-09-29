@@ -76,6 +76,7 @@ import {
   RankingList,
 } from "./social-views";
 import { Admin, Notifications } from "./social-admin";
+import { signInPath, signOutPath } from "@/lib/auth/paths";
 // On a history traversal the framework scrolls hash routes to their (missing)
 // anchor one frame later. When the page commits at once (reduced motion, or a
 // hidden tab) that undid the restored position, so hold it for two frames.
@@ -95,11 +96,9 @@ export default function SocialApp() {
   const localPreview = ["localhost", "127.0.0.1", "[::1]"].includes(
     currentLocation.hostname,
   );
-  const signin =
-    "/signin-with-chatgpt?return_to=" +
-    encodeURIComponent(
-      currentLocation.pathname + currentLocation.search + currentLocation.hash,
-    );
+  const signin = signInPath(
+    currentLocation.pathname + currentLocation.search + currentLocation.hash,
+  );
   const hashLocation = new URL(
     currentLocation.hash.slice(1) || "home",
     "https://polis.invalid/",
@@ -545,7 +544,7 @@ export default function SocialApp() {
             Privacy <ArrowUpRight size={14} />
           </a>
           {data.status !== "signed_out" && (
-            <a href="/signout-with-chatgpt?return_to=%2F" target="_top">
+            <a href={signOutPath("/")} target="_top">
               <LogOut size={14} />
               Sign out
             </a>

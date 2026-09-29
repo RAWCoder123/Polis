@@ -11,7 +11,7 @@ for (const [u, a] of [
   ["b", "qa_events_" + run + "_b"],
   ["c", "qa_events_" + run + "_c"],
 ]) {
-  const r = await fetch(origin + "/signin-with-chatgpt?test_account=" + a, {
+  const r = await fetch(origin + "/sign-in?test_account=" + a, {
     redirect: "manual",
   });
   assert.equal(r.status, 302);
@@ -174,5 +174,5 @@ assert.ok(
   ),
 );
 console.log(
-  "PASS local D1 HTTP: " + officialEvents.length + " repeatable official imports; independent synthetic identities; persistent interests, saves, private/friends RSVP, exact replies and notification links, ownership denial, suggestions and moderation. No hosted identities verified.",
+  "PASS local HTTP: " + officialEvents.length + " repeatable official imports; independent synthetic identities; persistent interests, saves, private/friends RSVP, exact replies and notification links, ownership denial, suggestions and moderation. No hosted identities verified.",
 );

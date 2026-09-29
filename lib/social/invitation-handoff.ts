@@ -1,5 +1,5 @@
-// This bearer code stays in an HttpOnly, same-site cookie during the existing
-// ChatGPT login flow. It is always checked against the database before admission.
+// This bearer code stays in an HttpOnly, same-site cookie while the person
+// signs in. It is always checked against the database before admission.
 const cookieName = "polis_pilot_invitation";
 export function pendingInvitation(request: Request): string {
   const value = request.headers.get("cookie")?.split(";").map(s => s.trim()).find(s => s.startsWith(cookieName + "="))?.slice(cookieName.length + 1) ?? "";

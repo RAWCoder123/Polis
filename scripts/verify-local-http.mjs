@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-// Read-only and rejected writes against the local Worker; creates no user data.
+// Read-only and rejected writes against the local server; creates no user data.
 const origin = process.env.POLIS_TEST_ORIGIN ?? "http://localhost:5173";
 const get = await fetch(origin + "/api/polis", {
   headers: {
@@ -15,10 +15,11 @@ assert.equal(snapshot.status, "signed_out");
 assert.equal(snapshot.me, null);
 assert.deepEqual(snapshot.posts, []);
 for (const cookie of [
-  "__sites_local_auth=unknown",
-  "__sites_local_auth=constructor",
-  "__sites_local_auth=__proto__",
-  "__sites_local_auth=1; __sites_local_auth=1",
+  "__polis_local_auth=unknown",
+  "__polis_local_auth=constructor",
+  "__polis_local_auth=__proto__",
+  "__polis_local_auth=1; __polis_local_auth=1",
+  "__sites_local_auth=1",
 ]) {
   const response = await fetch(origin + "/api/polis", {
     headers: { Cookie: cookie },
@@ -41,7 +42,7 @@ for (const [headers, expected] of [
   [{ Origin: origin, "Content-Type": "text/plain" }, 415],
   [{ Origin: origin, "Content-Type": "application/json" }, 401],
 ]) {
-  // Rejected bodies are deliberately unread by the Worker; isolate dev HTTP connections.
+  // Rejected bodies are deliberately unread by the server; isolate dev HTTP connections.
   const response = await fetch(origin + "/api/polis", {
     method: "POST",
     headers: { ...headers, Connection: "close" },

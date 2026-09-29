@@ -4,6 +4,7 @@ import type { InvitationPreview, Snapshot } from "@/lib/social/types";
 import { readResponse } from "@/lib/social/read-response";
 import type { Run } from "./social-post";
 import { communityFor } from "@/lib/social/communities";
+import { signInPath } from "@/lib/auth/paths";
 
 export function InvitationEntry({ data, run, onJoined, expectedCommunityId }: { data: Snapshot; run: Run; onJoined: (organizationId?: string) => void; expectedCommunityId?: string }) {
   const [code, setCode] = useState("");
@@ -56,8 +57,8 @@ export function InvitationEntry({ data, run, onJoined, expectedCommunityId }: { 
         <p className="metadata">Expires {new Date(invitation.expiresAt).toLocaleString()}. Availability is checked again when you join.</p>
       </div>
       {data.status === "signed_out" ? <>
-        <a className="btn primary full" href={"/signin-with-chatgpt?return_to=" + encodeURIComponent("/#join" + (expectedCommunityId ? "/" + expectedCommunityId : ""))} target="_top">Confirm community & sign in</a>
-        <p className="metadata">Continue with the existing ChatGPT sign-in or signup process. Any required account verification happens there. Your invitation is kept for up to one hour.</p>
+        <a className="btn primary full" href={signInPath("/#join" + (expectedCommunityId ? "/" + expectedCommunityId : ""))} target="_top">Confirm community & sign in</a>
+        <p className="metadata">Sign in or create an account next. Your email is confirmed there. Your invitation is kept for up to one hour.</p>
       </> : <form onSubmit={async e => {
         e.preventDefault(); if (pending.current) return;
         pending.current = true; setBusy(true); setError("");
