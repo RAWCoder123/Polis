@@ -51,6 +51,12 @@ See [Claude review and milestone evidence](claude-review-and-milestone.md) for a
 - `#map` opens the Map tab; unknown local test accounts are refused instead of signing in as the owner; phones get a map-first Map tab and a single glance row on Home.
 - Browser suites launch Chromium with software WebGL (`scripts/browser.mjs`) and follow the reviewed Commons.
 
+## Plain-language explainers (September 28)
+
+- Laws, proposals, documents and local processes explained as: in short, what would change, who it affects, where it stands, what happens next and how to weigh in, words to know, sources. See [explainers](explainers.md).
+- Real explainers for the Ratepayer Protection Act (H.R. 9340) and UF's fall 2026 bus changes; Sample explainers for the illustrative housing and bus proposals; a "How a local decision gets made" guide for every community.
+- Home features one explainer a day. Next: curators need an in-app way to write explainers for their town, and TCAT's notice needs a checkable source.
+
 ## Usability review (September 28)
 
 A first-time walkthrough (sign up, find a town, Home, Map, Commons, ask a question, events, profile) at desktop and 390 px passes without errors or overflow. What still feels convoluted or crowded, most important first:

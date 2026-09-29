@@ -8,6 +8,7 @@ import { commonsTopics } from "../commons.ts";
 import { cornellEntities } from "./cornell.ts";
 import { verifiedNews } from "./verified-news.ts";
 import { verifiedPeople } from "./verified-people.ts";
+import { explainers, localDecisionsGuide } from "./explainers.ts";
 import { ufEntities } from "./uf.ts";
 
 // The manually checked Commons topics are first-class issues: their sourced
@@ -43,7 +44,15 @@ const sourcedTopics: CivicEntity[] = commonsTopics.map((t) => ({
 
 // One reusable civic catalog keyed by community. Pages never branch on a
 // specific campus; they ask for the current community's entities.
-export const civicEntities: CivicEntity[] = [...verifiedNews, ...verifiedPeople, ...sourcedTopics, ...cornellEntities, ...ufEntities];
+export const civicEntities: CivicEntity[] = [
+  ...verifiedNews,
+  ...verifiedPeople,
+  ...sourcedTopics,
+  ...cornellEntities,
+  ...ufEntities,
+  localDecisionsGuide("ithaca", "Ithaca", "Common Council", true),
+  localDecisionsGuide("uf", "Gainesville", "City Commission", true),
+].map((e) => (explainers[e.id] ? { ...e, explainer: explainers[e.id] } : e));
 const byId = new Map(civicEntities.map((e) => [e.id, e]));
 export const entityFor = (id: string) => (byId.has(id) ? byId.get(id) : undefined);
 export const entitiesFor = (communityId: string) =>
@@ -112,6 +121,7 @@ export const entityKinds: Record<EntityKind, { label: string; plural: string }> 
   policy: { label: "Proposal", plural: "Policies & proposals" },
   project: { label: "Project", plural: "Projects" },
   news: { label: "News", plural: "News & briefs" },
+  guide: { label: "Guide", plural: "Guides" },
   meeting: { label: "Public meeting", plural: "Public meetings" },
   elections: { label: "Elections", plural: "Voting" },
   question: { label: "Commons question", plural: "Discussions" },

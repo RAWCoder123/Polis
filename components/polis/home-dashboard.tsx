@@ -13,6 +13,8 @@ import { CivicMap, mapPins } from "./civic-map";
 import { EntityRow, EntityVisual, EventVisual, entityRoute } from "./civic-cards";
 import { QuestionCard, rankedQuestions } from "./commons";
 import type { Navigate, Run } from "./social-post";
+import { ExplainedToday } from "./explainer";
+import { explainedToday } from "@/lib/social/civic/explainers";
 
 const dayLabel = (e: CommunityEvent) =>
   new Intl.DateTimeFormat("en-US", { timeZone: e.timezone, month: "short", day: "numeric" }).format(new Date(e.startsAt));
@@ -116,6 +118,8 @@ export function HomeDashboard({
   const location = useDeviceLocation();
   const entities = catalogOf(data);
   const now = new Date();
+  // One plain-language explainer a day gives members a reason to come back.
+  const featured = explainedToday(entities, now);
   const today = eventDay(now.toISOString(), locale?.timezone);
   const upcoming = discoverEvents(data.events, data.eventPreferences).map((r) => r.event);
   const todayEvents = upcoming.filter((e) => eventDay(e.startsAt, e.timezone) === today);
@@ -185,6 +189,7 @@ export function HomeDashboard({
       {children}
       <div className="home-grid">
         <div className="home-main">
+          {featured && <ExplainedToday entity={featured} catalog={entities} navigate={navigate} />}
           <section className="home-section" data-morph>
             <div className="section-row">
               <h2>Happening near you</h2>

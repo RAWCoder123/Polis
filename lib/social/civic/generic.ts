@@ -1,6 +1,7 @@
 import type { CivicEntity, CommunityPlace } from "../types.ts";
 import type { PilotCommunity } from "../communities.ts";
 import { localeOf } from "../communities.ts";
+import { localDecisionsGuide } from "./explainers.ts";
 
 // A civic starting point for any community without a curated catalog. Offices
 // are described by role with official lookup links; Polis never guesses who
@@ -174,6 +175,7 @@ export function genericCatalog(community: PilotCommunity, places: CommunityPlace
         sourceLabel: p.website ? "Official website" : "OpenStreetMap",
       }),
     ),
+    localDecisionsGuide(cid, city, "local council", us),
   ];
   return entities;
 

@@ -52,6 +52,7 @@ const layerForKind: Record<EntityKind, MapLayer> = {
   policy: "issues",
   project: "issues",
   news: "issues",
+  guide: "issues",
   question: "issues",
 };
 export type MapPinData = {
