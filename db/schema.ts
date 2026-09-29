@@ -389,3 +389,29 @@ export const communityPlaces = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.communityId, t.id] })],
 );
+// Local news headlines for a community, from its outlets' feeds and the open
+// news index. Links, titles, dates and outlet names only; never article text.
+export const communityNews = sqliteTable(
+  "community_news",
+  {
+    communityId: text().notNull(),
+    id: text().notNull(),
+    url: text().notNull(),
+    title: text().notNull(),
+    source: text().notNull(),
+    domain: text().notNull(),
+    publishedAt: text().notNull(),
+    imageUrl: text(),
+    summary: text(),
+    origin: text().notNull(),
+    sectionsJson: text().notNull().default("[]"),
+    importedAt: text().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.communityId, t.id] }), index("community_news_recent").on(t.communityId, t.publishedAt)],
+);
+// When each community's news was last refreshed, so refreshes stay infrequent.
+export const communityNewsImports = sqliteTable("community_news_imports", {
+  communityId: text().primaryKey(),
+  importedAt: text().notNull(),
+  articles: integer().notNull().default(0),
+});

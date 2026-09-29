@@ -9,6 +9,7 @@ import { cornellEntities } from "./cornell.ts";
 import { verifiedNews } from "./verified-news.ts";
 import { verifiedPeople } from "./verified-people.ts";
 import { explainers, localDecisionsGuide } from "./explainers.ts";
+import { newsCategories, type NewsStory, type RankedStory } from "../local-news.ts";
 import { ufEntities } from "./uf.ts";
 
 // The manually checked Commons topics are first-class issues: their sourced
@@ -95,18 +96,39 @@ export function replyTakesPosition(catalog: CivicEntity[], communityId: string, 
 }
 // The civic catalog for any community: curated where it exists (Cornell, UF),
 // otherwise a generated scaffold plus imported public places.
-export function catalogFor(community: PilotCommunity | null | undefined, places: CommunityPlace[] = []) {
+export function catalogFor(community: PilotCommunity | null | undefined, places: CommunityPlace[] = [], news: (NewsStory | RankedStory)[] = []) {
   if (!community) return [];
   const curated = entitiesFor(community.id);
-  return curated.length ? curated : genericCatalog(community, places);
+  return [...(curated.length ? curated : genericCatalog(community, places)), ...news.map((s) => newsEntity(s, community.id))];
 }
-export const inCatalog = (catalog: CivicEntity[], id: string) => catalog.find((e) => e.id === id);
+// A local news story as a subject people can open, follow and discuss.
+export function newsEntity(s: NewsStory | RankedStory, communityId: string): CivicEntity {
+  const story: RankedStory = "reasons" in s ? s : { ...s, score: 0, discussing: 0, reasons: [] };
+  return {
+    id: s.id,
+    communityId,
+    kind: "news",
+    name: s.title,
+    subtitle: s.source + " · " + (s.opinion ? "Opinion" : newsCategories[s.category].label),
+    summary: s.summary ?? (s.outlets > 1 ? "Reported by " + s.outlets + " outlets." : "Reported by " + s.source + "."),
+    scope: "local",
+    topics: [],
+    related: [],
+    sample: false,
+    news: { source: s.source, publishedAt: s.publishedAt, url: s.url },
+    sourceUrl: s.url,
+    sourceLabel: "Read at " + s.source,
+    aliases: s.articles.map((a) => a.id).filter((id) => id !== s.id),
+    story,
+  };
+}
+export const inCatalog = (catalog: CivicEntity[], id: string) => catalog.find((e) => e.id === id || !!e.aliases?.includes(id));
 // Client convenience: one catalog per snapshot object.
 const snapshotCatalogs = new WeakMap<Snapshot, CivicEntity[]>();
 export function catalogOf(data: Snapshot) {
   let catalog = snapshotCatalogs.get(data);
   if (!catalog) {
-    catalog = catalogFor(data.community, data.places ?? []);
+    catalog = catalogFor(data.community, data.places ?? [], data.news ?? []);
     snapshotCatalogs.set(data, catalog);
   }
   return catalog;
