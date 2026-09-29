@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -25,6 +25,21 @@ test("the migration runner applies every migration once, then nothing", () => {
   const total = readdirSync("drizzle").filter((f) => f.endsWith(".sql")).length;
   assert.match(migrate(), new RegExp(total + " applied"));
   assert.match(migrate(), /up to date/);
+});
+
+test("production deploys public pages before accounts open, never sign-in without its database", () => {
+  const run = (env: Record<string, string>) =>
+    spawnSync(process.execPath, ["scripts/migrate.mjs"], {
+      env: { ...process.env, TURSO_DATABASE_URL: "", TURSO_AUTH_TOKEN: "", CLERK_SECRET_KEY: "", ...env },
+      encoding: "utf8",
+    });
+  const before = run({ VERCEL_ENV: "production" });
+  assert.equal(before.status, 0);
+  assert.match(before.stdout, /public pages only/);
+  const misconfigured = run({ VERCEL_ENV: "production", CLERK_SECRET_KEY: "sk_test_placeholder" });
+  assert.equal(misconfigured.status, 1);
+  assert.match(misconfigured.stderr, /refusing to deploy production without its database/);
+  assert.match(run({ VERCEL_ENV: "preview", CLERK_SECRET_KEY: "sk_test_placeholder" }).stdout, /skipped on a preview/);
 });
 
 test("statements return plain rows, and a failed batch writes nothing", async () => {

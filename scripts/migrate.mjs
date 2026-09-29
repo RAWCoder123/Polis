@@ -7,7 +7,9 @@ import { createClient } from "@libsql/client";
 //
 // Runs before `next build` on Vercel and before `next dev` locally. Preview
 // deployments skip it unless they have their own database, so an unmerged
-// branch can never change the production schema.
+// branch can never change the production schema. Before accounts open,
+// production deploys the public pages alone; once sign-in is configured, a
+// production build without its database fails rather than go live without it.
 
 const vercel = process.env.VERCEL_ENV;
 if (!vercel && existsSync(".env.local")) process.loadEnvFile(".env.local");
@@ -19,9 +21,13 @@ if (vercel === "preview" && process.env.POLIS_MIGRATE_PREVIEW !== "1") {
 
 const url = process.env.TURSO_DATABASE_URL || (vercel ? "" : "file:.data/polis-local.db");
 if (!url) {
-  if (vercel === "production") {
-    console.error("migrate: TURSO_DATABASE_URL is not set; refusing to deploy production without its database");
+  if (vercel === "production" && process.env.CLERK_SECRET_KEY) {
+    console.error("migrate: sign-in is configured but TURSO_DATABASE_URL is not set; refusing to deploy production without its database");
     process.exit(1);
+  }
+  if (vercel === "production") {
+    console.log("migrate: no database yet; deploying the public pages only (accounts open once Turso and Clerk are connected)");
+    process.exit(0);
   }
   console.log("migrate: no database configured; skipped");
   process.exit(0);
