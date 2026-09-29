@@ -28,8 +28,13 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
         </>
       ) : (
         <section className="auth-unavailable">
-          <h1>Sign-in isn&apos;t available yet</h1>
-          <p>Polis is still being set up here. Please check back soon.</p>
+          <h1>Accounts open soon</h1>
+          <p>Polis is getting ready for its first members. Meanwhile, try the demo: it runs in your browser with fictional people.</p>
+          <p>
+            <Link className="btn primary" href="/demo">
+              Try the demo
+            </Link>
+          </p>
         </section>
       )}
     </main>

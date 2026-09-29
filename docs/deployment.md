@@ -27,7 +27,7 @@ The organizer does these steps. Keys and tokens go straight from each provider i
 `npm run build` runs `scripts/migrate.mjs`, then `next build`.
 
 - The migrator applies each pending `drizzle/*.sql` file in order, together with its record in `d1_migrations`, in one transaction. A failed migration leaves the database unchanged and fails the build, so the previous deployment keeps serving.
-- A production build without `TURSO_DATABASE_URL` fails on purpose rather than publishing a site without its data.
+- Before accounts open (no Clerk keys), production deploys the public pages alone; `/sign-in` says accounts open soon and points to the demo. Once `CLERK_SECRET_KEY` is set, a production build without `TURSO_DATABASE_URL` fails on purpose rather than publishing sign-in without its data.
 - **Preview deployments skip migrations**, so an unmerged branch can never change the production schema. With no database connected to previews, a preview shows the public pages and reports that the community database is not configured. To exercise a full preview, connect a separate Turso database to the Preview environment and set `POLIS_MIGRATE_PREVIEW=1` there.
 - Migrations only ever add. Never edit an applied migration; generate new ones with `npm run db:generate` and review the SQL. Before a migration that rewrites a table, make a copy of the database with Turso (`turso db create polis-backup --from-db polis`). Rolling back a deployment in Vercel does not undo a migration.
 
