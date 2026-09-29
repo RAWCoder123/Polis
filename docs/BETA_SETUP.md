@@ -12,16 +12,14 @@ This section records the original beta candidate; Sites now reports public versi
 
 ```sh
 npm ci
-cp .env.example .dev.vars
-npm run db:migrate:local
-npm run dev
+npm run dev   # applies pending migrations first
 ```
 
 Use the local URL printed by the server. Existing local databases must receive migration `0002_majestic_trish_tilby.sql` before running this version. It adds `issue_priorities` and `profiles.onboardingComplete`; it preserves existing profiles, conversations, rankings and saves. Do not reset a user database or edit applied migrations. The upgrade from migrations 0000/0001 is covered by a regression test with an existing profile and saved item.
 
 ## Isolated synthetic multi-user verification
 
-Use a separate checkout and its local `.wrangler/state`. This test creates clearly labeled synthetic profiles and activity; never run it against a database containing real participants. These records are separate from `/demo`, whose fictional browser state stays in localStorage.
+Use a separate checkout and its own local database (`TURSO_DATABASE_URL=file:…` or the default `.data/polis-local.db`). This test creates clearly labeled synthetic profiles and activity; never run it against a database containing real participants. These records are separate from `/demo`, whose fictional browser state stays in localStorage.
 
 ```sh
 POLIS_TEST_ACCOUNTS=1 npm run dev -- --port 5175

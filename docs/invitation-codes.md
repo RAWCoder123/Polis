@@ -10,7 +10,7 @@ Share the code with the Polis URL in any channel you choose. Polis does not coll
 
 ## Tester flow
 
-Open Polis → **Enter invite code** → enter the code → confirm the university/community → complete the existing ChatGPT signup/sign-in → create a profile if needed → **Join**. Case, spaces and hyphens are ignored. Account authentication and any required email verification remain owned by the existing sign-in system.
+Open Polis → **Enter invite code** → enter the code → confirm the university/community → sign in or create an account (email code or Google) → create a profile if needed → **Join**. Case, spaces and hyphens are ignored. Sign-in and email verification belong to Clerk; the code is held across sign-in for an hour.
 
 The code is retained for up to one hour in an HttpOnly, SameSite=Lax cookie, with Secure on HTTPS. It is not placed in the login URL, browser storage, analytics or ordinary snapshots. The confirmation survives reload and the authentication redirect. Availability is checked again when joining. A failed submission leaves the invitation and entered form values available to retry. A successful acknowledged join clears the handoff cookie.
 
@@ -40,4 +40,4 @@ Available destinations are declared in `lib/social/communities.ts`. Add a stable
 - Screenshots use synthetic accounts and mask generated codes. Production codes and tester messages were not created.
 - Hosted OAuth, cookie behavior on the actual HTTPS domain, production migration and real multi-user acceptance remain unverified until publishing access is restored.
 
-For a repeatable browser run, start from an isolated checkout with fresh local D1 data: `npm ci`, copy the synthetic `.env.example` to ignored `.dev.vars`, apply local migrations, and run `POLIS_TEST_ACCOUNTS=1 npm run dev -- --port 5180`. Then run `POLIS_TEST_ORIGIN=http://localhost:5180 npm run test:invitations-browser`. It redeems the code with new run-scoped synthetic accounts, so it can run before or after the other local suites (`test:http`, `test:social-http`, `test:events-http`, …) and repeat on the same database; see [Independent local suites](social-cycle-verification.md#independent-local-suites--september-27-2026). Do not reset an existing user database to run fixtures and never point these scripts at a hosted URL.
+For a repeatable browser run, start from an isolated checkout with a fresh local database: `npm ci`, then `POLIS_TEST_ACCOUNTS=1 npm run dev` (it migrates first). Then run `npm run test:invitations-browser`. It redeems the code with new run-scoped synthetic accounts, so it can run before or after the other local suites (`test:http`, `test:social-http`, `test:events-http`, …) and repeat on the same database; see [Independent local suites](social-cycle-verification.md#independent-local-suites--september-27-2026). Do not reset an existing user database to run fixtures and never point these scripts at a hosted URL.

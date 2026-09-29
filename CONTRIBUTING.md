@@ -4,7 +4,7 @@ Follow [README.md](README.md) for runtime, clean install, local environment, and
 
 ## Branch and review workflow
 
-Start from GitHub `main` and create a focused `codex/<change>` branch. In a normal clone GitHub is `origin`; the recovered checkout uses the explicit `github` remote and a separate `sites` remote. Inspect `git remote -v` before fetching or pushing. Preserve unrelated work and never force-push or merge another pull request as a side effect.
+Start from GitHub `main` and create a focused `codex/<change>` branch. In a normal clone GitHub is `origin`; the recovered checkout names it `github`. Inspect `git remote -v` before fetching or pushing. Preserve unrelated work and never force-push or merge another pull request as a side effect.
 
 ```sh
 git switch main
@@ -16,7 +16,7 @@ Commit related changes with a descriptive message, push the branch to GitHub, an
 
 ## Validation
 
-Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`. Run `npm run test:http` against a local dev server for Worker/authentication changes. Fix new warnings; the seven inherited MVP warnings are recorded, not hidden. Do not add `continue-on-error`, empty tests, or success fallbacks to CI.
+Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`. Run `npm run test:http` against a local dev server for API or sign-in changes. Fix new warnings; the seven inherited MVP warnings are recorded, not hidden. Do not add `continue-on-error`, empty tests, or success fallbacks to CI.
 
 For UI changes, exercise the affected journey at desktop and mobile widths, capture screenshots with fictional data, and check keyboard focus, errors, empty states, overflow, and map/list parity. For data changes, test the actual service and migrations, including authorization failures and idempotent retries. Verify persistence through a new read, not just optimistic UI state.
 
@@ -26,4 +26,4 @@ The PR should explain the problem, resulting behavior, verification evidence, an
 
 Never commit runtime values, tokens, invites, user exports, or local database files. Inspect staged files and new history before publishing. Use synthetic reserved-domain fixtures, label sample civic content, and retain license notices. A new project license requires the owner's explicit choice.
 
-Add versioned SQL migrations rather than changing applied files. Deployment is a separate Sites operation; successful GitHub checks do not update production. Changes to hosting audience, runtime secrets, or real member access require explicit task scope. See [deployment](docs/deployment.md) and [pilot setup](docs/PILOT_SETUP.md).
+Add versioned SQL migrations rather than changing applied files. Merging to `main` deploys production on Vercel and runs pending migrations, so review migrations before merging; pull requests get preview deployments that never migrate production. Changes to hosting audience, runtime secrets, or real member access require explicit task scope. See [deployment](docs/deployment.md) and [pilot setup](docs/PILOT_SETUP.md).

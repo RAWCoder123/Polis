@@ -1,27 +1,33 @@
-# Current Polis authentication path
+# Authentication
 
-Verified September 25, 2026. This is a configuration and browser assessment, not a new authentication implementation.
+Polis signs people in with [Clerk](https://clerk.com): a one-time code sent to their email, or Google. There is no Polis password.
 
-## Confirmed current flow
+## Flow
 
-1. Polis starts a top-level navigation to `/signin-with-chatgpt?return_to=...`.
-2. Sites redirects to OpenAI authorization. The observed request uses authorization code flow with PKCE (`S256`), `openid profile email`, state and nonce, and the Polis domain's `/callback`.
-3. The hosted account chooser identifies Polis and says it is signing in with ChatGPT. Selecting **Log in to another account** displays **Continue with Google**, alongside the other OpenAI login methods.
-4. Sites owns `/callback` and `/signout-with-chatgpt`, and forwards the authenticated identity through its trusted `oai-authenticated-user-*` headers.
-5. `app/chatgpt-auth.ts` reads that identity. `app/api/polis/route.ts` supplies it to the social service, which separately enforces community membership and ownership.
+1. A sign-in link goes to `/sign-in?redirect_url=<path on Polis>` (`lib/auth/paths.ts` keeps the destination on this site).
+2. `app/sign-in/[[...sign-in]]/page.tsx` shows Clerk's combined sign-in-or-sign-up form in Polis colors. New people create an account in the same place.
+3. Clerk confirms the email address (by code, or because Google has confirmed it) and sets its session cookie.
+4. `proxy.ts` runs Clerk's middleware on every request. `lib/auth/session.ts` asks Clerk who the session belongs to and returns an identity only when that person's **primary email is verified**. `app/api/polis/route.ts` passes the identity to the social service, which separately enforces membership, audience, ownership, blocking and muting.
+5. `/sign-out` ends the Clerk session in the browser and returns home.
 
-No account was selected or created during this read-only check. The Google provider button was observed, but a Google authentication round trip and invitation redemption were not exercised.
+Links shared while Polis ran on OpenAI Sites (`/signin-with-chatgpt?return_to=…`) redirect to `/sign-in` and keep their destination.
 
-## What Google means here
+## What a verified email decides
 
-Google is available **through OpenAI sign-in**. It does not eliminate the OpenAI account, create a direct Google session in Polis, or grant community membership. The UI must continue to identify the sign-in as ChatGPT/OpenAI; do not label the existing Polis link as a direct Google login.
+- **Pilot ownership.** The account whose verified email matches `POLIS_OWNER_EMAIL` becomes the owner.
+- **Campus membership.** A verified address at a university domain (for example `@cornell.edu`) can join that campus's community without a code, or start it if none exists. Membership is community access, not proof of enrollment. Anyone else joins a campus with an invitation code.
+- Nothing a browser submits (a form field, a header, the profile's city) can change either.
 
-The invitation cookie is independent of the identity provider and retains the pending code through login. In the open-signup candidate, authenticated users can create a profile in Polis commons without a code. Existing server-side admission checks remain required for protected university and organization communities. Account authentication never itself grants access to those communities.
+Enable only Email (verification code) and Google in Clerk. Other providers may supply addresses that the provider itself has not confirmed.
 
-## Direct Google-only sign-in: not confirmed
+## Invitations across sign-in
 
-The installed Sites authentication guide documents dispatch-owned ChatGPT sign-in and explicitly requires confirming the platform path before adding external OAuth. The available Sites tools expose no Google-provider configuration. Neither is evidence of a supported direct Google-only integration.
+An invitation code entered before signing in is held in an HttpOnly, same-site cookie for an hour (`lib/social/invitation-handoff.ts`), survives the round trip through Clerk, and is checked against the database when redeemed.
 
-Before implementing that alternative, obtain an explicit supported Sites integration contract for app-owned sessions and external callbacks, or choose a hosting/authentication setup that supports them. A Google client registration alone does not establish Sites compatibility. Preserve existing profile IDs with deliberate account linking; do not merge people merely because their emails match. Do not reuse Sites-reserved authentication routes for a custom provider.
+## Development sign-in
 
-References: installed `sites-building/references/authentication.md` and `starter-capabilities.md`; the current repository authentication helpers; live Sites metadata; the visible hosted OpenAI login flow; [OpenAI authentication methods](https://help.openai.com/en/articles/4936824-can-i-change-how-i-log-into-my-account-authentication-method); [Google Identity Services setup](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid).
+Under `npm run dev` without Clerk keys, `/sign-in` signs you in as **Seedy**, a visibly synthetic local owner (`seedy@sites.test`). With `POLIS_TEST_ACCOUNTS=1`, `/sign-in?test_account=beta_b` and run-scoped `qa_<suite>_<run>_<role>` names give the browser suites independent accounts; unknown names are refused. This path (`lib/auth/local.ts`) answers only on a loopback host, the dev server binds to `127.0.0.1`, and a production build compiles its switch to `false`. To try Clerk locally instead, put development keys in `.env.local`.
+
+## Not yet verified
+
+A real Clerk production instance with Google OAuth, and the three-account acceptance on the hosted site, remain to be exercised after the organizer sets up the keys ([deployment](deployment.md)).
