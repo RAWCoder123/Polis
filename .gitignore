@@ -38,6 +38,8 @@ yarn-error.log*
 next-env.d.ts
 /dist/
 /.wrangler/
+# Local development database (npm run dev)
+/.data/
 # Checkout-local execution profile and tool state; never publish them.
 /.sites-runtime/
 /.agents/

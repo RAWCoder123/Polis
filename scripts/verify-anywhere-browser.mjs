@@ -27,7 +27,7 @@ async function actor(account, width = 1440, options = {}) {
   // first snapshot; an in-page route change made earlier can be overwritten.
   await Promise.all([
     page.waitForRequest((r) => r.url().startsWith(origin + "/api/polis")),
-    page.goto(origin + "/signin-with-chatgpt?test_account=" + account + "&return_to=" + encodeURIComponent("/#home")),
+    page.goto(origin + "/sign-in?test_account=" + account + "&return_to=" + encodeURIComponent("/#home")),
   ]);
   return { context, page, account };
 }
@@ -113,23 +113,32 @@ await neighbor.page.goto(origin + "/#commons/local");
 await expect(main(neighbor)).toContainText("When does the council take public comment?");
 await shot(neighbor, "g-town-commons-mobile");
 
-// H: a university email is not enough on its own. Sites does not assert that
-// sign-in emails are verified, so campus founding is not offered and the
-// server refuses it; campuses are joined with invitation codes. The verified
-// founding path is covered by tests/anywhere.test.ts.
+// H: sign-in confirms every email, so a university address can start its
+// campus commons. With no community for example.edu yet, the form is offered
+// and the server accepts; a rerun on the same database finds the campus the
+// first run started, and the student is already its member.
 const student = await actor("campus_new");
 await ensureProfile(student, "campus_new_" + stamp.slice(-5));
 await student.page.goto(origin + "/#communities");
+if ((await state(student)).unclaimedCampusDomain) {
+  assert.equal((await state(student)).unclaimedCampusDomain, "example.edu");
+  await expect(main(student)).toContainText("Start the campus commons for example.edu");
+  await shot(student, "h-verified-campus-offer-desktop");
+  const founded = await student.context.request.post(origin + "/api/polis", {
+    headers: { Origin: origin },
+    data: { requestId: crypto.randomUUID(), data: { action: "community.create", kind: "campus", university: "Example University", city: "Burlington", region: "Vermont", country: "US", latitude: 44.4759, longitude: -73.2121, timezone: "America/New_York" } },
+  });
+  assert.equal(founded.status(), 200, await founded.text());
+}
 const campusState = await state(student);
 assert.equal(campusState.unclaimedCampusDomain, null);
-await expect(main(student)).toContainText("Polis is a commons for a real place.");
-await expect(main(student)).not.toContainText("Start the campus commons");
-const refused = await student.context.request.post(origin + "/api/polis", {
+assert.ok(campusState.communities.some((c) => c.campus?.university === "Example University"), "the student belongs to the campus they started");
+// Another address cannot start a second campus for someone else's domain.
+const refused = await neighbor.context.request.post(origin + "/api/polis", {
   headers: { Origin: origin },
   data: { requestId: crypto.randomUUID(), data: { action: "community.create", kind: "campus", university: "Example University", city: "Burlington", region: "Vermont", country: "US", latitude: 44.4759, longitude: -73.2121, timezone: "America/New_York" } },
 });
 assert.equal(refused.status(), 403);
-await shot(student, "h-unverified-campus-desktop");
 
 // I: "near me" finds nearby communities from rounded device coordinates.
 const nearby = await actor("qa_anywhere_" + stamp + "_neighbor", 390, { geolocation: { latitude: 44.48, longitude: -73.21 }, permissions: ["geolocation"] });

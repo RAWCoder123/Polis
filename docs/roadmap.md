@@ -10,7 +10,7 @@
 - Event map/list discovery, filtering, pan/zoom, details and reflections, and Interested/Planning to attend plans with explicit audiences.
 - Minimal first-party events without private text, scores, political positions, or precise locations.
 
-These describe the source implementation. Sites reports public version 2; later invitation changes remain local until published. Real hosted multi-user acceptance remains pending. See [hosted verification](hosted-pilot-verification.md) and [invitation codes](invitation-codes.md).
+These describe the source implementation. Hosted multi-user acceptance on Vercel remains pending; see [deployment](deployment.md) and [invitation codes](invitation-codes.md).
 
 ## Functional social beta additions
 
@@ -40,7 +40,7 @@ See [Claude review and milestone evidence](claude-review-and-milestone.md) for a
 
 ## Polis anywhere additions
 
-- Find your community: search any town, city or university, or list communities near you. Start the first commons for a town. Founding a campus by email domain (with later students associated automatically) is built but only works for sign-in emails asserted as verified, which Sites does not provide yet.
+- Find your community: search any town, city or university, or list communities near you. Start the first commons for a town. Found a campus commons with a verified university email; later students with the same domain join automatically.
 - Every located community without a curated catalog gets a civic scaffold: local issues, offices described by role with official lookup links, Sample starter questions, and up to 60 civic places from OpenStreetMap.
 - Server rules: duplicate towns within 25 miles are joined instead of created, a limit of three new communities a day, open town membership, campus domains taken only from the trusted sign-in email, and weekly place imports. See [Polis anywhere](anywhere.md).
 
@@ -76,46 +76,44 @@ A first-time walkthrough (sign up, find a town, Home, Map, Commons, ask a questi
 
 ## Known gaps
 
-The hosted pilot at https://polis-community.raymondaw2006.chatgpt.site serves the public landing page added on September 25, so a version newer than the September 17 version 2 recorded below has been published; confirm the exact deployed revision in Sites before the next release. This consolidated branch is not published. The Sites source host (`git.chatgpt-team.site`) still times out from the Cornell network on September 28.
-
-Sites management remains available, but its source host timed out on September 27. Version 2 remains live. The exact reviewed source and pending migrations must reach Sites before three real hosted identities can verify invitations, privacy, replies and plan persistence. Cornell release is gated on that acceptance; UF follows afterward.
+Polis moved to Vercel with a Turso database and Clerk sign-in on September 29, 2026 ([deployment](deployment.md)). The Vercel pilot starts with an empty database; activity from the earlier Sites pilot at polis-community.raymondaw2006.chatgpt.site is not migrated. Three real hosted accounts must still verify sign-in, invitations, privacy, replies and plan persistence before the Cornell release; UF follows.
 
 The September 27 motion candidate is locally verified only. View Transitions need Chrome/Edge 111+, Safari 18+ or Firefox 144+; other browsers change views instantly. Real-device swipe-back, a screen-reader pass on transitions, and hosted performance remain untested. See [motion](motion.md).
 
 The September 27 anywhere candidate is locally verified only:
 
-- Production reachability and fair-use capacity of the public Nominatim and Overpass services from the Sites Worker are unconfirmed.
+- Production reachability and fair-use capacity of the public Nominatim and Overpass services from Vercel functions are unconfirmed.
 - Founder-created communities have no community-level moderators, rename, merge or archive UI; reports go to the pilot owner.
 - Non-US civic structure is generic.
 - Town membership does not verify residence.
-- Campus founding and email-domain association require a verified-email assertion that Sites does not supply yet, so campuses are joined with invitation codes.
+- Campus founding and association by email domain rely on Clerk's email verification. They grant community membership, not proof of enrollment.
 
 Apart from four reviewed officials with official portraits, the civic catalog names offices rather than officeholders; a checked source is required before adding more. Campus sample proposals, briefs, questions and event listings are labeled Sample. UF has no checked event bundle.
 
 Both cohorts now have at least two checked campus and two checked town occurrences as of September 27. Coverage is date-sensitive and needs curator refresh before invitations. Some listings have no public coordinates and remain list-only. Existing civic sample proposals, briefs and starter questions stay labeled Sample. The four real officials have source credits; no image licensing guarantee is implied. University SSO/email verification and a broad automated news/content pipeline remain outside this milestone.
 
-The open-signup candidate separates normal profile creation in Polis commons from optional university/organization codes. It preserves existing private-community memberships and the trusted Sites identity boundary. Direct Google-only sessions and email/password authentication owned by Polis remain unimplemented; email/Google use OpenAI's existing login. Source and local verification are documented in [open signup](open-signup.md); hosted acceptance remains pending.
+The open-signup candidate separates normal profile creation in Polis commons from optional university/organization codes. It preserves existing private-community memberships. Sign-in now uses Clerk (an email code or Google); Polis stores no passwords. Source and local verification are documented in [open signup](open-signup.md); hosted acceptance remains pending.
 
-The September 25 public showcase candidate adds a community-focused landing page and isolated interactive product examples. It awaits Sites publication; the source server remains unreachable from this network. Direct Google-only authentication is not implemented or confirmed as a supported Sites integration. The existing hosted OpenAI login does visibly offer Continue with Google; see [authentication path](authentication-path.md).
+The September 25 public showcase candidate adds a community-focused landing page and isolated interactive product examples. It ships with the Vercel release.
 
-Community-specific invitation codes, optional usage limits, expiration, revocation, and login handoff are implemented and verified locally with two isolated browser accounts. They still await deployment because the current network cannot reach the Sites source server. See [invitation codes](invitation-codes.md).
+Community-specific invitation codes, optional usage limits, expiration, revocation, and login handoff are implemented and verified locally with two isolated browser accounts. They ship with the Vercel release. See [invitation codes](invitation-codes.md).
 
 Cornell/Ithaca and Emory are configured invitation destinations. Memberships, conversations, moderation and active-community preferences are separated on the server. Emory has no sourced event/issue/official catalog yet; it displays honest empty states. The broader location-resolution, officials, curator community-configuration, source-integration and campus-coverage brief remains future work. Selecting or joining a community does not verify enrollment or electoral residence.
 
-The local social-cycle browser journey now passes with independent synthetic sessions, including mobile/desktop overflow, lost-response retry/reload recovery, notifications and attendance privacy. See [current browser verification](social-cycle-verification.md). Sites version 2 is now public, and hosted owner profile creation, event import and private save after reload pass. Hosted multi-user acceptance remains pending; see [hosted verification](hosted-pilot-verification.md).
+The local social-cycle browser journey now passes with independent synthetic sessions, including mobile/desktop overflow, lost-response retry/reload recovery, notifications and attendance privacy. See [current browser verification](social-cycle-verification.md). On the earlier Sites host, owner profile creation, event import and private save after reload passed ([hosted verification](hosted-pilot-verification.md)); hosted multi-user acceptance on Vercel remains pending.
 
 - Legacy civic records, news, officials, demo map positions, and initial prompts remain fictional or illustrative. The new event catalog is separately sourced. Reference links do not establish those records as real local facts.
-- Three isolated ChatGPT identities, invited site access, and production D1/authentication have not been exercised together.
-- GitHub does not deploy production. Sites source synchronization and saved-version deployment are separate. A network restriction blocked the first publication attempt; Sites version 2 (source `0c42b64`) deployed on 2026-09-17, and every later revision in this repository remains undeployed until a new authorized Sites publication.
+- Three real accounts on the Vercel deployment, with production Turso and Clerk, have not been exercised together.
+- Merging to `main` deploys production on Vercel and applies pending migrations; pull requests get previews that never migrate production. Rolling back a deployment does not undo a migration.
 - GitHub Actions is not active: the available integrations lack permission to write workflow files. The reviewed workflow remains in `docs/ci.yml`; local checks are the current verification evidence.
 - The original demo map remains schematic. The social maps depend on OpenFreeMap and the public AWS terrain tiles in the browser, with bundled outlines for Ithaca and Gainesville and the list as fallbacks. Real-device pinch and tilt gestures, performance on older phones, a full assistive-technology audit, load testing and production migration/restore drills remain.
-- No automated metric dashboard or retention/deletion scheduler exists. Agree operational retention before a live pilot.
+- No automated metric dashboard or retention/deletion scheduler exists. Account deletion and data download are handled by hand on request (see `/privacy`); self-serve deletion is future work. Agree operational retention before a live pilot.
 - Seven inherited lint warnings remain in original MVP components; address them in focused maintenance work. Organizer images intentionally use a native element with an explicit lint exemption.
 
 ## Next three milestones
 
-1. **Publish and verify the hosted social flow.** Merge the consolidated branch, publish it through Sites from a network that reaches the Sites source host, then exercise A/B friendship/conversation with C denied private content. Record identity, persistence, revocation, blocking, and retry evidence.
+1. **Verify the hosted social flow on Vercel.** With Turso and Clerk configured, exercise A/B friendship and conversation with C denied private content, campus joining by university email, invitation codes and news import. Record identity, persistence, revocation, blocking and retry evidence.
 2. **Replace samples with sourced local content.** Maintain the sourced event seed and curate Ithaca/Cornell issues, sources, registration requirements, and timelines; agree owner review responsibilities and freshness before inviting participants.
 3. **Finish pilot usability and operations.** Activate the reviewed GitHub workflow after workflow permission is granted, validate map gestures and assistive-technology journeys on target devices, and establish retention, moderation, and minimal activation/reciprocity/return reporting.
 
-External notifications, contact uploads, inferred political labels and continuous location tracking remain outside this release. Normal account signup is in the open-signup candidate; campus communities remain invitation-only. Propose and review broader social features before implementation.
+External notifications, contact uploads, inferred political labels and continuous location tracking remain outside this release. Anyone can sign up; campus communities admit verified university emails or invitation codes. Propose and review broader social features before implementation.

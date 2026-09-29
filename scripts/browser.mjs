@@ -15,12 +15,18 @@ export function launchBrowser(options = {}) {
 export async function clickMapPlace(page, scope, name) {
   // An empty name means any place; CSS [title^=""] would match nothing.
   const [starts, contains] = name ? [`[title^="${name}"]`, `[title*="${name}"]`] : ["[title]", "[title]"];
-  for (let attempt = 0; attempt < 6; attempt++) {
+  // Places that share a building (a venue and its hall) need several zooms.
+  for (let attempt = 0; attempt < 10; attempt++) {
     const pin = page.locator(`${scope} .civic-pin-button${starts}`).first();
     if (await pin.count()) return pin.dispatchEvent("click");
     const bubble = page.locator(`${scope} .civic-cluster-button${contains}`).first();
     if (await bubble.count()) await bubble.dispatchEvent("click");
     await page.waitForTimeout(1200);
   }
-  throw new Error(`No map place named ${name} in ${scope}`);
+  const seen = await page.locator(`${scope} .civic-pin-button[title], ${scope} .civic-cluster-button[title]`).evaluateAll((els) => els.map((e) => e.title));
+  throw new Error(`No map place named ${name} in ${scope}. On the map: ${seen.join(" | ") || "nothing"}`);
 }
+
+// The app's own alerts. Next.js also keeps an empty role="alert" live region
+// (#__next-route-announcer__) on every page for route announcements.
+export const appAlert = '[role="alert"]:not(#__next-route-announcer__)';

@@ -312,7 +312,16 @@ const command = z
   .object({ requestId: z.string().uuid(), communityId: id.optional(), data: action })
   .strict();
 export type CommandData = z.input<typeof action>;
-export type Database = Pick<D1Database, "prepare" | "batch">;
+// A SQLite database: Turso in production (db/index.ts), node:sqlite in tests.
+// batch() runs its statements in one transaction and rolls back on failure.
+export type Statement = {
+  first<T = Record<string, unknown>>(): Promise<T | null>;
+  all<T = Record<string, unknown>>(): Promise<{ results: T[] }>;
+};
+export type Database = {
+  prepare(sql: string): { bind(...args: unknown[]): Statement };
+  batch(statements: Statement[]): Promise<unknown>;
+};
 export const digest = async (s: string) =>
   Array.from(
     new Uint8Array(
@@ -378,8 +387,8 @@ export function socialService(
     return row ? communityFromRow(row) : undefined;
   };
   // Email domains only associate a campus when the sign-in provider asserts the
-  // address is verified. Sites supplies no such assertion yet, so campuses are
-  // joined with invitation codes until an approved adapter provides one.
+  // address is verified (Clerk confirms every address; see lib/auth/session.ts).
+  // Anyone else joins a campus with an invitation code.
   const verifiedCampusFor = async (who: Identity) =>
     who.verifiedCampusEmail ? campusForEmail(who.email) : undefined;
   const verifiedCampusDomain = (who: Identity) => (who.verifiedCampusEmail ? campusDomainOf(who.email) : null);
@@ -1115,7 +1124,7 @@ export function socialService(
         fail(409, "This submission key was already used.");
       return JSON.parse(old.resultJson);
     }
-    const sql: D1PreparedStatement[] = [];
+    const sql: Statement[] = [];
     const add = (query: string, ...values: unknown[]) =>
       sql.push(prep(query, ...values));
     let result: Record<string, unknown> = { ok: true };
@@ -1269,7 +1278,7 @@ export function socialService(
       if (data.kind === "campus") {
         // Only the member's own verified institutional domain can found or join a campus.
         const domain = verifiedCampusDomain(identity!);
-        if (!domain) fail(403, "Starting a campus community needs a verified university email, which sign-in does not provide yet. Start your town's commons or use an invitation code.");
+        if (!domain) fail(403, "Starting a campus community needs a university email. Sign in with your university email, start your town's commons, or use an invitation code.");
         const existing = await verifiedCampusFor(identity!);
         if (existing) target = existing;
         else if (!data.university) fail(400, "Enter your university's name.");
@@ -1484,7 +1493,7 @@ export function socialService(
           // residence. Campus admission needs a verified university email from
           // an approved sign-in adapter, never location or submitted text.
           if (target!.campus && (await verifiedCampusFor(identity!))?.id !== target!.id)
-            fail(403, "Join " + target!.campus!.university + " with a community invitation code. University email verification is not connected yet.");
+            fail(403, "Join " + target!.campus!.university + " by signing in with your " + target!.campus!.university + " email, or with a community invitation code.");
           add("INSERT OR IGNORE INTO community_memberships(userId,communityId,role) SELECT ?,?,'member' WHERE NOT EXISTS(SELECT 1 FROM pilot_memberships WHERE userId=? AND communityId=?)", uid, target!.id, uid, target!.id);
           add("UPDATE profiles SET activeCommunityId=? WHERE id=?", target!.id, uid);
           result = { ok: true, communityId: target!.id };

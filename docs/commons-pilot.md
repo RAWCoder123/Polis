@@ -66,14 +66,14 @@ Document icons and existing missing-image/category fallbacks remain. No new lice
 
 ## Database and local setup
 
-Use Node 24.14.0 / npm 11.9.0, `npm ci`, and `npm run db:migrate:local`. Do not reset an existing database. The new additive migrations are:
+Use Node 24.14.0 / npm 11.9.0 and `npm ci`; `npm run dev` and `npm run build` apply migrations. Do not reset an existing database. The new additive migrations are:
 
 - **0007_outstanding_zarda.sql:** conversation follows; community scope for issue updates and minimal metrics.
 - **0008_strange_nocturne.sql:** organization memberships, organization-scoped posts and invitation codes.
 
 Earlier migration files are unchanged. A target on hosted version 2 also needs the pending 0004–0006 migrations in order. Sites must package/apply the entire ordered history. The upgrade regression verifies legacy profiles, memberships, private saves and code usage survive. New nullable organization fields keep old posts/codes in their original scope.
 
-For isolated local browser QA, use a separate checkout/database, set only a **synthetic** owner matching the local sign-in shim in ignored `.dev.vars`, migrate, and start `POLIS_TEST_ACCOUNTS=1 npm run dev -- --host localhost --port 5182`. Then run `POLIS_TEST_ORIGIN=http://localhost:5182 node scripts/verify-commons-browser.mjs`. It uses three separate synthetic browser identities per campus, plus a curator, and leaves clearly labeled fixtures in that local database. Never run fixture writes against a deployed site. No production test-identity option is included in the Worker.
+For isolated local browser QA, use a separate checkout/database, keep the default synthetic local owner, and start `POLIS_TEST_ACCOUNTS=1 npm run dev`. Then run `node scripts/verify-commons-browser.mjs`. It uses three separate synthetic browser identities per campus, plus a curator, and leaves clearly labeled fixtures in that local database. Never run fixture writes against a deployed site. No test-identity option is included in production builds.
 
 ## Verification record
 

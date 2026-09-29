@@ -5,7 +5,7 @@ Candidate: `codex/open-signup`, September 25, 2026. Not deployed.
 ## Behavior
 
 - `/welcome` and the signed-out home offer account creation at `/#signup`.
-- Native Sites authentication remains `/signin-with-chatgpt`, with its trusted server identity. OpenAI offers email, Google/Gmail and other account methods; an OpenAI account is still required. No direct Google-only provider or Polis password database was added.
+- Sign-in was Sites' OpenAI login when this was written; since September 29, 2026 it is Clerk (an email code or Google, no OpenAI account and no Polis passwords). See [authentication](authentication-path.md).
 - After login, choose a display name and username. `account.create` atomically creates the profile and membership in `polis` (Polis commons). Ordinary users receive member permissions. Only the configured, trusted owner identity can receive owner permissions.
 - Existing profiles, private data, active communities and memberships are not replaced by a signup retry. Username conflicts leave no partial profile; double taps and lost-response retries retain the existing idempotency mechanism.
 - `/#join` remains an optional flow with community preview/confirmation and an HttpOnly login handoff. Codes do not become passwords, and signup neither redeems a code nor grants Cornell/Emory access.

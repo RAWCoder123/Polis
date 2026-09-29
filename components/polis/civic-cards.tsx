@@ -2,6 +2,7 @@
 import "./civic.css";
 import { useState } from "react";
 import { categoryColors, kindColors, partyColor } from "@/lib/colors";
+import { toneVars } from "@/lib/colors";
 import {
   ArrowUpRight,
   Bell,
@@ -105,7 +106,7 @@ export function toneOf(e: CivicEntity) {
 export function PartyBadge({ entity }: { entity: CivicEntity }) {
   const p = partyColor(entity.office?.party);
   return p ? (
-    <span className="party-badge" style={{ "--party": p.color, "--party-tint": p.tint } as React.CSSProperties}>
+    <span className="party-badge" style={{ "--party": p.text, "--party-tint": p.tint } as React.CSSProperties}>
       {p.label}
     </span>
   ) : null;
@@ -131,7 +132,7 @@ export function EntityVisual({
       <img
         className={"entity-visual photo " + size + (entity.kind === "official" ? " round" : "") + (entity.office?.party ? " party" : "")}
         src={entity.imageUrl}
-        style={{ objectPosition: entity.imagePosition ?? "center", "--tone": toneOf(entity) } as React.CSSProperties}
+        style={{ objectPosition: entity.imagePosition ?? "center", ...toneVars(toneOf(entity)) } as React.CSSProperties}
         alt={entity.imageAlt ?? ""}
         loading="lazy"
         referrerPolicy="no-referrer"
@@ -142,7 +143,7 @@ export function EntityVisual({
     return (
       <span
         className={"entity-visual seal " + size + (entity.office?.party ? " party" : "")}
-        style={{ "--tone": toneOf(entity) } as React.CSSProperties}
+        style={toneVars(toneOf(entity)) as React.CSSProperties}
         aria-hidden="true"
       >
         <span>{entity.monogram ?? initialsFor(entity.name)}</span>
@@ -152,7 +153,7 @@ export function EntityVisual({
   return (
     <span
       className={"entity-visual tile toned tone-" + kindTone[entity.kind] + " " + size + (["policy", "news"].includes(entity.kind) ? " doc" : "")}
-      style={{ "--tone": toneOf(entity) } as React.CSSProperties}
+      style={toneVars(toneOf(entity)) as React.CSSProperties}
       aria-hidden="true"
     >
       <Icon size={px} />
@@ -194,7 +195,7 @@ export function EntityChip({
   return (
     <button
       className={"entity-chip toned tone-" + kindTone[entity.kind]}
-      style={{ "--tone": toneOf(entity) } as React.CSSProperties}
+      style={toneVars(toneOf(entity)) as React.CSSProperties}
       data-morph
       onClick={() => navigate(entityRoute(entity.id))}
     >
@@ -213,7 +214,7 @@ export function EntityRow({
   meta?: string;
 }) {
   return (
-    <button className="entity-row toned" style={{ "--tone": toneOf(entity) } as React.CSSProperties} data-morph onClick={() => navigate(entityRoute(entity.id))}>
+    <button className="entity-row toned" style={toneVars(toneOf(entity)) as React.CSSProperties} data-morph onClick={() => navigate(entityRoute(entity.id))}>
       <EntityVisual entity={entity} size="md" />
       <span>
         <KindLine entity={entity} />

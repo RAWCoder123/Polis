@@ -1,64 +1,49 @@
-# Source provenance and deployment
+# Deployment
 
-## Current release handoff — September 27, 2026
+Polis runs on **Vercel** (Next.js), stores its data in **Turso** (hosted libSQL, a SQLite database) and signs people in with **Clerk** (email codes and Google). GitHub `RAWCoder123/Polis` is the source: every push to `main` deploys production, and every pull request gets a preview.
 
-GitHub is the development source; Sites remains the existing host. PR #10
-(`codex/civic-milestone-review`) contains the consolidated PR #8 foundation and
-the reviewed campus civic milestone. PR #9 (`codex/polis-anywhere`) and Claude's
-motion work are separate candidates, not automatically included in that release.
-Merging the anywhere candidate must preserve the review's explicit verified-campus-email
-boundary rather than restore admission from an email string.
+## One-time setup
 
-Sites management and fresh repository credentials are available in Codex. The
-remaining publication blocker is the network: on September 27, the system resolver
-returned `128.253.129.105` for `git.chatgpt-team.site`, consistent with the Cornell
-blocking destination reported in Claude's audit, and an HTTPS connection timed
-out after eight seconds. An earlier authenticated Git read with a fresh scoped
-credential also timed out. No DNS override, security-warning bypass, alternate
-hosting origin, or tunnel was used.
+The organizer does these steps. Keys and tokens go straight from each provider into Vercel and are never pasted into chat, code or this repository.
 
-Minimum action: retry on a network that can reach the Sites source host, or have
-the network operator resolve the block. No plugin reinstall is indicated. Then
-synchronize the exact reviewed GitHub release to the existing Sites repository,
-package/save/deploy it, and verify the published revision and real accounts.
-GitHub pushes alone do not update the website, and no automatic integration has
-been configured. Sites still reports public version 2, updated September 17.
-The audience, database and runtime settings remain unchanged.
+1. **Vercel project.** Import `RAWCoder123/Polis` in Vercel (framework: Next.js; build command and output are detected from `package.json`). Set the Node.js version to 24.x.
+2. **Turso database.** Vercel → the project → *Storage* → add **Turso** from the Marketplace, pick the region closest to the pilot (for Ithaca and Gainesville, `aws-us-east-1`) and connect it to the **Production** environment only. This adds `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`. (Alternatively create a database with the Turso CLI and add both variables by hand.)
+3. **Clerk sign-in.** Add **Clerk** from the Vercel Marketplace (or create an application at clerk.com), then in the Clerk dashboard:
+   - *User & authentication* → enable **Email** with **email verification code**, and **Google**. Leave other social providers off; Polis trusts only addresses Clerk has confirmed.
+   - For production, create the production instance, add the Vercel domain, and give Google its own OAuth credentials (Clerk's shared development credentials are for testing only).
+   - Copy `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` into Vercel if the Marketplace did not.
+4. **Polis settings** in Vercel → *Settings* → *Environment Variables* (Production):
 
-## Verified relationship at import
+   | Variable | Value |
+   | --- | --- |
+   | `POLIS_OWNER_EMAIL` | The organizer's email, exactly as they will sign in. That verified account can moderate and manage communities. |
+   | `NEXT_PUBLIC_POLIS_CONTACT_EMAIL` | Where people send privacy and data requests; shown on `/privacy`. |
 
-The source was recovered from the existing Sites project, not reconstructed from a scraped page. The original application commit is `a414d45386b64f8ba99d88cb7dd0133f983a34e4`. Sites metadata inspected on 2026-09-13 reports version 1 at that commit and the existing URL:
+5. **Function region.** `vercel.json` pins functions to `iad1` (Washington, D.C.) next to a Turso database in `aws-us-east-1`. If the database lives elsewhere, change the region to match; every page load makes several database round trips.
+6. Redeploy production (or merge to `main`). The build log shows `migrate: 13 applied (13 total, Turso)` on the first deploy.
 
-https://polis-community.raymondaw2006.chatgpt.site
+## How a deploy works
 
-The site is active, with only its owner in the custom access policy. No access, runtime, or production setting was changed for this import. The local social pilot and map improvements are later work; they are not yet the hosted version.
+`npm run build` runs `scripts/migrate.mjs`, then `next build`.
 
-GitHub `RAWCoder123/Polis` was public and empty at the first inspection. On resuming setup, it already contained the imported source at `19fdb676080ab149793a6abe4c82a7a7fe7d8f98` on `codex/polis-social-pilot`. That published history is preserved. `main` starts at the same commit; the remaining setup is submitted through a pull request. The recovered checkout originally had no configured remotes, so explicit `github` and `sites` remotes were added. A fresh GitHub clone normally calls GitHub `origin` instead.
+- The migrator applies each pending `drizzle/*.sql` file in order, together with its record in `d1_migrations`, in one transaction. A failed migration leaves the database unchanged and fails the build, so the previous deployment keeps serving.
+- A production build without `TURSO_DATABASE_URL` fails on purpose rather than publishing a site without its data.
+- **Preview deployments skip migrations**, so an unmerged branch can never change the production schema. With no database connected to previews, a preview shows the public pages and reports that the community database is not configured. To exercise a full preview, connect a separate Turso database to the Preview environment and set `POLIS_MIGRATE_PREVIEW=1` there.
+- Migrations only ever add. Never edit an applied migration; generate new ones with `npm run db:generate` and review the SQL. Before a migration that rewrites a table, make a copy of the database with Turso (`turso db create polis-backup --from-db polis`). Rolling back a deployment in Vercel does not undo a migration.
 
-| Remote | Purpose |
-| --- | --- |
-| `github` (or `origin` in a fresh clone) | `https://github.com/RAWCoder123/Polis.git`; development and validation |
-| `sites` | Existing hosting-managed source repository; separate authenticated synchronization |
+## Security notes
 
-The project identity and logical `DB` binding remain in `.openai/hosting.json`. The hosting source endpoint is a Git repository, not the deployed website. Obtain current source credentials through Sites when publication is authorized; never store them in remote URLs or Git configuration.
+- Identity comes only from Clerk's verified session (`lib/auth/session.ts`). A person counts as signed in only when their primary email is confirmed; that address decides pilot ownership and campus membership.
+- The development sign-in (`lib/auth/local.ts`) runs only under `next dev`, bound to `127.0.0.1`, and answers only loopback hosts. A production build compiles its switch (`lib/auth/mode.ts`) to `false`, so it can never run there.
+- Links shared while Polis ran on OpenAI Sites (`/signin-with-chatgpt`, `/signout-with-chatgpt`) redirect to `/sign-in` and `/sign-out`.
+- Nothing secret uses a `NEXT_PUBLIC_` name. Keys and tokens live only in Vercel's encrypted environment variables.
 
-## History and public-data review
+## Previous host: OpenAI Sites
 
-The original MVP and subsequent published commits are preserved. An initial local preparation normalized machine-generated email metadata, but the repository was populated with the original history before setup resumed. The setup therefore uses that existing public history without rewriting it. New setup commits use the owner's GitHub no-reply identity. Older commits still contain machine-generated author email metadata; removing that from published history would require a separately coordinated history/privacy cleanup. No credential was found in tracked source, and no credential rotation is claimed. No GitHub history was overwritten or force-pushed.
+From September 13 to September 29, 2026, Polis ran as a Cloudflare Worker with D1 on OpenAI Sites at https://polis-community.raymondaw2006.chatgpt.site (source recovered from Sites at `a414d45`). Publishing there stalled because the Sites source host was unreachable from the Cornell network, and sign-in required an OpenAI account. The move to Vercel replaced the Vinext/Wrangler build, the Sites identity headers and the D1 binding. Every query and migration is unchanged.
 
-The import includes source, assets, lockfile, schema/migrations, and synthetic tests. It excludes private environment files, credentials, invite links, local activity, logs, and user exports. Existing third-party licenses remain unchanged. No application license was added.
+`.openai/hosting.json` still identifies that Sites project. Its data was not copied: the Vercel pilot starts with an empty database. The migrator keeps D1's `d1_migrations` bookkeeping, so an export of the Sites D1 database could be imported into Turso later and carry on from its applied migrations.
 
-## Publication is separate from GitHub
+## History and public data
 
-There is **no automatic GitHub-to-Sites deployment**. The prepared GitHub Actions definition only validates source and contains no production credentials or deployment steps; activation currently awaits workflow-write permission. Public source does not make the deployed site public.
-
-When a later task explicitly authorizes publication:
-
-1. Verify the intended GitHub revision, source diff, tests/build, and pending migrations. Preserve the existing Sites project and audience.
-2. Obtain a fresh, scoped Sites source write credential and synchronize that exact source to the hosting repository. Reconcile its history first; public metadata normalization may require a deliberate source merge. Do not force-push.
-3. Build/package that exact source with the Sites workflow, including assets, Worker, manifest, and migrations. Save a version and deploy through the operation matching the existing audience.
-4. Verify deployment, trusted sign-in, migrations, and three-identity acceptance before claiming pilot readiness.
-
-The import originally encountered a network restriction reaching the Sites Git server, recorded in [VERIFICATION.md](VERIFICATION.md). The current retry is recorded above. GitHub development works independently.
-
-Production needs server-only `POLIS_OWNER_EMAIL`, Sites authentication/access, and managed `DB`. No real runtime value belongs in `.env.example` or GitHub Actions. Hosting access and Polis invitations are separate gates; see [PILOT_SETUP.md](PILOT_SETUP.md).
+The original MVP and later commits are preserved without rewriting history. Some early commits carry machine-generated author metadata; new commits use the owner's GitHub no-reply identity. The repository holds no credentials, environment files, invitation links, user data or exports. No project-wide license has been chosen.

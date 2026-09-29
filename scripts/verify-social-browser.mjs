@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { officialEvents } from "../lib/social/official-events.ts";
-import { launchBrowser } from "./browser.mjs";
+import { appAlert, launchBrowser } from "./browser.mjs";
 
 // This writes synthetic records in local D1. It must never run against a host.
 // A, B and C are new run-scoped synthetic accounts, so the journey needs no
@@ -26,7 +26,7 @@ const run = Date.now().toString(36);
 const contexts = [];
 function pass(name) { checks.push(name); console.log("PASS " + name); }
 async function signIn(context, account) {
-  const response = await context.request.get(origin + "/signin-with-chatgpt?test_account=" + account, { maxRedirects: 0 });
+  const response = await context.request.get(origin + "/sign-in?test_account=" + account, { maxRedirects: 0 });
   assert.equal(response.status(), 302);
 }
 async function actor(role, name, viewport) {
@@ -162,7 +162,7 @@ try {
     await route.continue();
   });
   await dialog.getByRole("button", { name: "Publish to Friends", exact: true }).click();
-  await expect(dialog.getByRole("alert")).toBeVisible();
+  await expect(dialog.locator(appAlert)).toBeVisible();
   await expect(dialog.getByRole("textbox", { name: "In your own words", exact: true })).toHaveValue(text);
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await b.page.getByRole("button", { name: /^Notifications,/ }).click();
@@ -223,7 +223,7 @@ try {
   assert.equal(denied.status(), 404);
   await go(c, "post/" + committedPost);
   await expect(c.page.getByText(text, { exact: true })).toHaveCount(0);
-  await expect(c.page.getByRole("alert")).toBeVisible();
+  await expect(c.page.locator(appAlert)).toBeVisible();
   pass("Unrelated account cannot retrieve private conversation through API or browser deep link");
 
   await go(b, "explore/events");
@@ -282,7 +282,7 @@ try {
   assert.ok(!(await read(a)).notifications.some(n => n.targetId === committedPost));
   await go(a, "post/" + committedPost + "/" + reply);
   await expect(a.page.getByText(responseText, { exact: true })).toHaveCount(0);
-  await expect(a.page.getByRole("alert")).toBeVisible();
+  await expect(a.page.locator(appAlert)).toBeVisible();
   await setup(a, { action: "friend", targetId: b.id, operation: "request" });
   await setup(b, { action: "friend", targetId: a.id, operation: "accept" });
   pass("Revoked friendship removes conversation, attendance and notification access");
@@ -303,7 +303,7 @@ try {
     checkedAt: new Date().toISOString(), mode: "local synthetic accounts", browser: await browser.version(),
     checks, failedTiles, errors, hostedAuthenticationVerified: false,
   }, null, 2));
-  console.log("PASS browser social cycle. Hosted ChatGPT accounts and deployment remain unverified.");
+  console.log("PASS browser social cycle. Hosted accounts and deployment remain unverified.");
   if (failedTiles.length) console.log("LIMITATION basemap provider blocked " + failedTiles.length + " tile responses.");
 } catch (e) {
   console.error(e);

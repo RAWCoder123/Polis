@@ -32,13 +32,20 @@ async function actor(account, width, options = {}) {
     errors.push(account + ": " + e.message);
     console.error("Page error (" + account + "):", e.name, e.message);
   });
-  await page.goto(origin + "/signin-with-chatgpt?test_account=" + account + "&return_to=" + encodeURIComponent("/#home"));
+  const hydrated = page.waitForResponse((r) => r.url().startsWith(origin + "/api/polis") && r.request().method() === "GET");
+  await page.goto(origin + "/sign-in?test_account=" + account + "&return_to=" + encodeURIComponent("/#home"));
+  // Polis asks for its data once it has hydrated. Next.js restores the URL it
+  // loaded with at hydration, so navigate only after that.
+  await hydrated;
   const a = { context, page };
   const state = await snapshot(a);
   if (state.status === "onboarding") {
     await page.getByLabel("Username").fill(account + "_" + stamp.slice(-5));
     await page.getByRole("button", { name: "Create my Polis account" }).click();
     await expect.poll(async () => (await snapshot(a)).status).toBe("ready");
+    // A new account lands on Find your community; let that navigation finish
+    // before the journey navigates elsewhere.
+    await expect(page).toHaveURL(/#communities$/);
   }
   await command(a, { action: "community.joinOpen" });
   return a;
@@ -211,7 +218,9 @@ assert.equal(await kindOf(still.page, () => stillCard.getByRole("button", { name
 await expect(still.page.locator(".social-content .social-post").first()).toContainText(title);
 const stillReaction = still.page.locator(".social-content .social-post").first().locator(".reaction-set .reaction").nth(2);
 await stillReaction.click();
-assert.equal(await stillReaction.evaluate((b) => b.querySelector("svg")?.getAnimations().length ?? 0), 0);
+// Nothing perceptible animates. (Reduced motion shortens every transition to
+// 0.01ms rather than removing it, so those may still be listed for a frame.)
+assert.equal(await stillReaction.evaluate((b) => (b.querySelector("svg")?.getAnimations() ?? []).filter((a) => Number(a.effect?.getTiming().duration) > 1).length), 0);
 await expect(stillReaction).toHaveAttribute("aria-pressed", "true");
 
 await browser.close();

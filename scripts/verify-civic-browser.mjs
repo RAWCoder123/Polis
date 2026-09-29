@@ -23,7 +23,7 @@ async function actor(account, width = 1440, options = {}) {
   // first snapshot; an in-page route change made earlier can be overwritten.
   await Promise.all([
     page.waitForRequest((r) => r.url().startsWith(origin + "/api/polis")),
-    page.goto(origin + "/signin-with-chatgpt?test_account=" + account + "&return_to=" + encodeURIComponent("/#home")),
+    page.goto(origin + "/sign-in?test_account=" + account + "&return_to=" + encodeURIComponent("/#home")),
   ]);
   return { context, page, account };
 }

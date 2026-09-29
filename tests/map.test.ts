@@ -67,3 +67,13 @@ test("a bubble names what it holds, briefly", () => {
     "7 venues: A, B, C, D, E and 2 more",
   );
 });
+
+test("every color that carries white text has a shade readable at WCAG AA", async () => {
+  const { categoryColors, kindColors, partyColor, toneVars, contrastWithWhite } = await import("../lib/colors.ts");
+  for (const color of [...Object.values(categoryColors), ...Object.values(kindColors), "#d9363e", "#2563eb", "#7c5cbf"]) {
+    const v = toneVars(color);
+    assert.ok(contrastWithWhite(v["--tone-mid"]) >= 4.5, color + " mid");
+    assert.ok(contrastWithWhite(v["--tone-deep"]) >= 5.5, color + " deep");
+  }
+  for (const party of ["Republican", "Democrat", "Independent"]) assert.ok(contrastWithWhite(partyColor(party)!.text) >= 4.5, party);
+});

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { clickMapPlace, launchBrowser } from './browser.mjs';
+import { appAlert, clickMapPlace, launchBrowser } from './browser.mjs';
 import { expect as baseExpect } from 'playwright/test';
 import { checkedEventsFor } from '../lib/social/campus-events.ts';
 
@@ -17,7 +17,7 @@ async function actor(account, width) {
   const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 1000 }, reducedMotion: 'reduce' });
   const page = await context.newPage();
   page.on('pageerror', e => errors.push(e.message));
-  await page.goto(origin + '/signin-with-chatgpt?test_account=' + account + '&return_to=%2F%23home');
+  await page.goto(origin + '/sign-in?test_account=' + account + '&return_to=%2F%23home');
   return { page, context, account };
 }
 async function state(a, params = '') {
@@ -107,7 +107,7 @@ try {
   });
   await dialog.getByRole('button', { name: 'Publish to Friends', exact: true }).click();
   await expect(dialog.getByRole('textbox', { name: 'Your question', exact: true })).toHaveValue('Synthetic QA: meet at the entrance? ' + stamp);
-  await expect(dialog.getByRole('alert')).toContainText('Synthetic QA temporary failure');
+  await expect(dialog.locator(appAlert)).toContainText('Synthetic QA temporary failure');
   await dialog.getByRole('button', { name: 'Publish to Friends', exact: true }).click();
   await a.page.unroute('**/api/polis');
   await expect(a.page).toHaveURL(/#post\//);

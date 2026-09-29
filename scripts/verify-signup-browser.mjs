@@ -38,11 +38,11 @@ try {
     await page.getByRole("link", { name: "Enter an optional invite code" }).click();
     await expect(page.getByRole("heading", { name: "Enter invite code" })).toBeVisible();
     await page.getByRole("link", { name: "Continue without a code" }).click();
-    await page.route("**/signin-with-chatgpt?**", route => {
+    await page.route("**/sign-in?**", route => {
       const login = new URL(route.request().url()); login.searchParams.set("test_account", account);
       return route.continue({ url: login.href });
     });
-    await page.getByRole("link", { name: "Continue with OpenAI", exact: true }).click();
+    await page.getByRole("link", { name: "Sign in or create an account", exact: true }).click();
     const snapshot = await state(actor);
     assert.equal(snapshot.status, "onboarding", "Each run signs up a new synthetic account.");
     await expect(page.getByRole("heading", { name: "Make yourself at home." })).toBeVisible();

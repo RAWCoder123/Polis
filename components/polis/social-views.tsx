@@ -36,6 +36,7 @@ import { ReplyComposer, type ComposeOptions, Modal } from "./social-forms";
 import { PostCard, type Run, type Navigate } from "./social-post";
 import { PerspectiveBar } from "./civic-cards";
 import { catalogOf, replyTakesPosition } from "@/lib/social/civic";
+import { signOutPath } from "@/lib/auth/paths";
 export function Quiet({
   title,
   children,
@@ -909,7 +910,7 @@ export function Profile({
               )}
               <a
                 className="text-button"
-                href="/signout-with-chatgpt?return_to=%2F"
+                href={signOutPath("/")}
                 target="_top"
               >
                 Sign out

@@ -33,7 +33,7 @@ async function login(a, route = "home") {
   // first snapshot; an in-page route change made earlier can be overwritten.
   await Promise.all([
     a.page.waitForRequest(r => r.url().startsWith(origin + "/api/polis")),
-    a.page.goto(origin + "/signin-with-chatgpt?test_account=" + a.account + "&return_to=" + encodeURIComponent("/#" + route)),
+    a.page.goto(origin + "/sign-in?test_account=" + a.account + "&return_to=" + encodeURIComponent("/#" + route)),
   ]);
 }
 async function shot(a, name, mask = []) {
@@ -51,7 +51,7 @@ async function join(a, campus, code) {
   await expect(a.page.getByRole("heading", { name: "Your community is waiting." })).toBeVisible();
   const signin = a.page.getByRole("link", { name: "Confirm community & sign in" });
   if (await signin.isVisible()) {
-    await a.page.route("**/signin-with-chatgpt?**", route => {
+    await a.page.route("**/sign-in?**", route => {
       const url = new URL(route.request().url()); url.searchParams.set("test_account", a.account);
       return route.continue({ url: url.href });
     });

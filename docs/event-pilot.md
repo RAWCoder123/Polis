@@ -16,9 +16,7 @@ Use Node 24.14.0 and npm 11.9.0. From an isolated checkout:
 
 ```sh
 npm ci
-cp .env.example .dev.vars
-npm run db:migrate:local
-POLIS_TEST_ACCOUNTS=1 npm run dev -- --hostname 127.0.0.1 --port 5176
+POLIS_TEST_ACCOUNTS=1 npm run dev   # 127.0.0.1:5173; applies migrations first
 ```
 
 In a second terminal:

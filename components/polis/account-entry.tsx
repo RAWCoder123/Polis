@@ -4,14 +4,15 @@ import { useRef, useState } from "react";
 import { ArrowRight, UserRound } from "lucide-react";
 import type { Run } from "./social-post";
 import type { PilotCommunity } from "@/lib/social/communities";
+import { signInPath } from "@/lib/auth/paths";
 
 export function SignInChoice({ returnTo }: { returnTo: string }) {
   return <section className="onboarding-panel account-entry">
     <p className="social-section-label">WELCOME TO POLIS</p>
     <h2>Your perspective belongs here.</h2>
     <p>Create an account or log in. You don’t need an invitation code to get started.</p>
-    <a className="btn primary full" href={"/signin-with-chatgpt?return_to=" + encodeURIComponent(returnTo)} target="_top">Continue with OpenAI <ArrowRight size={17} /></a>
-    <p className="metadata">Sign-in is handled by OpenAI. Choose email, Google (including Gmail), Apple, or Microsoft on the next screen. You can also use your existing ChatGPT account. An OpenAI account is required.</p>
+    <a className="btn primary full" href={signInPath(returnTo)} target="_top">Sign in or create an account <ArrowRight size={17} /></a>
+    <p className="metadata">Use your email or Google. Students: sign in with your university email to join your campus community.</p>
     <div className="account-optional"><strong>Joining a university or organization?</strong><p>Use a community code when you have one. It’s separate from your account.</p><a className="text-button" href="#join">Enter an optional invite code <ArrowRight size={15} /></a></div>
   </section>;
 }

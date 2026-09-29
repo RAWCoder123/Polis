@@ -515,3 +515,16 @@
 /* Long headlines wrap instead of widening the page. */
 .today-list button > span { min-width: 0; }
 .today-list strong, .today-list em, .today-list small { overflow-wrap: anywhere; }
+
+/* Readable color: text sits on --tone-mid / --tone-deep (4.5:1+ with white);
+   the bright --tone only decorates. See toneVars in lib/colors.ts. */
+.news-band { background: linear-gradient(110deg, var(--tone-deep), var(--tone-mid)); }
+.news-story-banner { background: linear-gradient(125deg, var(--tone-deep), var(--tone-mid)); }
+.entity-hero.banner { background: linear-gradient(120deg, var(--tone-deep), var(--tone-mid)); }
+.news-story-banner::after, .entity-hero.banner::after { background: color-mix(in srgb, var(--tone) 45%, transparent); opacity: .55; }
+.social-shell .news-filters button[aria-pressed="true"] { background: var(--tone-mid, #17233b); border-color: var(--tone-mid, #17233b); }
+.entity-visual.tile.toned { color: var(--tone-deep); }
+.social-shell .entity-chip.toned { color: var(--tone-deep); }
+.news-why { color: var(--tone-deep); }
+.social-shell .news-read { color: var(--tone-deep); }
+.news-chip { background: #ffffff2e; }
