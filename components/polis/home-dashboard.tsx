@@ -128,8 +128,9 @@ export function HomeDashboard({
   const meetings = upcoming
     .filter((e) => e.category === "civic_meetings" && Date.parse(e.startsAt) - +now < 8 * 86400000)
     .filter((e) => !todayEvents.includes(e));
+  // Curated briefs; imported local news has its own section above.
   const briefs = entities
-    .filter((e) => e.kind === "news" && e.news)
+    .filter((e) => e.kind === "news" && e.news && !e.story)
     .sort((a, b) => b.news!.publishedAt.localeCompare(a.news!.publishedAt))
     .slice(0, 3);
   const people = [

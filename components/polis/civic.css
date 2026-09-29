@@ -512,3 +512,6 @@
 .news-care a { white-space: nowrap; }
 .news-tiles { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
 @media (max-width: 767px) { .news-filters { flex-wrap: nowrap; overflow-x: auto; margin-inline: -20px; padding: 0 20px 4px; scrollbar-width: none; } .social-shell .news-filters button { flex-shrink: 0; } }
+/* Long headlines wrap instead of widening the page. */
+.today-list button > span { min-width: 0; }
+.today-list strong, .today-list em, .today-list small { overflow-wrap: anywhere; }
