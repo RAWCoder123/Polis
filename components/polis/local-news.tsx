@@ -4,6 +4,7 @@ import { ArrowUpRight, HeartHandshake, MessagesSquare, Newspaper, ShieldAlert } 
 import type { CivicEntity, Snapshot } from "@/lib/social/types";
 import { newsCategories, sensitiveSupport, type NewsCategory, type RankedStory } from "@/lib/social/local-news";
 import { categoryColors } from "@/lib/colors";
+import { toneVars } from "@/lib/colors";
 import { inCatalog, catalogOf } from "@/lib/social/civic";
 import { entityRoute } from "./civic-cards";
 import type { Navigate } from "./social-post";
@@ -55,7 +56,7 @@ export function NewsCard({
 }) {
   const color = categoryColors[story.opinion ? "other" : story.category];
   return (
-    <article className={"news-card " + variant} style={{ "--tone": color } as React.CSSProperties}>
+    <article className={"news-card " + variant} style={toneVars(color) as React.CSSProperties}>
       <button className="news-card-main" onClick={() => navigate(entityRoute(story.id))}>
         <span className="news-band">
           <span className="news-chip">{label(story)}</span>
@@ -113,7 +114,7 @@ export function LocalNewsList({
             All
           </button>
           {present.map((c) => (
-            <button key={c} aria-pressed={filter === c} style={{ "--tone": categoryColors[c] } as React.CSSProperties} onClick={() => setFilter(c)}>
+            <button key={c} aria-pressed={filter === c} style={toneVars(categoryColors[c]) as React.CSSProperties} onClick={() => setFilter(c)}>
               <i aria-hidden="true" /> {newsCategories[c].label}
             </button>
           ))}
@@ -148,7 +149,7 @@ export function NewsStoryHeader({ entity }: { entity: CivicEntity }) {
   const care = s.sensitive ? sensitiveSupport[s.sensitive] : null;
   return (
     <>
-      <section className="news-story-banner" style={{ "--tone": color } as React.CSSProperties}>
+      <section className="news-story-banner" style={toneVars(color) as React.CSSProperties}>
         <span className="news-chip">{label(s)}</span>
         <h1>{s.title}</h1>
         <p>

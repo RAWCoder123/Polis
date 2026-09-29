@@ -541,8 +541,8 @@ export default function SocialApp() {
               Community tools
             </button>
           )}
-          <a href="/demo">
-            Original browser-only demo <ArrowUpRight size={14} />
+          <a href="/privacy">
+            Privacy <ArrowUpRight size={14} />
           </a>
           {data.status !== "signed_out" && (
             <a href="/signout-with-chatgpt?return_to=%2F" target="_top">

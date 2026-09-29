@@ -31,6 +31,7 @@ import {
   SampleNotice,
 } from "./civic-cards";
 import { ExplainerCard } from "./explainer";
+import { toneVars } from "@/lib/colors";
 import { NewsStoryHeader } from "./local-news";
 import { Quiet } from "./social-views";
 import type { ComposeOptions } from "./social-forms";
@@ -106,7 +107,7 @@ export function EntityPage({
       {entity.story ? (
         <NewsStoryHeader entity={entity} />
       ) : (
-        <header className="entity-hero banner" style={{ "--tone": toneOf(entity) } as React.CSSProperties}>
+        <header className="entity-hero banner" style={toneVars(toneOf(entity)) as React.CSSProperties}>
           <EntityVisual entity={entity} size="lg" />
           <div>
             <KindLine entity={entity} />

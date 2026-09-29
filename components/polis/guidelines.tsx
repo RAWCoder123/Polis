@@ -23,7 +23,7 @@ export function CommunityGuidelines({ navigate }: { navigate: Navigate }) {
           <strong>Argue with ideas, not people.</strong> No insults, harassment, threats, slurs or pile-ons. Criticize public decisions and offices freely; leave private lives alone.
         </li>
         <li>
-          <strong>Show your sources.</strong> Link where a factual claim comes from. Say when something is your experience or opinion. “Needs context” is a fair reaction, not an attack.
+          <strong>Show your sources.</strong> Link where a factual claim comes from. Say when something is your experience or opinion. “Want to understand more” is a fair reaction, not an attack.
         </li>
         <li>
           <strong>Be yourself.</strong> Don’t impersonate students, officials or organizations, and don’t post someone else’s private information.
@@ -37,7 +37,8 @@ export function CommunityGuidelines({ navigate }: { navigate: Navigate }) {
       </ol>
       <p className="metadata">
         Polis does not rank by outrage. Trending counts how many different people take part in a conversation, not how many reactions it collects.
-        Starter questions and briefs marked Sample are written by Polis to open a discussion; they are not reporting or pending decisions.
+        Starter questions and briefs marked Sample are written by Polis to open a discussion; they are not reporting or pending decisions.{" "}
+        <a href="/privacy">How Polis handles your information</a>.
       </p>
     </article>
   );
