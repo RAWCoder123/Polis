@@ -259,6 +259,7 @@ export type EntityKind =
   | "policy"
   | "project"
   | "news"
+  | "guide"
   | "meeting"
   | "elections"
   | "question";
@@ -266,6 +267,23 @@ export type EntityScope = "campus" | "local" | "national";
 export type EntityLink = { title: string; url: string };
 // Code-defined civic context for a community. `sample` marks illustrative
 // content; unsampled records only state what an office or place is.
+// A plain-language explanation of a law, proposal, document or process,
+// written from the sources listed and dated when Polis last checked them.
+export type Explainer = {
+  // Shown on Home when the entity's own name is not a good headline.
+  title?: string;
+  inShort: string;
+  // Heading for `changes`; defaults to "What would change".
+  changesLabel?: string;
+  changes: string[];
+  affects: string[];
+  stage: string;
+  next?: { what: string; when?: string; how?: string; url?: string; urlLabel?: string };
+  terms?: { term: string; meaning: string }[];
+  sources: { title: string; url: string; publisher: string; date?: string }[];
+  checkedAt: string;
+};
+
 export type CivicEntity = {
   id: string;
   communityId: string;
@@ -313,6 +331,7 @@ export type CivicEntity = {
     documents: EntityLink[];
   };
   news?: { source: string; publishedAt: string; url?: string };
+  explainer?: Explainer;
   meeting?: { schedule: string; bodyId?: string; calendarUrl?: string };
   debate?: {
     // Open-ended questions collect ideas rather than support or opposition.

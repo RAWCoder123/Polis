@@ -29,6 +29,7 @@ import {
   PerspectiveBar,
   SampleNotice,
 } from "./civic-cards";
+import { ExplainerCard } from "./explainer";
 import { Quiet } from "./social-views";
 import type { ComposeOptions } from "./social-forms";
 import type { Navigate, Run } from "./social-post";
@@ -40,7 +41,7 @@ const groups: { label: string; kinds: CivicEntity["kind"][] }[] = [
   { label: "Places & institutions", kinds: ["institution", "building", "place", "elections"] },
   { label: "Organizations & meetings", kinds: ["organization", "meeting"] },
   { label: "Issues", kinds: ["issue"] },
-  { label: "Briefs", kinds: ["news"] },
+  { label: "Briefs & guides", kinds: ["news", "guide"] },
 ];
 const dateLabel = (iso: string) =>
   new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -125,6 +126,8 @@ export function EntityPage({
           </button>
         )}
       </div>
+
+      {entity.explainer && <ExplainerCard entity={entity} />}
 
       {entity.kind === "question" && entity.debate ? (
         <section className="debate">

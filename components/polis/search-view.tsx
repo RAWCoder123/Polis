@@ -16,7 +16,7 @@ const groups: { label: string; kinds: CivicEntity["kind"][] }[] = [
   { label: "Policies & projects", kinds: ["policy", "project"] },
   { label: "Places & buildings", kinds: ["place", "building", "institution", "elections"] },
   { label: "Organizations & meetings", kinds: ["organization", "meeting"] },
-  { label: "News & briefs", kinds: ["news"] },
+  { label: "News, briefs & guides", kinds: ["news", "guide"] },
 ];
 
 export function SearchView({
