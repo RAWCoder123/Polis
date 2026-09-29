@@ -11,6 +11,7 @@ import { localeOf } from "@/lib/social/communities";
 import { useDeviceLocation } from "@/lib/social/use-device-location";
 import { listPlaces, nearestNamed, type NamedGeometry } from "@/lib/map-geometry";
 import { reducedMotion } from "@/lib/motion";
+import { partyColor } from "@/lib/colors";
 import {
   categoryIcons,
   EntitySummaryCard,
@@ -114,8 +115,12 @@ function PinFace({ pin, selected, plans = [] }: { pin: MapPinData; selected: boo
   }
   const e = pin.entity!;
   const Icon = kindIcons[e.kind];
+  const party = partyColor(e.office?.party);
   return (
-    <span className={"civic-pin layer-" + pin.layer + " kind-" + e.kind + (selected ? " selected" : "")}>
+    <span
+      className={"civic-pin layer-" + pin.layer + " kind-" + e.kind + (party ? " party" : "") + (selected ? " selected" : "")}
+      style={party ? ({ "--pin": party.color } as React.CSSProperties) : undefined}
+    >
       <span className="pin-disc">
         {e.kind === "official" ? <b>{e.monogram ?? initialsFor(e.name)}</b> : <Icon size={17} />}
       </span>

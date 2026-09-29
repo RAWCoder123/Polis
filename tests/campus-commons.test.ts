@@ -284,7 +284,11 @@ test("the civic catalog is internally consistent, campus-scoped and honest about
     // Illustrative content is always labeled; offices never name an unchecked holder.
     if (["policy", "project", "news", "question"].includes(e.kind) && !e.checkedAt) assert.equal(e.sample, true, e.id);
     if (e.kind === "question") assert.ok(e.debate && e.debate.perspectives.length >= 2, e.id);
-    if (e.kind === "official") { assert.ok(e.office, e.id); if (e.office.officeholder) assert.ok(e.checkedAt && e.sourceUrl && e.imageCredit && e.imageSourceUrl, e.id + " needs checked portrait provenance"); }
+    // A named officeholder needs a checked source; a shown portrait needs its provenance.
+    if (e.kind === "official") { assert.ok(e.office, e.id); if (e.office.officeholder) assert.ok(e.checkedAt && e.sourceUrl, e.id + " needs a checked source"); }
+    if (e.imageUrl) assert.ok(e.imageCredit && e.imageSourceUrl, e.id + " needs checked portrait provenance");
+    // Party appears only beside a checked officeholder.
+    if (e.office?.party) assert.ok(e.office.officeholder && e.checkedAt, e.id + " party without a checked holder");
     if (e.sourceUrl) assert.match(e.sourceUrl, /^https:\/\//);
     assert.ok(!Object.hasOwn(itemById, e.id) || e.kind === "issue", e.id + " collides with a legacy item");
   }

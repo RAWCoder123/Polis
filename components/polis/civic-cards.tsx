@@ -1,6 +1,7 @@
 "use client";
 import "./civic.css";
 import { useState } from "react";
+import { categoryColors, kindColors, partyColor } from "@/lib/colors";
 import {
   ArrowUpRight,
   Bell,
@@ -95,6 +96,20 @@ export const initialsFor = (name: string) =>
     .slice(0, 2)
     .join("") || name.slice(0, 1).toUpperCase();
 export const entityRoute = (id: string) => "entity/" + id;
+// Each kind of thing has its own color; news by its category; an official
+// by party when a checked source supplies one.
+export function toneOf(e: CivicEntity) {
+  if (e.story) return categoryColors[e.story.opinion ? "other" : e.story.category];
+  return partyColor(e.office?.party)?.color ?? kindColors[e.kind];
+}
+export function PartyBadge({ entity }: { entity: CivicEntity }) {
+  const p = partyColor(entity.office?.party);
+  return p ? (
+    <span className="party-badge" style={{ "--party": p.color, "--party-tint": p.tint } as React.CSSProperties}>
+      {p.label}
+    </span>
+  ) : null;
+}
 
 // Photos and headshots render when a licensed image is supplied. Otherwise
 // people and offices get a seal-style monogram, documents a paper tile, and
@@ -114,9 +129,9 @@ export function EntityVisual({
       // Remote organizer and official images; sized by CSS.
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        className={"entity-visual photo " + size + (entity.kind === "official" ? " round" : "")}
+        className={"entity-visual photo " + size + (entity.kind === "official" ? " round" : "") + (entity.office?.party ? " party" : "")}
         src={entity.imageUrl}
-        style={{ objectPosition: entity.imagePosition ?? "center" }}
+        style={{ objectPosition: entity.imagePosition ?? "center", "--tone": toneOf(entity) } as React.CSSProperties}
         alt={entity.imageAlt ?? ""}
         loading="lazy"
         referrerPolicy="no-referrer"
@@ -125,14 +140,19 @@ export function EntityVisual({
     );
   if (entity.kind === "official")
     return (
-      <span className={"entity-visual seal " + size} aria-hidden="true">
+      <span
+        className={"entity-visual seal " + size + (entity.office?.party ? " party" : "")}
+        style={{ "--tone": toneOf(entity) } as React.CSSProperties}
+        aria-hidden="true"
+      >
         <span>{entity.monogram ?? initialsFor(entity.name)}</span>
         <Landmark className="seal-badge" size={size === "lg" ? 14 : 11} />
       </span>
     );
   return (
     <span
-      className={"entity-visual tile tone-" + kindTone[entity.kind] + " " + size + (["policy", "news"].includes(entity.kind) ? " doc" : "")}
+      className={"entity-visual tile toned tone-" + kindTone[entity.kind] + " " + size + (["policy", "news"].includes(entity.kind) ? " doc" : "")}
+      style={{ "--tone": toneOf(entity) } as React.CSSProperties}
       aria-hidden="true"
     >
       <Icon size={px} />
@@ -159,6 +179,7 @@ export function KindLine({ entity }: { entity: CivicEntity }) {
       {entityKinds[entity.kind].label}
       {entity.scope === "campus" ? " · Campus" : entity.scope === "national" ? " · National" : " · Local"}
       {entity.sample && <span className="sample-tag">Sample</span>}
+      <PartyBadge entity={entity} />
     </span>
   );
 }
@@ -172,7 +193,8 @@ export function EntityChip({
   const Icon = kindIcons[entity.kind];
   return (
     <button
-      className={"entity-chip tone-" + kindTone[entity.kind]}
+      className={"entity-chip toned tone-" + kindTone[entity.kind]}
+      style={{ "--tone": toneOf(entity) } as React.CSSProperties}
       data-morph
       onClick={() => navigate(entityRoute(entity.id))}
     >
@@ -191,7 +213,7 @@ export function EntityRow({
   meta?: string;
 }) {
   return (
-    <button className="entity-row" data-morph onClick={() => navigate(entityRoute(entity.id))}>
+    <button className="entity-row toned" style={{ "--tone": toneOf(entity) } as React.CSSProperties} data-morph onClick={() => navigate(entityRoute(entity.id))}>
       <EntityVisual entity={entity} size="md" />
       <span>
         <KindLine entity={entity} />
